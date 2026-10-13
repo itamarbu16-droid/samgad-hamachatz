@@ -27,3 +27,14 @@ export function assertRhythmPreviewMigration(
       "The preview migration requires the exact Neon integration host with TLS",
     );
 }
+
+/** Fresh synthetic provisioning is restricted to this exact feature preview branch. */
+export function assertFreshRhythmPreview(
+  env: Record<string, string | undefined> = process.env,
+) {
+  assertRhythmPreviewMigration(env);
+  if (env.VERCEL_GIT_COMMIT_REF !== "feature/personal-rhythm")
+    throw new Error(
+      "Fresh provisioning is restricted to the personal-rhythm feature preview",
+    );
+}

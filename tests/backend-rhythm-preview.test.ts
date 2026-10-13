@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { assertRhythmPreviewMigration } from "../scripts/rhythm-preview-guard";
+import {
+  assertRhythmPreviewMigration,
+  assertFreshRhythmPreview,
+} from "../scripts/rhythm-preview-guard";
 import { PREVIEW_PROJECT_ID } from "../scripts/preview-guard";
 const valid = {
   VERCEL: "1",
@@ -27,4 +30,25 @@ describe("additive preview migration guard", () => {
       assertRhythmPreviewMigration({ ...valid, ...patch }),
     ).toThrow(),
   );
+});
+
+describe("fresh feature preview provisioning", () => {
+  it("requires the exact feature branch in addition to the preview project guards", () => {
+    expect(() =>
+      assertFreshRhythmPreview({
+        ...valid,
+        VERCEL_GIT_COMMIT_REF: "feature/personal-rhythm",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertFreshRhythmPreview({ ...valid, VERCEL_GIT_COMMIT_REF: "main" }),
+    ).toThrow();
+    expect(() =>
+      assertFreshRhythmPreview({
+        ...valid,
+        VERCEL_ENV: "production",
+        VERCEL_GIT_COMMIT_REF: "feature/personal-rhythm",
+      }),
+    ).toThrow();
+  });
 });
