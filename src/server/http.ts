@@ -2,12 +2,13 @@ import { ZodError } from 'zod';
 import { getAuth } from './auth';
 import { AppError, type Principal } from './policy';
 import { principalFor } from './service';
+import { appUrl } from './app-url';
 
 export async function api(request: Request, handler: (principal: Principal) => Promise<unknown>) {
   try {
     if (!['GET','HEAD'].includes(request.method)) {
       const origin = request.headers.get('origin');
-      const expected = process.env.BETTER_AUTH_URL ? new URL(process.env.BETTER_AUTH_URL).origin : null;
+      const expected = appUrl();
       if (!expected || origin !== expected) throw new AppError(403,'הבקשה לא הגיעה מכתובת היישום המאושרת');
       if (!request.headers.get('content-type')?.includes('application/json')) throw new AppError(415,'פורמט הבקשה אינו נתמך');
     }

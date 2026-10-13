@@ -40,6 +40,8 @@ Browser tests require a running application backed by an isolated seeded synthet
 
 ## Vercel preview
 
-Provision an isolated managed PostgreSQL database, set the application origin and a unique auth secret in preview environment variables, apply the schema, and provision synthetic accounts deliberately. The current seed script intentionally refuses managed-database and Vercel environments; hosted account provisioning needs a reviewed explicit workflow. For schema-only setup use `DEMO_MODE=false`. Do not enable filesystem PGlite on Vercel. Confirm deployment status and exercise login, persistence, and authorization against the actual preview before declaring it ready.
+The [hosted synthetic preview](https://samgad-hamachatz-8dsu7atjy-itamar14.vercel.app) is READY in Vercel team `itamar14`, backed by the preview-only Neon database `neon-carmine-bridge`. It deploys branch `preview/hosted-demo`, commit `992e45b`. Hosted checks verified real login, task persistence and completion, anonymous access rejection, origin protection, and mobile viewport fit.
+
+Use the canonical deployment URL above. Authentication `appUrl` is derived from the exact Vercel preview environment hostname. Hosted provisioning uses an explicit preview-only one-off workflow with a fresh-database guard; ordinary local seeding remains separate. Credentials are supplied privately outside this repository. Never commit passwords or database credentials, and do not reuse preview resources for production.
 
 Production needs separate resources, reviewed authentication/account management, backup and restore validation, monitoring, and the appropriate information-security approval. No AI provider or external messaging integration is enabled by this foundation.
