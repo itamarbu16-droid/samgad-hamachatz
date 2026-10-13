@@ -1,0 +1,11 @@
+import { z } from 'zod';
+import { priorities, taskStatuses } from './policy';
+const id = z.string().trim().min(1).max(120);
+const title = z.string().trim().min(2, 'יש להזין כותרת בת שני תווים לפחות').max(160, 'הכותרת ארוכה מדי');
+const description = z.string().trim().max(5000).default('');
+const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => { const parsed = new Date(value + 'T12:00:00Z'); return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0,10) === value; }, 'יש להזין תאריך תקין').nullable();
+export const createTaskInput = z.object({ clientRequestId:z.string().uuid().optional(), title, description, ownerId: id, domainId: id, companyId: id.nullable().optional(), priority: z.enum(priorities).default('normal'), dueDate: dueDate.optional(), requiresReview: z.boolean().optional() }).strict();
+export const updateTaskInput = z.object({ version: z.number().int().positive(), title: title.optional(), description: z.string().trim().max(5000).optional(), ownerId: id.optional(), domainId: id.optional(), companyId: id.nullable().optional(), priority: z.enum(priorities).optional(), status: z.enum(taskStatuses).optional(), dueDate: dueDate.optional(), blockerReason: z.string().trim().max(2000).nullable().optional(), requiresReview: z.boolean().optional() }).strict();
+export const commentInput = z.object({ clientRequestId:z.string().uuid().optional(), body: z.string().trim().min(1, 'יש להזין תוכן לעדכון').max(5000) }).strict();
+export const createDecisionInput = z.object({ clientRequestId:z.string().uuid().optional(), title, description, domainId: id, companyId: id.nullable().optional(), deciderId: id, priority: z.enum(priorities).default('normal'), taskId: id.nullable().optional() }).strict();
+export const updateDecisionInput = z.object({ version: z.number().int().positive(), status: z.enum(['pending','clarification_requested','approved','rejected']), notes: z.string().trim().min(2, 'יש להוסיף הסבר להחלטה').max(5000) }).strict();

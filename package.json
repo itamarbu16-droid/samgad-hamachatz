@@ -1,0 +1,43 @@
+{
+  "name": "samgad-hamachatz",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "db:setup": "tsx --env-file=.env.local scripts/setup.ts",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.9",
+    "@fontsource/assistant": "^5.3.0",
+    "@fontsource/heebo": "^5.3.0",
+    "better-auth": "^1.7.7",
+    "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.56.0",
+    "next": "^16.4.0",
+    "pg": "^8.23.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.4"
+  }
+}
