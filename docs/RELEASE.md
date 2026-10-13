@@ -14,7 +14,7 @@ This document distinguishes intended acceptance criteria from executed verificat
 - [x] Desktop and mobile browser checks confirm document RTL and no horizontal overflow on the dashboard and creation dialog.
 - [ ] Complete the broader invalid-input, failure-recovery, concurrency, and permission acceptance matrix beyond the covered automated cases.
 - [ ] Desktop and mobile browser checks confirm RTL, visible labels, keyboard focus, no horizontal overflow, and readable long Hebrew content.
-- [ ] A real Vercel preview reaches ready status and the critical workflows pass against its isolated persistent database.
+- [x] A real Vercel preview reaches READY and hosted task/login/security smoke checks pass against its isolated persistent database.
 
 ## Verification record
 
@@ -22,18 +22,21 @@ This document distinguishes intended acceptance criteria from executed verificat
 | --- | --- | --- |
 | `npm run typecheck` | Passed, 2026-10-13 | Local TypeScript compilation; does not establish runtime behavior. |
 | `npm run lint` | Passed, 2026-10-13 | ESLint checks on the final local source. |
-| `npm test` | 16/16 passed, 2026-10-13 | Local backend policy, validation, and persistence checks; final run confirmed by the coordinating engineer. |
+| `npm test` | 39/39 passed, 2026-10-13 | Current backend checks; typecheck and lint also passed on the current source, confirmed by the coordinating engineer. |
 | `npm run build` | Passed, 2026-10-13 | Production compilation after the dependency-tracing fix; local production server started with `npm start`. |
 | Playwright E2E suite (`npm run test:e2e`) | 16/16 passed in 1.2 minutes, 2026-10-13 | Desktop Chromium and Pixel 7 browser projects against the local production server and persistent synthetic PGlite database. |
 | `npm audit` | 0 reported vulnerabilities, 2026-10-13 | Dependency advisory snapshot; not an independent security audit. |
+| Hosted Playwright check (`work/hosted-check.mjs`) | Passed, 2026-10-13 | Real form login; anonymous 401; task creation, reload, note, in-progress transition and persisted completion; wrong-origin 403; mobile viewport. |
 
 The final browser run verifies real form login and session persistence; task creation, reload, progress note, completion, and overdue-count reconciliation; decision submission and resolution with persisted audit presence; anonymous and viewer denial; company isolation; origin rejection; and RTL viewport fit. Screenshots are generated for desktop and mobile dashboard inspection.
 
-Earlier development runs encountered a transient missing component during an in-progress file split, exact-label selector mismatches, and sign-in rate limits. The final run passed after those issues were corrected. Authentication fixtures honor bounded `Retry-After` responses; application rate limiting remains enabled. These are local smoke and integration results, not a completed hosted acceptance test, accessibility certification, usability study, load test, or security approval.
+Earlier development runs encountered a transient missing component during an in-progress file split, exact-label selector mismatches, and sign-in rate limits. The final local run passed after those issues were corrected. Authentication fixtures honor bounded `Retry-After` responses; application rate limiting remains enabled. The hosted smoke check above subsequently passed. These results do not establish complete hosted acceptance, accessibility certification, a usability study, a load test, or security approval.
 
 ## External deployment status
 
-Initially the Vercel connector authenticated as `itamarbu16-8051`, but its default team scope (`itamar14`) returned HTTP 403. After the user reconnected it, plugin metadata reported installed/enabled while project, team, and authentication tool calls returned `Unknown tool`. The resource connection is therefore currently unavailable. No managed database or hosted preview has been provisioned and no deployment success is claimed. No production deployment approval was requested. GitHub work is restricted to `itamarbu16-droid/samgad-hamachatz`.
+The earlier Vercel 403 and unavailable-tool blockers are resolved. Team `itamar14` now hosts [the READY synthetic preview](https://samgad-hamachatz-8dsu7atjy-itamar14.vercel.app), built from branch `preview/hosted-demo`, commit `992e45b`, with Neon `neon-carmine-bridge` configured only for preview. Use this canonical deployment URL; authentication `appUrl` matches the exact Vercel preview environment hostname.
+
+Hosted accounts are synthetic and were provisioned through a preview-only one-off workflow with an explicit fresh-database guard. Their credentials remain private outside the repository. No production deployment approval was requested or granted. GitHub work remains restricted to `itamarbu16-droid/samgad-hamachatz`.
 
 ## Production prerequisites
 

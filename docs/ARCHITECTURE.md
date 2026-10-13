@@ -37,9 +37,11 @@ Calendar-only deadlines should retain their date semantics across timezones. Sto
 
 Phase 1 establishes authenticated tasks, persisted metrics, basic decisions, and critical audit history. Subsequent slices add administrative review follow-up, notifications, broader search and permission administration, then reporting and Hebrew exports. AI and external messaging are not dependencies of the initial slice. Planned features must not appear as enabled controls without a functioning workflow.
 
-## Pending infrastructure decisions
+## Infrastructure status
 
-Managed database provisioning, preview/production separation, hosting account ownership, backup/restore testing, and security approval must be resolved from actual connected resources. No existing service or successful deployment is assumed here.
+The synthetic preview is deployed in Vercel team `itamar14` and uses Neon `neon-carmine-bridge` in the preview environment only. Branch `preview/hosted-demo`, commit `992e45b`, reached READY at the [canonical deployment URL](https://samgad-hamachatz-8dsu7atjy-itamar14.vercel.app). Hosted smoke checks exercised real login, persisted task changes and completion, access rejection, and mobile viewport fit.
+
+Preview-only one-off provisioning requires an explicitly fresh database. Authentication `appUrl` comes from the exact Vercel preview environment hostname; use the canonical deployment URL to avoid origin mismatch. Synthetic account credentials are private and stored outside the repository. Production provisioning, backup/restore validation, security review, and deployment approval remain outstanding.
 
 ## Foundation implementation choices
 
