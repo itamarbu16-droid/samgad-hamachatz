@@ -4,9 +4,24 @@ import { getDb, isDemo } from './db';
 import { getAuth } from './auth';
 import * as s from './schema';
 import { localDate } from './policy';
+import { assertHostedPreviewSeedAllowed } from '../../scripts/preview-guard';
 
 export async function seedDemo() {
   if(!isDemo() || process.env.VERCEL || process.env.DATABASE_URL) throw new Error('Synthetic seed is restricted to explicit local PGlite demonstration mode');
+  return seedSyntheticWorkspace();
+}
+
+/** Called only by the explicit preview provisioning script, never an HTTP route. */
+export async function seedHostedPreview() {
+  assertHostedPreviewSeedAllowed();
+  const db=await getDb();
+  const existingOrganizations=await db.select({id:s.organizations.id}).from(s.organizations).limit(1);
+  const existingUsers=await db.select({id:s.user.id}).from(s.user).limit(1);
+  if(existingOrganizations.length || existingUsers.length) throw new Error('Hosted preview seeding refuses existing users or organizations');
+  return seedSyntheticWorkspace();
+}
+
+async function seedSyntheticWorkspace() {
   const password=process.env.DEMO_PASSWORD;
   if(!password || password.length<12) throw new Error('Set DEMO_PASSWORD to at least 12 characters');
   const db=await getDb(); const auth=await getAuth(true);
