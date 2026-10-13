@@ -20,7 +20,7 @@ afterAll(closeDb);
 describe('persistent domain workflows',()=>{
   it('seeds real persisted counts and isolates every collection',async()=>{
     const all=await getWorkspace(deputy), scoped=await getWorkspace(company), assigned=await getWorkspace(contributor);
-    expect(all.metrics.overdue).toBe(3);expect(all.metrics.blocked).toBe(1);expect(all.decisions.filter(d=>d.status==='pending')).toHaveLength(2);
+    expect(all.metrics.overdue).toBe(3);expect(all.metrics.blocked).toBe(0);expect(all.decisions.filter(d=>d.status==='pending')).toHaveLength(2);
     expect(scoped.tasks.every(t=>t.companyId==='company-a')).toBe(true);
     expect(scoped.decisions.every(d=>d.companyId==='company-a')).toBe(true);
     const ids=new Set([...scoped.tasks.map(t=>t.id),...scoped.decisions.map(d=>d.id)]);expect(scoped.activity.every(a=>ids.has(a.entityId))).toBe(true);

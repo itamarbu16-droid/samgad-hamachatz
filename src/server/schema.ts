@@ -81,3 +81,16 @@ export const rhythmMail = pgTable('rhythm_mail', {
   claimedAt: timestamp('claimed_at', { withTimezone: true }), attempts: integer('attempts').notNull().default(0),
   payload: jsonb('payload').$type<{ from: string; to: string[]; subject: string; text: string }>(), firstAttemptAt: timestamp('first_attempt_at', { withTimezone: true }),
 }, (t) => [uniqueIndex('rhythm_mail_once').on(t.occurrenceId, t.recipientId, t.kind)]);
+
+export const documentEntries = pgTable('document_entries', {
+  id: text('id').primaryKey(), organizationId: text('organization_id').notNull().references(() => organizations.id),
+  folderId: text('folder_id').notNull(), creatorId: text('creator_id').notNull().references(() => user.id),
+  title: text('title').notNull(), body: text('body').notNull().default(''), documentDate: date('document_date'),
+  archived: boolean('archived').notNull().default(false), version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const documentAttachments = pgTable('document_attachments', {
+  id: text('id').primaryKey(), entryId: text('entry_id').notNull().references(() => documentEntries.id),
+  filename: text('filename').notNull(), contentType: text('content_type').notNull(), byteSize: integer('byte_size').notNull(),
+  contentBase64: text('content_base64').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

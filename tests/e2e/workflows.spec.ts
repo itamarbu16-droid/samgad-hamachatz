@@ -1,89 +1,166 @@
-import { expect, test, type Page } from '@playwright/test';
-import { signInThroughForm } from './login';
+import { expect, test, type Page } from "@playwright/test";
+import { signInThroughForm } from "./login";
 
 async function signIn(page: Page) {
   await signInThroughForm(page);
-  await expect(page.getByRole('heading', { name: 'הכול ברור. מכאן מתקדמים.' })).toBeVisible();
-  const response = await page.request.get('/api/workspace');
+  await expect(
+    page.getByRole("heading", { name: "הכול ברור. מכאן מתקדמים." }),
+  ).toBeVisible();
+  const response = await page.request.get("/api/workspace");
   expect(response.ok()).toBeTruthy();
   return response.json();
 }
 
-test('create, reload, progress, and complete a task with reconciled dashboard counts', async ({ page }) => {
+test("create and complete a private task in Personal with persisted checkbox state", async ({
+  page,
+}) => {
   const workspace = await signIn(page);
-  const title = `בדיקת תהליך מנהלתי ${Date.now()}`;
-  const overdueMetric = page.getByRole('button').filter({ hasText: 'משימות באיחור' });
-  const initialLate = Number(await overdueMetric.locator('strong').innerText());
-  await page.getByRole('button', { name: 'יצירת משימה', exact: true }).click();
-  const create = page.getByRole('dialog', { name: 'יצירת משימה' });
-  await create.getByLabel('כותרת המשימה').fill(title);
-  await create.getByLabel('אחראי לביצוע').selectOption(workspace.user.id);
-  await create.getByLabel('תחום אחריות').selectOption('safety');
-  await create.getByLabel('מועד סיום').fill('2000-01-01');
-  await create.getByRole('button', { name: 'שמירת משימה', exact: true }).click();
-  await expect(create).not.toBeVisible();
-  await expect(overdueMetric.locator('strong')).toHaveText(String(initialLate + 1).padStart(2, '0'));
+  const title = `בדיקה אישית ${Date.now()}`;
+  await page.goto("/?view=personal");
+  const openCount = page
+    .locator(".rhythm-summary > span")
+    .first()
+    .locator("strong");
+  await expect(openCount).toBeVisible();
+  const before = Number(await openCount.innerText());
+  await page.getByRole("button", { name: "הוספת משימה", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "משימה", exact: true });
+  await dialog.getByLabel("שם המשימה").fill(title);
+  await dialog.getByLabel("תג״ב ראשון / מועד התחלה").fill(workspace.today);
+  await expect(dialog.getByLabel("שיוך לפי מיילים (רשות)")).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "שמירת המשימה", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(openCount).toHaveText(String(before + 1));
+  await page.getByLabel("סינון", { exact: true }).selectOption("all");
+  const row = page.locator(".rhythm-table tbody tr").filter({ hasText: title });
+  await expect(row).toContainText("פרטי");
+  await expect(row).toContainText("דחוף");
+  await row.getByRole("checkbox").check();
+  await expect(row.getByRole("checkbox")).toBeChecked();
+  await expect(openCount).toHaveText(String(before));
   await page.reload();
-  await overdueMetric.click();
-  await page.getByRole('button').filter({ has: page.getByText(title, { exact: true }) }).click();
-  const detail = page.getByRole('dialog', { name: 'פרטי משימה' });
-  await expect(detail.getByRole('heading', { name: title })).toBeVisible();
-  await detail.getByRole('combobox', { name: 'סטטוס', exact: true }).selectOption('in_progress');
-  await detail.getByRole('button', { name: 'שמירת שינויים', exact: true }).click();
-  await expect(detail.locator('.detail-top')).toContainText('בטיפול');
-  await detail.getByLabel('הוספת עדכון').fill('הפעולה בוצעה במידע סינתטי לצורך בדיקה.');
-  await detail.getByRole('button', { name: 'פרסום עדכון' }).click();
-  await expect(detail.locator('.comment')).toContainText('הפעולה בוצעה במידע סינתטי לצורך בדיקה.');
-  await detail.getByRole('combobox', { name: 'סטטוס', exact: true }).selectOption('completed');
-  await detail.getByRole('button', { name: 'שמירת שינויים', exact: true }).click();
-  await expect(detail.locator('.detail-top')).toContainText('הושלמה');
-  await page.reload();
-  await expect(detail.locator('.detail-top')).toContainText('הושלמה');
-  await detail.getByRole('button', { name: 'סגירה', exact: true }).click();
-  await page.goto('/');
-  await expect(overdueMetric.locator('strong')).toHaveText(String(initialLate).padStart(2, '0'));
-  const persisted = await (await page.request.get('/api/workspace')).json();
-  const task = persisted.tasks.find((item: { title: string }) => item.title === title);
-  expect(task.status).toBe('completed');
-  expect(task.completedAt).toBeTruthy();
-  expect(persisted.activity.some((item: { entityId: string }) => item.entityId === task.id)).toBeTruthy();
+  await page.getByLabel("סינון", { exact: true }).selectOption("all");
+  await expect(row.getByRole("checkbox")).toBeChecked();
+  const persisted = await (await page.request.get("/api/rhythm")).json();
+  const task = persisted.items.find(
+    (item: { title: string }) => item.title === title,
+  );
+  expect(task.assigneeIds).toEqual([workspace.user.id]);
+  expect(
+    persisted.occurrences.find(
+      (item: { itemId: string }) => item.itemId === task.id,
+    ).done,
+  ).toBe(true);
 });
 
-test('submit and resolve a decision through the actual UI', async ({ page }) => {
+test("submit and resolve a decision through the actual UI", async ({
+  page,
+}) => {
   const workspace = await signIn(page);
   const title = `בקשת החלטה לבדיקה ${Date.now()}`;
-  await page.goto('/?view=decisions');
-  await page.getByRole('button', { name: 'בקשה להחלטה', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'בקשה להחלטה' });
-  await dialog.getByLabel('נושא ההחלטה').fill(title);
-  await dialog.getByLabel('תיאור', { exact: true }).fill('אישור תהליך מנהלתי סינתטי בלבד.');
-  await dialog.getByRole('combobox', { name: 'מחליט', exact: true }).selectOption(workspace.user.id);
-  await dialog.getByLabel('תחום אחריות').selectOption('safety');
-  await dialog.getByRole('button', { name: 'שליחת בקשה' }).click();
+  await page.goto("/?view=decisions");
+  await page.getByRole("button", { name: "בקשה להחלטה", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "בקשה להחלטה" });
+  await dialog.getByLabel("נושא ההחלטה").fill(title);
+  await dialog
+    .getByLabel("תיאור", { exact: true })
+    .fill("אישור תהליך מנהלתי סינתטי בלבד.");
+  await dialog
+    .getByRole("combobox", { name: "מחליט", exact: true })
+    .selectOption(workspace.user.id);
+  await dialog.getByLabel("תחום אחריות").selectOption("safety");
+  await dialog.getByRole("button", { name: "שליחת בקשה" }).click();
   await expect(dialog).not.toBeVisible();
-  const card = page.locator('.decision-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
-  await card.getByLabel('הערות להחלטה').fill('אושר לצורך אימות התהליך הסינתטי.');
-  await card.getByRole('combobox', { name: 'החלטה', exact: true }).selectOption('approved');
-  await card.getByRole('button', { name: 'שמירת החלטה' }).click();
-  await expect(card.locator('.badge')).toHaveText('אושרה');
+  const card = page
+    .locator(".decision-card")
+    .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+  await card
+    .getByLabel("הערות להחלטה")
+    .fill("אושר לצורך אימות התהליך הסינתטי.");
+  await card
+    .getByRole("combobox", { name: "החלטה", exact: true })
+    .selectOption("approved");
+  await card.getByRole("button", { name: "שמירת החלטה" }).click();
+  await expect(card.locator(".badge")).toHaveText("אושרה");
   await page.reload();
-  await expect(card.locator('.decision-notes')).toContainText('אושר לצורך אימות התהליך הסינתטי.');
-  const persisted = await (await page.request.get('/api/workspace')).json();
-  const decision = persisted.decisions.find((item: { title: string }) => item.title === title);
-  expect(decision.status).toBe('approved');
+  await expect(card.locator(".decision-notes")).toContainText(
+    "אושר לצורך אימות התהליך הסינתטי.",
+  );
+  const persisted = await (await page.request.get("/api/workspace")).json();
+  const decision = persisted.decisions.find(
+    (item: { title: string }) => item.title === title,
+  );
+  expect(decision.status).toBe("approved");
   expect(decision.resolvedAt).toBeTruthy();
-  expect(persisted.activity.some((item: { entityId: string }) => item.entityId === decision.id)).toBeTruthy();
+  expect(
+    persisted.activity.some(
+      (item: { entityId: string }) => item.entityId === decision.id,
+    ),
+  ).toBeTruthy();
 });
 
-test('dashboard is RTL and fits the viewport', async ({ page }, testInfo) => {
+test("dashboard is RTL and fits the viewport", async ({ page }, testInfo) => {
   await signIn(page);
-  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: `test-results/dashboard-${testInfo.project.name}.png`, fullPage: true });
-  await page.getByRole('button', { name: 'יצירת משימה', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: `test-results/dashboard-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "יצירת משימה", exact: true }).click();
+  await page.getByRole("button", { name: "הוספת משימה", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 });
 
+test("library folder navigation, text/file upload and download persist across reload", async ({
+  page,
+}) => {
+  await signIn(page);
+  const title = `סיכום ועדה סינתטי ${Date.now()}`;
+  await page.goto("/?view=records");
+  await page.locator(".document-folder-card").filter({ hasText: "סיכומי ישיבות" }).click();
+  await page.getByRole("button", { name: /ועדת בטיחות/ }).click();
+  await page.getByRole("button", { name: "הוספת סיכום", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "הוספת סיכום ישיבה / ביקורת",
+  });
+  await dialog.getByLabel("כותרת", { exact: true }).fill(title);
+  await dialog.getByLabel("טקסט / סיכום").fill("סיכום סינתטי לבדיקה בלבד");
+  await dialog
+    .locator('input[type="file"]')
+    .setInputFiles({
+      name: "summary.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("synthetic attachment"),
+    });
+  await dialog.getByRole("button", { name: "שמירה בתיקייה" }).click();
+  await expect(dialog).not.toBeVisible();
+  await page
+    .getByRole("button")
+    .filter({ has: page.getByText(title, { exact: true }) })
+    .click();
+  const detail = page.getByRole("dialog", { name: title, exact: true });
+  await expect(detail).toContainText("סיכום סינתטי לבדיקה בלבד");
+  const download = page.waitForEvent("download");
+  await detail.getByRole("link", { name: /summary.txt/ }).click();
+  expect((await download).suggestedFilename()).toBe("summary.txt");
+  await page.reload();
+  const persisted = await (await page.request.get("/api/documents")).json();
+  expect(
+    persisted.entries.find((entry: { title: string }) => entry.title === title)
+      .attachments,
+  ).toHaveLength(1);
+});

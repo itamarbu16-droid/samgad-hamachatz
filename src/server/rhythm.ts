@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
+import { ensureUnitRoleGroups } from "./unit-roles";
 import { getDb, type Database } from "./db";
 import * as s from "./schema";
 import {
@@ -54,7 +55,7 @@ const groupInput = z
   .object({
     clientRequestId: z.string().uuid(),
     name: z.string().trim().min(2).max(120),
-    emails: emailsInput.refine((emails) => emails.length > 0),
+    emails: emailsInput,
   })
   .strict();
 export function rhythmScope(p: Principal) {
@@ -296,6 +297,11 @@ export async function createRhythmItem(p: Principal, input: unknown) {
           : [];
         if (groups.length !== new Set(groupIds).size)
           throw new AppError(404, "אחת הקבוצות אינה זמינה לך");
+        if (groups.some((group) => group.emails.length === 0))
+          throw new AppError(
+            422,
+            "יש לחבר מייל לבעל התפקיד שנבחר לפני שיוך משימה",
+          );
         const assigned = await resolveEmails(tx, p, [
           ...new Set([...emails, ...groups.flatMap((group) => group.emails)]),
         ]);
@@ -386,6 +392,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
     month > addDays(localDate(), 1826).slice(0, 7)
   )
     throw new AppError(422, "יש לבחור חודש בטווח המותר");
+  await ensureUnitRoleGroups(p);
   const db = await getDb();
   const items = await db.select().from(s.rhythmItems).where(rhythmScope(p));
   const today = localDate();

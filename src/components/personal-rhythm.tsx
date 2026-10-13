@@ -14,6 +14,7 @@ import {
   CalendarDays,
   CheckCheck,
 } from "lucide-react";
+import { isPersonalItem } from "@/lib/unit-roles";
 import { frequencies, type Frequency } from "@/lib/rhythm";
 import { Modal, Empty } from "./workspace-primitives";
 
@@ -73,9 +74,11 @@ const formatDate = (value: string) =>
 export default function PersonalRhythm({
   userId,
   role,
+  scope = "personal",
 }: {
   userId: string;
   role: string;
+  scope?: "personal" | "assigned";
 }) {
   const [data, setData] = useState<Data | null>(null);
   const [month, setMonth] = useState(
@@ -170,6 +173,15 @@ export default function PersonalRhythm({
   async function submitItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    if (
+      !editingItem &&
+      scope === "assigned" &&
+      splitEmails(form.get("emails")).length === 0 &&
+      form.getAll("groupIds").length === 0
+    ) {
+      setError("יש לבחור בעל תפקיד, קבוצה או מייל לשיוך המשימה");
+      return;
+    }
     const common = {
       title: String(form.get("title")),
       description: String(form.get("description") || ""),
@@ -230,10 +242,16 @@ export default function PersonalRhythm({
     );
   const person = (id: string) =>
     data.people.find((person) => person.id === id)?.name || "בעל תפקיד";
-  const records = data.occurrences.map((occurrence) => ({
-    occurrence,
-    item: data.items.find((item) => item.id === occurrence.itemId)!,
-  }));
+  const records = data.occurrences
+    .map((occurrence) => ({
+      occurrence,
+      item: data.items.find((item) => item.id === occurrence.itemId)!,
+    }))
+    .filter(({ item }) =>
+      scope === "personal"
+        ? isPersonalItem(item, userId)
+        : !isPersonalItem(item, userId),
+    );
   const active = records.filter(
     ({ occurrence, item }) => !item.archived && !occurrence.done,
   );
@@ -276,9 +294,17 @@ export default function PersonalRhythm({
     <div className="rhythm-workspace">
       <div className="rhythm-tabs" role="group" aria-label="תצוגת המרחב האישי">
         {[
-          ["tasks", "משימות אישיות ומשויכות", CheckCheck],
-          ["rhythm", "שעון לחימה חודשי", CalendarDays],
-          ...(manager ? [["groups", "בעלי תפקידים וקבוצות", Users]] : []),
+          [
+            "tasks",
+            scope === "personal" ? "משימות אישיות" : "שיוכים וביצוע",
+            CheckCheck,
+          ],
+          ...(scope === "personal"
+            ? [["rhythm", "שעל״ל — שעון לחימה", CalendarDays]]
+            : []),
+          ...(manager && scope === "assigned"
+            ? [["groups", "בעלי תפקידים וקבוצות", Users]]
+            : []),
         ].map(([id, label, Icon]) => {
           const TabIcon = Icon as typeof Users;
           return (
@@ -321,13 +347,13 @@ export default function PersonalRhythm({
           {notice}
         </p>
       )}
-      {data.schedulerPreview && (
+      {scope === "assigned" && data.schedulerPreview && (
         <p className="rhythm-info">
           זו סביבת תצוגה מקדימה. תזכורות ברקע דורשות מתזמן חיצוני; התזמון של
           Vercel פועל בגרסה המפורסמת.
         </p>
       )}
-      {!data.mailConfigured && (
+      {scope === "assigned" && !data.mailConfigured && (
         <p className="rhythm-info">
           התראות מייל ממתינות לחיבור שירות הדואר והפעלת התזמון.
         </p>
@@ -408,8 +434,7 @@ export default function PersonalRhythm({
                   urgent: "דחופות",
                   important: "חשובות",
                   mine: "משויכות אליי",
-                  private: "פרטיות שלי",
-                  assigned: "ששייכתי לאחרים",
+                  ...(scope === "personal" ? { private: "פרטיות שלי" } : {}),
                   completed: "הושלמו",
                 }).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -627,12 +652,24 @@ export default function PersonalRhythm({
             )}
           </section>
           {data.items.some(
-            (item) => item.archived && item.creatorId === userId,
+            (item) =>
+              item.archived &&
+              item.creatorId === userId &&
+              (scope === "personal"
+                ? isPersonalItem(item, userId)
+                : !isPersonalItem(item, userId)),
           ) && (
             <details className="panel rhythm-archive">
               <summary>משימות בארכיון והיסטוריית ביצוע</summary>
               {data.items
-                .filter((item) => item.archived && item.creatorId === userId)
+                .filter(
+                  (item) =>
+                    item.archived &&
+                    item.creatorId === userId &&
+                    (scope === "personal"
+                      ? isPersonalItem(item, userId)
+                      : !isPersonalItem(item, userId)),
+                )
                 .map((item) => (
                   <div key={item.id}>
                     <strong>{item.title}</strong>
@@ -673,7 +710,7 @@ export default function PersonalRhythm({
                 ? "עריכת משימה"
                 : modal === "recurring"
                   ? "פעולה חוזרת בשעון הלחימה"
-                  : "משימה אישית או משויכת"
+                  : "משימה"
           }
           close={() => setModal("")}
         >
@@ -790,14 +827,14 @@ export default function PersonalRhythm({
                       </select>
                     </label>
                   </div>
-                  {manager && (
+                  {manager && scope === "assigned" && (
                     <>
                       <label>
                         שיוך לפי מיילים (רשות)
                         <textarea
                           name="emails"
                           dir="ltr"
-                          placeholder="כתובת בכל שורה; ללא שיוך המשימה פרטית"
+                          placeholder="כתובת בכל שורה, או בחירת בעלי תפקידים למטה"
                         />
                       </label>
                       {data.groups.length > 0 && (
@@ -827,8 +864,9 @@ export default function PersonalRhythm({
                     </>
                   )}
                   <p className="rhythm-info">
-                    ללא שיוך לאחרים, המשימה גלויה רק לך. יום לפני התג״ב היא
-                    תסומן אוטומטית כדחופה.
+                    {scope === "personal"
+                      ? "המשימה גלויה רק לך. יום לפני התג״ב היא תסומן אוטומטית כדחופה."
+                      : "המשימה תופיע אצל בעלי התפקידים שבחרת, עם מעקב ביצוע לכל משויך."}
                   </p>
                 </>
               )}

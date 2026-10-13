@@ -2,6 +2,7 @@ import { and, eq, isNull, or, lt, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import * as s from "./schema";
 import { appUrl } from "./app-url";
+import { isPersonalItem } from "../lib/unit-roles";
 import { addDays } from "../lib/rhythm";
 import { localDate } from "./policy";
 import { rhythmCompleted } from "./rhythm";
@@ -98,7 +99,10 @@ export async function flushRhythmMail() {
             ? "משימה חדשה ודחופה"
             : "משימה חדשה";
       const url = new URL("/", appUrl());
-      url.searchParams.set("view", "rhythm");
+      url.searchParams.set(
+        "view",
+        isPersonalItem(record.item, message.recipientId) ? "personal" : "tasks",
+      );
       url.searchParams.set("month", record.occurrence.dueDate.slice(0, 7));
       url.searchParams.set("occurrence", record.occurrence.id);
       // One recipient per request: never disclose a group's email addresses to its members.

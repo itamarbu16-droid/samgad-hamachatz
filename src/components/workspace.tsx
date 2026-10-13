@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
+import DocumentLibrary from "./document-library";
 import PersonalRhythm from "./personal-rhythm";
 import { Modal, Empty, PanelHeading } from "./workspace-primitives";
 import {
@@ -22,6 +23,8 @@ import {
   RefreshCw,
   UserRound,
   CalendarDays,
+  LibraryBig,
+  NotebookPen,
   Send,
   ShieldCheck,
   LoaderCircle,
@@ -86,7 +89,7 @@ type Data = {
 const statuses: Record<string, string> = {
   open: "פתוחה",
   in_progress: "בטיפול",
-  blocked: "חסומה",
+  blocked: "בטיפול",
   pending_review: "ממתינה לבדיקה",
   completed: "הושלמה",
   cancelled: "בוטלה",
@@ -106,7 +109,9 @@ const decisionStatuses: Record<string, string> = {
 const nav = [
   ["dashboard", "סקירה כללית", LayoutDashboard],
   ["tasks", "משימות", CheckCheck],
-  ["rhythm", "מרחב אישי ושעון לחימה", CalendarDays],
+  ["personal", "אישי", UserRound],
+  ["library", "ספרייה", LibraryBig],
+  ["records", "סיכומי ישיבות וביקורות", NotebookPen],
   ["decisions", "ממתין להחלטה", CircleHelp],
   ["domains", "תחומי אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
@@ -150,8 +155,14 @@ export default function Workspace() {
   const requestIds = useRef(new Map<string, string>());
   const sync = () => {
     const p = new URLSearchParams(location.search);
-    setView(p.get("view") || "dashboard");
-    setFilter(p.get("filter") || "all");
+    setView(
+      p.get("view") === "rhythm" ? "personal" : p.get("view") || "dashboard",
+    );
+    setFilter(
+      ["assigned", "blocked"].includes(p.get("filter") || "")
+        ? "all"
+        : p.get("filter") || "all",
+    );
     setDomain(p.get("domain") || "");
     setSelected(p.get("task") || "");
     setQuery(p.get("q") || "");
@@ -276,7 +287,6 @@ export default function Workspace() {
     (t) => !["completed", "cancelled"].includes(t.status),
   );
   const late = data.tasks.filter(overdue);
-  const blocked = open.filter((t) => t.status === "blocked");
   const pending = data.decisions.filter((d) =>
     ["pending", "clarification_requested"].includes(d.status),
   );
@@ -301,12 +311,8 @@ export default function Workspace() {
   );
   const attention = [
     ...late,
-    ...blocked.filter((t) => !late.some((x) => x.id === t.id)),
     ...open.filter(
-      (t) =>
-        t.priority === "urgent" &&
-        !late.some((x) => x.id === t.id) &&
-        t.status !== "blocked",
+      (t) => t.priority === "urgent" && !late.some((x) => x.id === t.id),
     ),
   ];
   function taskRow(t: Task) {
@@ -502,23 +508,27 @@ export default function Workspace() {
               <p>
                 {view === "dashboard"
                   ? "המשימות, ההחלטות והאנשים שדורשים את תשומת הלב שלך."
-                  : view === "rhythm"
-                    ? "משימות פרטיות, אחריות משותפת ושגרות הביצוע שלך."
+                  : view === "personal"
+                    ? "המשימות הפרטיות והשעל״ל שלך, במקום אחד."
                     : view === "tasks"
                       ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
                       : view === "decisions"
                         ? "הבקשות שמחכות לכיוון שלך, וההחלטות שכבר התקבלו."
-                        : view === "domains"
-                          ? "מבט ממוקד על העבודה בכל תחום אחריות."
-                          : "כל שינוי משמעותי, מתועד במקום אחד."}
+                        : view === "library"
+                          ? "פקודות, בד״חים, פורמטים ונהלים מסודרים בתיקיות."
+                          : view === "records"
+                            ? "סיכומי ישיבות וביקורות, בטקסט ובקבצים."
+                            : view === "domains"
+                              ? "מבט ממוקד על העבודה בכל תחום אחריות."
+                              : "כל שינוי משמעותי, מתועד במקום אחד."}
               </p>
             </div>
-            {view !== "rhythm" &&
+            {!["personal", "tasks", "library", "records"].includes(view) &&
               (manager || (view === "decisions" && canWrite)) && (
                 <button
                   className="button primary"
                   onClick={() =>
-                    setModal(view === "decisions" ? "decision" : "task")
+                    view === "decisions" ? setModal("decision") : go("tasks")
                   }
                 >
                   <Plus size={18} />
@@ -538,8 +548,12 @@ export default function Workspace() {
               </button>
             </div>
           )}
-          {view === "rhythm" && (
-            <PersonalRhythm userId={data.user.id} role={data.user.role} />
+          {view === "personal" && (
+            <PersonalRhythm
+              userId={data.user.id}
+              role={data.user.role}
+              scope="personal"
+            />
           )}
           {view === "dashboard" && (
             <>
@@ -559,14 +573,6 @@ export default function Workspace() {
                     icon: Clock3,
                     filter: "overdue",
                     color: "red",
-                  },
-                  {
-                    n: blocked.length,
-                    label: "משימות חסומות",
-                    text: "להסרת חסמים",
-                    icon: AlertCircle,
-                    filter: "blocked",
-                    color: "amber",
                   },
                   {
                     n: pending.length,
@@ -610,8 +616,7 @@ export default function Workspace() {
                       attention.slice(0, 5).map(taskRow)
                     ) : (
                       <Empty>
-                        אין משימות דחופות, חסומות או באיחור. אפשר להתמקד בהמשך
-                        העבודה.
+                        אין משימות דחופות או באיחור. אפשר להתמקד בהמשך העבודה.
                       </Empty>
                     )}
                     <div className="panel-footer">
@@ -695,12 +700,25 @@ export default function Workspace() {
             </>
           )}
           {view === "tasks" && (
-            <div className="rhythm-toolbar">
-              <button className="button secondary" onClick={() => go("rhythm")}>
-                <CalendarDays size={17} />
-                משימות אישיות, דחופות ושעון לחימה
-              </button>
-            </div>
+            <PersonalRhythm
+              userId={data.user.id}
+              role={data.user.role}
+              scope="assigned"
+            />
+          )}
+          {view === "library" && (
+            <DocumentLibrary
+              section="library"
+              userId={data.user.id}
+              role={data.user.role}
+            />
+          )}
+          {view === "records" && (
+            <DocumentLibrary
+              section="records"
+              userId={data.user.id}
+              role={data.user.role}
+            />
           )}
           {view === "tasks" && (
             <section className="panel tasks-panel">
@@ -708,9 +726,7 @@ export default function Workspace() {
                 {[
                   ["all", "כל המשימות"],
                   ["mine", "המשימות שלי"],
-                  ["assigned", "הוקצו על ידי"],
                   ["overdue", "באיחור"],
-                  ["blocked", "חסומות"],
                   ["pending_review", "לבדיקה"],
                   ["completed", "הושלמו"],
                 ].map(([id, label]) => (
@@ -876,12 +892,6 @@ export default function Workspace() {
                       <span>
                         <strong>{ts.filter(overdue).length}</strong>באיחור
                       </span>
-                      <span>
-                        <strong>
-                          {ts.filter((t) => t.status === "blocked").length}
-                        </strong>
-                        חסומות
-                      </span>
                     </div>
                     <span className="text-action">
                       פתיחת המשימות בתחום <ArrowLeft size={15} />
@@ -908,26 +918,34 @@ export default function Workspace() {
         </main>
       </div>
       <nav className="mobile-nav">
-        {nav.slice(0, 5).map(([id, label, Icon]) => (
-          <button
-            key={id}
-            className={view === id ? "active" : ""}
-            onClick={() => go(id)}
-          >
-            <Icon size={20} />
-            <span>
-              {id === "dashboard"
-                ? "סקירה"
-                : id === "decisions"
-                  ? "החלטות"
-                  : id === "rhythm"
-                    ? "אישי"
-                    : id === "domains"
-                      ? "תחומים"
-                      : label}
-            </span>
-          </button>
-        ))}
+        {nav
+          .filter(([id]) =>
+            ["dashboard", "tasks", "personal", "library", "records"].includes(
+              id,
+            ),
+          )
+          .map(([id, label, Icon]) => (
+            <button
+              key={id}
+              className={view === id ? "active" : ""}
+              onClick={() => go(id)}
+            >
+              <Icon size={20} />
+              <span>
+                {id === "dashboard"
+                  ? "סקירה"
+                  : id === "decisions"
+                    ? "החלטות"
+                    : id === "personal"
+                      ? "אישי"
+                      : id === "records"
+                        ? "סיכומים"
+                        : id === "domains"
+                          ? "תחומים"
+                          : label}
+              </span>
+            </button>
+          ))}
       </nav>
       {notice && (
         <div className="toast" role="status">
@@ -1086,12 +1104,6 @@ export default function Workspace() {
           <p className="description">
             {task.description || "לא נוסף תיאור למשימה."}
           </p>
-          {task.blockerReason && (
-            <div className="blocker">
-              <AlertCircle size={17} />
-              {task.blockerReason}
-            </div>
-          )}
           {canWrite && (
             <details className="edit-details" open>
               <summary>עדכון משימה</summary>
@@ -1136,6 +1148,7 @@ export default function Workspace() {
                     <select name="status" defaultValue={task.status}>
                       {Object.entries(statuses)
                         .filter(([v]) => {
+                          if (v === "blocked") return false;
                           try {
                             assertTransition(
                               {
@@ -1194,13 +1207,6 @@ export default function Workspace() {
                     </>
                   )}
                 </div>
-                <label>
-                  תיאור החסם (אם המשימה חסומה)
-                  <input
-                    name="blockerReason"
-                    defaultValue={task.blockerReason || ""}
-                  />
-                </label>
                 <div className="modal-actions">
                   <button className="button primary" disabled={busy}>
                     שמירת שינויים

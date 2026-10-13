@@ -2,7 +2,10 @@ import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
 import { appUrl } from "../src/server/app-url";
 import { connection, closeDb } from "../src/server/db";
-import { seedHostedPreview } from "../src/server/seed";
+import {
+  seedHostedPreview,
+  refreshHostedPreviewRoles,
+} from "../src/server/seed";
 import {
   assertRhythmPreviewMigration,
   assertFreshRhythmPreview,
@@ -61,10 +64,19 @@ async function main() {
       throw new Error("Preview migration refuses non-synthetic accounts");
     stage = "schema-migration";
     await client.query(
-      await readFile("migrations/0002_personal_rhythm.sql", "utf8"),
+      [
+        await readFile("migrations/0002_personal_rhythm.sql", "utf8"),
+        await readFile("migrations/0003_document_library.sql", "utf8"),
+      ].join("\n"),
     );
+    stage = "role-label-refresh";
+    process.env.ALLOW_HOSTED_PREVIEW_SEED = "true";
+    process.env.APP_ENV = "preview";
+    process.env.BETTER_AUTH_URL = appUrl();
+    await refreshHostedPreviewRoles();
+    await closeDb();
     console.log(
-      "Additive personal-rhythm schema applied to the isolated synthetic preview.",
+      "Additive personal-rhythm and document-library schema applied to the isolated synthetic preview.",
     );
   } catch (error) {
     await client.query("ROLLBACK");
