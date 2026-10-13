@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "db:setup": "tsx --env-file=.env.local scripts/setup.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "db:preview-rhythm": "node --import tsx scripts/migrate-rhythm-preview.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.9",

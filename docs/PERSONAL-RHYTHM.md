@@ -1,0 +1,27 @@
+# Personal tasks, recurring schedule, role groups and email notifications
+
+## User workflow
+
+Open **מרחב אישי ושעון לחימה** from the desktop or mobile navigation. The three views are personal/assigned tasks, a monthly recurring table, and manager-owned role/email groups. Tasks without other assignees are creator-private at the server query layer, including against broader organizational managers. Importance and manual urgency are separate flags. Uncompleted occurrences become urgent one calendar day before their deadline in Asia/Jerusalem, including overdue occurrences. Month-end checks also retain all missed due occurrences in the urgent list; future occurrences are not escalated early.
+
+Daily, weekly, fortnightly, monthly, quarterly, semiannual and annual routines have separately persisted occurrences. Month navigation and completion use the same occurrence IDs as the urgent task list. Monthly anchors clamp to month-end without drifting after February; annual February 29 anchors return to February 29 in leap years. Completed occurrences and archived schedules remain persisted. Archived templates stop creating new occurrences and sending mail; they can be restored. Creation and group creation use idempotency receipts, while updates and completion use optimistic versions.
+
+Group email addresses resolve only to eligible active accounts in the same organization and within the creator's assignment scope. Account provisioning is separate; the API does not silently grant organization access to an arbitrary email. Groups are creator-owned and editable. A task snapshots its assignees when created: subsequent group edits affect new assignments. Contributors can create private tasks and complete their assignments; managers can assign to groups and record completion on behalf of recipients. Shared completion closes for all recipients and records the actor/time. Individual completion suppresses urgency and reminder mail for that recipient only.
+
+## Database migration
+
+`migrations/0002_personal_rhythm.sql` adds only new tables; existing tasks and authentication are preserved. Local PGlite setup runs all ordered migrations. Managed production databases require an explicit schema setup with `DEMO_MODE=false` before release. Never run synthetic seed against an existing database.
+
+Vercel preview builds run `db:preview-rhythm`, restricted to the approved project, preview environment, DEMO_MODE=true, the exact Neon integration PGHOST over TLS, and the existing single `demo-org` workspace with synthetic accounts only. It serializes concurrent migration builds with a PostgreSQL advisory lock and applies only migration 0002. Production builds skip this automatic migration. The feature branch is based on `preview/hosted-demo` so existing hosted authentication fixes are preserved.
+
+## Activating email and unattended execution
+
+Set server-only `RESEND_API_KEY`, a Resend-verified `MAIL_FROM`, and a random `CRON_SECRET` in the intended hosting environment. Set the canonical application origin through the existing app URL configuration. No keys or real recipient addresses are committed. The UI reports missing mail configuration; email delivery has not been verified against a live provider.
+
+Assignment messages are persisted when each occurrence is generated and flushed after task creation/calendar reads. Deadline reminders are queued by the scheduler for outstanding recipients only. A task created close to its deadline receives a combined assignment/urgency message. Mail uses one provider request per recipient, a persistent lease, an immutable request payload, and a stable Resend idempotency key. Failed/ambiguous deliveries remain queued. Requests whose first delivery attempt is older than 23 hours require provider reconciliation rather than retrying after the provider's 24-hour idempotency window; inspect `rhythm_mail` and provider logs before manually resolving them. Successful sends are recorded; completed/archived/ineligible-recipient messages are skipped.
+
+`vercel.json` schedules `/api/cron/rhythm` daily at 05:00 UTC. It requires the matching Bearer CRON_SECRET. Vercel cron runs on production deployments, not previews. To exercise background reminders in the preview, use an external authenticated scheduler against its exact URL; no such external scheduler or real emails were activated by this change. A protected preview requires an approved protection-bypass mechanism as well. UI reads also refresh occurrence urgency; they are not a replacement for background scheduling.
+
+## Verification record
+
+Backend tests cover privacy/guessed IDs, assignment scope, viewer denial, group snapshots, per-recipient and shared completion, stale updates, creation retries, recurrence/calendar boundaries, archive persistence, scheduler authentication, and mocked provider delivery/deduplication. 54 backend tests, TypeScript, ESLint and production compilation passed locally. An HTTP smoke check against the built app passed genuine authentication, anonymous rejection, origin rejection, recurring task creation/reload/urgency, persisted completion, and scheduler authentication. Browser QA is unavailable in the current environment; no browser or live email verification is claimed.

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
+import PersonalRhythm from "./personal-rhythm";
 import { Modal, Empty, PanelHeading } from "./workspace-primitives";
 import {
   LayoutDashboard,
@@ -105,6 +106,7 @@ const decisionStatuses: Record<string, string> = {
 const nav = [
   ["dashboard", "סקירה כללית", LayoutDashboard],
   ["tasks", "משימות", CheckCheck],
+  ["rhythm", "מרחב אישי ושעון לחימה", CalendarDays],
   ["decisions", "ממתין להחלטה", CircleHelp],
   ["domains", "תחומי אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
@@ -500,26 +502,29 @@ export default function Workspace() {
               <p>
                 {view === "dashboard"
                   ? "המשימות, ההחלטות והאנשים שדורשים את תשומת הלב שלך."
-                  : view === "tasks"
-                    ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
-                    : view === "decisions"
-                      ? "הבקשות שמחכות לכיוון שלך, וההחלטות שכבר התקבלו."
-                      : view === "domains"
-                        ? "מבט ממוקד על העבודה בכל תחום אחריות."
-                        : "כל שינוי משמעותי, מתועד במקום אחד."}
+                  : view === "rhythm"
+                    ? "משימות פרטיות, אחריות משותפת ושגרות הביצוע שלך."
+                    : view === "tasks"
+                      ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
+                      : view === "decisions"
+                        ? "הבקשות שמחכות לכיוון שלך, וההחלטות שכבר התקבלו."
+                        : view === "domains"
+                          ? "מבט ממוקד על העבודה בכל תחום אחריות."
+                          : "כל שינוי משמעותי, מתועד במקום אחד."}
               </p>
             </div>
-            {(manager || (view === "decisions" && canWrite)) && (
-              <button
-                className="button primary"
-                onClick={() =>
-                  setModal(view === "decisions" ? "decision" : "task")
-                }
-              >
-                <Plus size={18} />
-                {view === "decisions" ? "בקשה להחלטה" : "יצירת משימה"}
-              </button>
-            )}
+            {view !== "rhythm" &&
+              (manager || (view === "decisions" && canWrite)) && (
+                <button
+                  className="button primary"
+                  onClick={() =>
+                    setModal(view === "decisions" ? "decision" : "task")
+                  }
+                >
+                  <Plus size={18} />
+                  {view === "decisions" ? "בקשה להחלטה" : "יצירת משימה"}
+                </button>
+              )}
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -532,6 +537,9 @@ export default function Workspace() {
                 <X size={16} />
               </button>
             </div>
+          )}
+          {view === "rhythm" && (
+            <PersonalRhythm userId={data.user.id} role={data.user.role} />
           )}
           {view === "dashboard" && (
             <>
@@ -685,6 +693,14 @@ export default function Workspace() {
                 </div>
               </div>
             </>
+          )}
+          {view === "tasks" && (
+            <div className="rhythm-toolbar">
+              <button className="button secondary" onClick={() => go("rhythm")}>
+                <CalendarDays size={17} />
+                משימות אישיות, דחופות ושעון לחימה
+              </button>
+            </div>
           )}
           {view === "tasks" && (
             <section className="panel tasks-panel">
@@ -892,7 +908,7 @@ export default function Workspace() {
         </main>
       </div>
       <nav className="mobile-nav">
-        {nav.slice(0, 4).map(([id, label, Icon]) => (
+        {nav.slice(0, 5).map(([id, label, Icon]) => (
           <button
             key={id}
             className={view === id ? "active" : ""}
@@ -904,9 +920,11 @@ export default function Workspace() {
                 ? "סקירה"
                 : id === "decisions"
                   ? "החלטות"
-                  : id === "domains"
-                    ? "תחומים"
-                    : label}
+                  : id === "rhythm"
+                    ? "אישי"
+                    : id === "domains"
+                      ? "תחומים"
+                      : label}
             </span>
           </button>
         ))}
