@@ -1932,3 +1932,20 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 
 .rhythm-select-all{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin-inline-start:16px;font-size:14px;font-weight:400;cursor:pointer}
 .task-select-touch{display:grid;place-items:center;width:44px;min-height:44px;cursor:pointer}
+
+/* Keep ordinary task rows and interaction states on the same dark surface. */
+.battalion-app .task-row{background:var(--surface);color:var(--text)}
+.battalion-app .task-row:hover{background:#1c1813}
+.battalion-app .task-row.task-done{background:#142312;color:#d5edcf}
+.battalion-app .task-row.task-overdue{background:#2c1514;color:#ffd3ce}
+.battalion-app .task-row.task-due-soon{background:#2e2111;color:#ffe1b7}
+.battalion-app .task-main strong{color:inherit}
+.battalion-app .task-row .row-meta,.battalion-app .task-row .date{color:#bdb5aa}
+.battalion-app .task-row .date.late{color:#ffb5ad}
+.button.secondary:hover{background:#29231c;color:#f2efea;border-color:#77512e}
+.button.primary:hover{background:linear-gradient(110deg,#ff963c,#e75a1a);color:#100b06}
+.battalion-app .decision-preview,.quick-notice{background:var(--surface);color:var(--text);border-color:var(--border)}
+.battalion-app .decision-preview:hover{background:#1c1813}
+.badge.in_progress,.badge.pending,.badge.high{background:#172d36;color:#a2d9ed}
+.badge.blocked,.badge.pending_review,.badge.clarification_requested{background:#3a2a12;color:#ffcf83}
+.badge.completed,.badge.approved{background:#17331f;color:#b0e9be}
