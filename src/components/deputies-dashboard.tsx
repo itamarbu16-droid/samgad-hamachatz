@@ -12,7 +12,7 @@ type Props = {
 };
 
 export default function DeputiesDashboard({ user, tasks, today, go }: Props) {
-  const { data, error } = useRhythm(currentMonth());
+  const { data, error, load } = useRhythm(currentMonth());
   const assigned = tasks.filter(task => task.ownerId === user.id && task.status !== 'cancelled');
   const rows = [
     ...assigned.map(task => ({ id: task.id, title: task.title, due: task.dueDate, done: task.status === 'completed', pending: task.status === 'pending_review', href: `/deputies?view=tasks&task=${encodeURIComponent(task.id)}` })),
@@ -31,7 +31,7 @@ export default function DeputiesDashboard({ user, tasks, today, go }: Props) {
   }
   const pending = rows.filter(row => row.pending).length;
   const overdue = rows.filter(row => !row.done && row.due && row.due < today).length;
-  const upcoming = [...rows].filter(row => !row.done).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')).slice(0, 5);
+  const upcoming = [...rows].filter(row => !row.done && !row.pending).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')).slice(0, 5);
   const tiles = [
     { title: 'המשימות שלי', sub: 'עדכון ביצוע ומעקב', icon: ClipboardCheck, view: 'tasks' },
     { title: 'ספרייה', sub: 'פקודות, נהלים ופורמטים', icon: Folder, view: 'library' },
@@ -47,13 +47,13 @@ export default function DeputiesDashboard({ user, tasks, today, go }: Props) {
     <div className="deputies-greeting"><span>מרחב בעלי התפקידים</span><h2>שלום, {user.name}</h2></div>
     <div className="command-tiles">{tiles.map(tile => <button className="command-tile" key={tile.view} onClick={() => go(tile.view)}><tile.icon size={30} strokeWidth={1.6} /><strong>{tile.title}</strong><span>{tile.sub}</span></button>)}</div>
     <section className="command-snapshot"><h2>תמונת המצב שלי</h2><div className="command-stats">
-      {[{ count: rows.filter(row => !row.done).length, label: 'לביצוע', tone: 'total', filter: 'active' }, { count: pending, label: 'לאישור מנהל', tone: 'orange', filter: 'pending_review' }, { count: rows.filter(row => row.done).length, label: 'אושרו', tone: 'green', filter: 'completed' }, { count: overdue, label: 'באיחור', tone: 'red', filter: 'overdue' }].map(stat => <button className={stat.tone} key={stat.label} onClick={() => openTasks(stat.filter)}><strong>{data ? stat.count : '…'}</strong><span>{stat.label}</span></button>)}
+      {[{ count: rows.filter(row => !row.done && !row.pending).length, label: 'לביצוע', tone: 'total', filter: 'actionable' }, { count: pending, label: 'לאישור מנהל', tone: 'orange', filter: 'pending_review' }, { count: rows.filter(row => row.done).length, label: 'אושרו', tone: 'green', filter: 'completed' }, { count: overdue, label: 'באיחור', tone: 'red', filter: 'overdue' }].map(stat => <button className={stat.tone} key={stat.label} onClick={() => openTasks(stat.filter)}><strong>{stat.count}</strong><span>{stat.label}</span></button>)}
     </div><small className="snapshot-note">משימות שהוקצו לך ומשימות החודש</small></section>
     <section className="command-panel"><div className="command-panel-heading"><h2><ChevronLeft size={21} />המשימות הקרובות שלי</h2><button onClick={() => go('tasks')}>הצג הכל</button></div>
-      {error && <p role="alert">{error}</p>}
+      {!data&&!error&&<p role="status">טוענים משימות נוספות…</p>}{error && <p role="alert">מוצג מידע חלקי. {error} <button className="button secondary" onClick={()=>void load()}>נסה שוב</button></p>}
       {upcoming.map(row => <a className={`command-task ${taskTone(row.done, row.due, today)}`} href={row.href} key={row.id}><div><strong>{row.title}</strong><span>{row.pending ? 'דווח שבוצע · ממתין לאישור מנהל' : 'ממתין לביצוע'}</span></div><time>{row.due ? new Date(row.due + 'T12:00:00').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : 'ללא מועד'}</time><i /></a>)}
-      {!upcoming.length && data && <p className="empty"><CheckCheck size={22} />אין משימות פתוחות להצגה</p>}
-    </section>
+      {!upcoming.length && data && <p className="empty"><CheckCheck size={22} />אין משימות שממתינות לביצוע</p>}
+    {pending>0&&<button className="button secondary" onClick={()=>openTasks("pending_review")}>{pending} דיווחים ממתינים לאישור המנהל</button>}</section>
     <p className="deputies-review-note"><Send size={18} />מסמנים ביצוע במשימה, והדיווח מועבר לאישור המנהל.</p>
   </div>;
 }

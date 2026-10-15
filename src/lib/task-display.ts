@@ -6,6 +6,28 @@ export const taskSorts = {
  status:'מצב ביצוע',
 } as const;
 export type TaskSort=keyof typeof taskSorts;
+type FilterTask = { done:boolean; pending?:boolean; cancelled?:boolean; dueDate:string|null; urgent?:boolean; important?:boolean; ownerId?:string; creatorId?:string; assigneeIds?:string[]; status?:string };
+export function hasPendingReport(reports:Record<string,string>,completions:Record<string,string>,userId?:string) {
+ return userId ? Boolean(reports[userId] && !completions[userId]) : Object.keys(reports).some(id=>!completions[id]);
+}
+export function matchesTaskFilter(task:FilterTask,filter:string,today:string,userId?:string) {
+ const active=!task.done && !task.cancelled;
+ switch(filter) {
+  case 'all': return !task.cancelled;
+  case 'mine': return task.ownerId===userId || Boolean(userId && task.assigneeIds?.includes(userId));
+  case 'assigned': return task.creatorId===userId;
+  case 'active': case 'open': return active;
+  case 'actionable': return active && !task.pending;
+  case 'pending': case 'pending_review': return active && Boolean(task.pending);
+  case 'completed': return task.done;
+  case 'today': return active && task.dueDate===today;
+  case 'tomorrow': return active && task.dueDate===addDays(today,1);
+  case 'overdue': return active && Boolean(task.dueDate && task.dueDate<today);
+  case 'urgent': return active && Boolean(task.urgent);
+  case 'important': return Boolean(task.important);
+  default: return task.status===filter;
+ }
+}
 export function taskTone(done:boolean,due:string|null,today:string) {
  if(done)return 'task-done';
  if(!due)return '';
