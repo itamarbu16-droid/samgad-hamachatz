@@ -11,7 +11,7 @@ async function signIn(page: Page) {
   return response.json();
 }
 
-test("create and complete a private task in Personal with persisted checkbox state", async ({
+test("create with only a title and complete a private task with persisted status", async ({
   page,
 }) => {
   const workspace = await signIn(page);
@@ -26,7 +26,7 @@ test("create and complete a private task in Personal with persisted checkbox sta
   await page.getByRole("button", { name: "הוספת משימה", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "משימה", exact: true });
   await dialog.getByLabel("שם המשימה").fill(title);
-  await dialog.getByLabel("תג״ב ראשון / מועד התחלה").fill(workspace.today);
+  await expect(dialog.getByLabel("מועד סיום — רשות")).toHaveValue("");
   await expect(dialog.getByLabel("שיוך לפי מיילים (רשות)")).toHaveCount(0);
   await dialog
     .getByRole("button", { name: "שמירת המשימה", exact: true })
@@ -36,13 +36,13 @@ test("create and complete a private task in Personal with persisted checkbox sta
   await page.getByLabel("סינון", { exact: true }).selectOption("all");
   const row = page.locator(".rhythm-table tbody tr").filter({ hasText: title });
   await expect(row).toContainText("פרטי");
-  await expect(row).toContainText("דחוף");
-  await row.getByRole("checkbox").check();
-  await expect(row.getByRole("checkbox")).toBeChecked();
+  await expect(row).toContainText("ללא מועד");
+  await row.getByRole("button", {name: /^בוצע:/}).click();
+  await expect(row).toContainText("בוצע");
   await expect(openCount).toHaveText(String(before));
   await page.reload();
   await page.getByLabel("סינון", { exact: true }).selectOption("all");
-  await expect(row.getByRole("checkbox")).toBeChecked();
+  await expect(row).toContainText("בוצע");
   const persisted = await (await page.request.get("/api/rhythm")).json();
   const task = persisted.items.find(
     (item: { title: string }) => item.title === title,
@@ -114,7 +114,6 @@ test("dashboard is RTL and fits the viewport", async ({ page }, testInfo) => {
     fullPage: true,
   });
   await page.getByRole("button", { name: "יצירת משימה", exact: true }).click();
-  await page.getByRole("button", { name: "הוספת משימה", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(
     await page.evaluate(

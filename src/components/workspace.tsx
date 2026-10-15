@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
 import DocumentLibrary from "./document-library";
 import PersonalRhythm from "./personal-rhythm";
+import TaskTools from "./task-tools";
+import {useTaskMutations} from "./use-rhythm";
 import { Modal, Empty, PanelHeading } from "./workspace-primitives";
 import {
   LayoutDashboard,
@@ -87,11 +89,11 @@ type Data = {
   today: string;
 };
 const statuses: Record<string, string> = {
-  open: "פתוחה",
+  open: "לא בוצע",
   in_progress: "בטיפול",
   blocked: "בטיפול",
-  pending_review: "ממתינה לבדיקה",
-  completed: "הושלמה",
+  pending_review: "ממתין לאישור",
+  completed: "בוצע",
   cancelled: "בוטלה",
 };
 const priorities: Record<string, string> = {
@@ -152,6 +154,7 @@ export default function Workspace() {
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(""),
     [refreshed, setRefreshed] = useState("");
+  const [taskSelection,setTaskSelection]=useState<string[]>([]),[batchOwner,setBatchOwner]=useState("");
   const requestIds = useRef(new Map<string, string>());
   const sync = () => {
     const p = new URLSearchParams(location.search);
@@ -173,6 +176,7 @@ export default function Workspace() {
     return () => window.removeEventListener("popstate", sync);
   }, []);
   function go(v: string, f = "all", d = "", task = "", q = "") {
+    setTaskSelection([]);
     const p = new URLSearchParams();
     if (v !== "dashboard") p.set("view", v);
     if (f !== "all") p.set("filter", f);
@@ -205,6 +209,7 @@ export default function Workspace() {
       setLoading(false);
     }
   }
+  const taskActions=useTaskMutations(load);
   useEffect(() => {
     void load();
   }, []);
@@ -316,31 +321,16 @@ export default function Workspace() {
     ),
   ];
   function taskRow(t: Task) {
-    return (
-      <button
-        key={t.id}
-        className="task-row"
-        onClick={() => go(view, filter, domain, t.id, query)}
-      >
-        <span className={`status-dot ${t.status}`} />
-        <span className="task-main">
-          <strong>{t.title}</strong>
-          <span className="row-meta">
-            <span>{domainName(t.domainId)}</span>
-            <span>·</span>
-            <span>{person(t.ownerId)}</span>
-          </span>
-        </span>
-        <span className="task-row-end">
-          <Badge value={t.status} />
-          <span className={overdue(t) ? "date late" : "date"}>
-            {overdue(t) ? "באיחור · " : ""}
-            {date(t.dueDate)}
-          </span>
-        </span>
-        <ChevronLeft size={17} className="muted" />
+    const canAct = canWrite && (t.ownerId === data!.user.id || t.creatorId === data!.user.id);
+    return <div key={t.id} className="task-row">
+      {view === "tasks" && canAct && <input type="checkbox" aria-label={`בחירת ${t.title}`} checked={taskSelection.includes(t.id)} onChange={e=>setTaskSelection(ids=>e.target.checked?[...ids,t.id]:ids.filter(id=>id!==t.id))}/>}
+      <span className={`status-dot ${t.status}`} />
+      <button className="task-main task-open" onClick={() => go(view, filter, domain, t.id, query)}>
+        <strong>{t.title}</strong><span className="row-meta">{domainName(t.domainId)} · {person(t.ownerId)}</span>
       </button>
-    );
+      <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>{date(t.dueDate)}</span></span>
+      {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && t.creatorId !== data!.user.id)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && t.creatorId !== data!.user.id ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? t.creatorId === data!.user.id ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
+    </div>;
   }
   function activityList(items: Data["activity"]) {
     return items.length ? (
@@ -492,6 +482,7 @@ export default function Workspace() {
           </div>
         </header>
         <main className="main-content">
+          <TaskTools userId={data.user.id} role={data.user.role} tasks={data.tasks} dashboard={view === "dashboard"} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -509,7 +500,7 @@ export default function Workspace() {
                 {view === "dashboard"
                   ? "המשימות, ההחלטות והאנשים שדורשים את תשומת הלב שלך."
                   : view === "personal"
-                    ? "המשימות הפרטיות והשעל״ל שלך, במקום אחד."
+                    ? "המשימות הפרטיות והשעל״ח שלך, במקום אחד."
                     : view === "tasks"
                       ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
                       : view === "decisions"
@@ -528,7 +519,7 @@ export default function Workspace() {
                 <button
                   className="button primary"
                   onClick={() =>
-                    view === "decisions" ? setModal("decision") : go("tasks")
+                    view === "decisions" ? setModal("decision") : window.dispatchEvent(new Event("samgad:capture"))
                   }
                 >
                   <Plus size={18} />
@@ -777,6 +768,7 @@ export default function Workspace() {
                 </label>
                 <span className="results-count">{filtered.length} משימות</span>
               </div>
+              {taskSelection.length>0 && canWrite && <div className="bulk-toolbar"><strong>{taskSelection.length} נבחרו</strong><button className="button primary" disabled={taskActions.busy} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && !["completed","cancelled"].includes(t.status) && (t.creatorId===data.user.id || t.ownerId===data.user.id) && (t.status!=="pending_review" || t.creatorId===data.user.id)).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.creatorId===data.user.id?"completed":"pending_review"}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>ביצוע / אישור</button>{manager && <><select aria-label="אחראי למשימות הנבחרות" value={batchOwner} onChange={e=>setBatchOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.users.filter(u=>!["viewer","admin"].includes(u.role)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><button className="button secondary" disabled={taskActions.busy || !batchOwner} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && t.creatorId===data.user.id).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,ownerId:batchOwner}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>שינוי אחראי</button></>}<button className="button secondary" onClick={()=>setTaskSelection([])}>ניקוי בחירה</button></div>}
               {filtered.length ? (
                 filtered.map(taskRow)
               ) : (
@@ -947,6 +939,8 @@ export default function Workspace() {
             </button>
           ))}
       </nav>
+      {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
+      {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
       {notice && (
         <div className="toast" role="status">
           <Check size={18} />
@@ -1104,6 +1098,10 @@ export default function Workspace() {
           <p className="description">
             {task.description || "לא נוסף תיאור למשימה."}
           </p>
+          {canWrite && <div className="rhythm-toolbar">
+            <button className="button secondary" disabled={busy} onClick={() => void mutate(`/api/tasks/${task.id}`, "PATCH", {version:task.version, status:"in_progress"}, "המשימה סומנה לא בוצע")}>לא בוצע</button>
+            {task.status !== "completed" && (task.creatorId === data.user.id || task.ownerId === data.user.id) && <button className="button primary" disabled={busy} onClick={() => void mutate(`/api/tasks/${task.id}`, "PATCH", {version:task.version, status:task.ownerId !== task.creatorId && task.creatorId !== data.user.id ? "pending_review" : "completed"}, "מצב הביצוע נשמר")}>{task.status === "pending_review" && task.creatorId === data.user.id ? "אישור ביצוע" : "בוצע"}</button>}
+          </div>}
           {canWrite && (
             <details className="edit-details" open>
               <summary>עדכון משימה</summary>

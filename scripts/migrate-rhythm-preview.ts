@@ -67,6 +67,8 @@ async function main() {
       [
         await readFile("migrations/0002_personal_rhythm.sql", "utf8"),
         await readFile("migrations/0003_document_library.sql", "utf8"),
+        await readFile("migrations/0004_completion_review.sql", "utf8"),
+        await readFile("migrations/0005_quick_tasks.sql", "utf8"),
       ].join("\n"),
     );
     stage = "role-label-refresh";

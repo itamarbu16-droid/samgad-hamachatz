@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql, lt } from "drizzle-orm";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { ensureUnitRoleGroups } from "./unit-roles";
@@ -40,11 +40,14 @@ const itemInput = z
   .object({
     clientRequestId: z.string().uuid(),
     title: z.string().trim().min(2).max(160),
+    category: z.enum(["task", "point"]).default("task"),
     description: z.string().trim().max(5000).default(""),
     important: z.boolean().default(false),
     manualUrgent: z.boolean().default(false),
-    frequency: z.enum(Object.keys(frequencies) as [Frequency, ...Frequency[]]),
-    startDate: dateInput,
+    frequency: z.enum(Object.keys(frequencies) as [Frequency, ...Frequency[]]).default("once"),
+    hasDeadline: z.boolean().optional(),
+    recipientIds: z.array(z.string().min(1)).max(100).default([]),
+    startDate: dateInput.optional(),
     endDate: dateInput.nullable().default(null),
     completionMode: z.enum(["individual", "shared"]).default("individual"),
     emails: emailsInput,
@@ -176,7 +179,7 @@ async function materialize(
         )
         .onConflictDoNothing()
         .returning();
-      const messages = inserted.flatMap((row) =>
+      const messages = (item.category === "point" ? [] : inserted).flatMap((row) =>
         item.assigneeIds.map((recipientId) => ({
           id: randomUUID(),
           occurrenceId: row.id,
@@ -197,7 +200,7 @@ async function materialize(
     const makeUrgent: string[] = [],
       clearUrgent: string[] = [];
     for (const row of rows) {
-      const urgent = rhythmUrgent(
+      const urgent = item.category !== "point" && rhythmUrgent(
         item,
         row.dueDate,
         completed(item, row),
@@ -216,7 +219,7 @@ async function materialize(
         .update(s.rhythmOccurrences)
         .set({ urgent: false })
         .where(inArray(s.rhythmOccurrences.id, clearUrgent));
-    const due = rows.filter(
+    const due = (item.category === "point" || !item.hasDeadline ? [] : rows).filter(
       (row) => row.dueDate <= addDays(today, 1) && !completed(item, row),
     );
     const assignments = due.length
@@ -262,8 +265,10 @@ async function materialize(
 }
 export async function createRhythmItem(p: Principal, input: unknown) {
   assertWrite(p);
-  const { clientRequestId, emails, groupIds, ...data } = itemInput.parse(input);
+  const { clientRequestId, emails, groupIds, recipientIds, ...parsed } = itemInput.parse(input);
   const today = localDate();
+  const data = {...parsed, startDate: parsed.startDate || today,
+    hasDeadline: parsed.frequency !== "once" || (parsed.hasDeadline ?? Boolean(parsed.startDate))};
   if (
     data.startDate < addDays(today, -730) ||
     data.startDate > addDays(today, 1826)
@@ -281,7 +286,7 @@ export async function createRhythmItem(p: Principal, input: unknown) {
       p,
       clientRequestId,
       "create",
-      { ...data, emails, groupIds },
+      { ...data, emails, groupIds, recipientIds },
       async () => {
         const groups = groupIds.length
           ? await tx
@@ -302,9 +307,12 @@ export async function createRhythmItem(p: Principal, input: unknown) {
             422,
             "יש לחבר מייל לבעל התפקיד שנבחר לפני שיוך משימה",
           );
-        const assigned = await resolveEmails(tx, p, [
+        const direct = await resolveRecipientIds(tx, p, recipientIds);
+        const assigned = [...new Set([...direct, ...await resolveEmails(tx, p, [
           ...new Set([...emails, ...groups.flatMap((group) => group.emails)]),
-        ]);
+        ])])];
+        if (data.category === "point" && (assigned.some(id => id !== p.userId) || data.frequency !== "once"))
+          throw new AppError(422, "נקודות לעיסוק הן פרטיות וחד פעמיות");
         const [item] = await tx
           .insert(s.rhythmItems)
           .values({
@@ -463,7 +471,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
         return {
           ...row,
           done,
-          urgent: rhythmUrgent(item, row.dueDate, done, today),
+          urgent: item.category !== "point" && rhythmUrgent(item, row.dueDate, done, today),
         };
       })
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
@@ -476,6 +484,8 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       version: z.number().int().positive(),
       done: z.boolean(),
       recipientId: z.string().optional(),
+      recipientIds: z.array(z.string().min(1)).min(1).max(100).optional(),
+      review: z.enum(["approve", "reject"]).optional(),
     })
     .strict()
     .parse(input);
@@ -491,7 +501,9 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       .where(and(rhythmScope(p), eq(s.rhythmOccurrences.id, id)));
     if (!record) throw new AppError(404, "המשימה אינה זמינה לך");
     const { item, occurrence } = record;
-    const recipientId = data.recipientId || p.userId;
+    const reports = { ...occurrence.reports };
+    const completions = { ...occurrence.completions };
+    for (const recipientId of [...new Set(data.recipientIds || [data.recipientId || p.userId])]) {
     if (
       !item.assigneeIds.includes(recipientId) ||
       (recipientId !== p.userId && item.creatorId !== p.userId)
@@ -503,20 +515,33 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       item.creatorId !== p.userId
     )
       throw new AppError(403, "אין הרשאה לסמן ביצוע");
-    const completions = { ...occurrence.completions };
-    if (data.done) completions[recipientId] = new Date().toISOString();
-    else delete completions[recipientId];
-    const isDone =
-      item.completionMode === "shared"
-        ? data.done
-        : item.assigneeIds.every((id) => Boolean(completions[id]));
+    const assigned = recipientId !== item.creatorId;
+    if (data.review) {
+      if (p.userId !== item.creatorId || !assigned)
+        throw new AppError(403, "רק מקצה המשימה רשאי לאשר ביצוע");
+      if (!reports[recipientId] || completions[recipientId])
+        throw new AppError(409, "אין דיווח הממתין לאישור");
+      if (data.review === "approve") completions[recipientId] = new Date().toISOString();
+      else { delete reports[recipientId]; delete completions[recipientId]; }
+    } else if (assigned) {
+      if (data.done) reports[recipientId] = new Date().toISOString();
+      else { delete reports[recipientId]; delete completions[recipientId]; }
+    } else {
+      if (data.done) completions[recipientId] = new Date().toISOString();
+      else delete completions[recipientId];
+    }
+    }
+    const isDone = item.completionMode === "shared"
+      ? item.assigneeIds.some((id) => Boolean(completions[id]))
+      : item.assigneeIds.every((id) => Boolean(completions[id]));
     const [updated] = await tx
       .update(s.rhythmOccurrences)
       .set({
+        reports,
         completions,
         completedAt: isDone ? new Date() : null,
         completedBy: isDone ? p.userId : null,
-        urgent: rhythmUrgent(item, occurrence.dueDate, isDone, localDate()),
+        urgent: item.category !== "point" && rhythmUrgent(item, occurrence.dueDate, isDone, localDate()),
         version: data.version + 1,
       })
       .where(
@@ -527,37 +552,106 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       )
       .returning();
     if (!updated) throw new AppError(409, "הביצוע השתנה. יש לרענן ולנסות שוב");
-    return updated;
+    const undoToken = await rememberUndo(tx, p, "occurrence", id, {occurrences:[occurrence]}, updated.version);
+    return {...updated, undoToken};
   });
+}
+async function resolveRecipientIds(db: Database | Tx, p: Principal, ids: string[]) {
+  const unique = [...new Set(ids)];
+  if (unique.some(id => id !== p.userId) && !isManager(p))
+    throw new AppError(403, "שיוך לאחרים דורש הרשאת מנהל");
+  const eligible = await eligiblePeople(db, p);
+  if (unique.some(id => id !== p.userId && !eligible.some(person => person.id === id)))
+    throw new AppError(403, "אחד מבעלי התפקידים אינו זמין לשיוך");
+  return unique;
+}
+async function rememberUndo(tx: Tx, p: Principal, kind: string, entityId: string,
+  snapshot: typeof s.rhythmUndo.$inferInsert["snapshot"], expectedVersion: number) {
+  const id = randomUUID();
+  await tx.delete(s.rhythmUndo).where(lt(s.rhythmUndo.expiresAt,new Date()));
+  await tx.insert(s.rhythmUndo).values({id, organizationId:p.organizationId, actorId:p.userId,
+    kind, entityId, snapshot, expectedVersion, expiresAt:new Date(Date.now()+60_000)});
+  return id;
 }
 export async function editRhythmItem(p: Principal, id: string, input: unknown) {
   assertWrite(p);
-  const data = z
-    .object({
-      version: z.number().int().positive(),
-      title: z.string().trim().min(2).max(160).optional(),
-      description: z.string().trim().max(5000).optional(),
-      important: z.boolean().optional(),
-      manualUrgent: z.boolean().optional(),
-      archived: z.boolean().optional(),
-    })
-    .strict()
-    .parse(input);
+  const {recipientIds, version, ...data} = z.object({
+    version:z.number().int().positive(), title:z.string().trim().min(2).max(160).optional(),
+    description:z.string().trim().max(5000).optional(), important:z.boolean().optional(),
+    manualUrgent:z.boolean().optional(), archived:z.boolean().optional(),
+    category:z.enum(["task", "point"]).optional(), hasDeadline:z.boolean().optional(),
+    startDate:dateInput.optional(), recipientIds:z.array(z.string().min(1)).max(100).optional(),
+  }).strict().parse(input);
   const db = await getDb();
-  const [item] = await db
-    .update(s.rhythmItems)
-    .set({ ...data, version: data.version + 1 })
-    .where(
-      and(
-        eq(s.rhythmItems.id, id),
-        eq(s.rhythmItems.organizationId, p.organizationId),
-        eq(s.rhythmItems.creatorId, p.userId),
-        eq(s.rhythmItems.version, data.version),
-      ),
-    )
-    .returning();
-  if (!item) throw new AppError(409, "המשימה אינה זמינה או השתנתה. יש לרענן");
-  return item;
+  return db.transaction(async tx => {
+    const [before] = await tx.select().from(s.rhythmItems).where(and(eq(s.rhythmItems.id,id),
+      eq(s.rhythmItems.organizationId,p.organizationId),eq(s.rhythmItems.creatorId,p.userId)));
+    if (!before || before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
+    const assigneeIds = recipientIds === undefined ? before.assigneeIds :
+      (await resolveRecipientIds(tx,p,recipientIds));
+    if (!assigneeIds.length) assigneeIds.push(p.userId);
+    const next = {...before,...data,assigneeIds};
+    if (next.category === "point" && (next.frequency !== "once" || assigneeIds.length !== 1 || assigneeIds[0] !== p.userId))
+      throw new AppError(422,"נקודה לעיסוק חייבת להישאר פרטית");
+    if (data.startDate && (before.frequency !== "once" || data.startDate < addDays(localDate(),-730) || data.startDate > addDays(localDate(),1826)))
+      throw new AppError(422,"אפשר לשנות מועד למשימה חד פעמית בטווח המותר");
+    if (before.frequency !== "once" && data.hasDeadline === false) throw new AppError(422,"למשימה חוזרת יש מועדי ביצוע");
+    const occurrences = await tx.select().from(s.rhythmOccurrences).where(eq(s.rhythmOccurrences.itemId,id));
+    const [item] = await tx.update(s.rhythmItems).set({...data,assigneeIds,version:version+1})
+      .where(and(eq(s.rhythmItems.id,id),eq(s.rhythmItems.version,version))).returning();
+    if (!item) throw new AppError(409,"המשימה השתנתה. יש לרענן");
+    const reassign = JSON.stringify(assigneeIds) !== JSON.stringify(before.assigneeIds);
+    for (const row of occurrences) {
+      const completions = reassign ? {} : row.completions;
+      const reports = reassign ? {} : row.reports;
+      const dueDate = data.startDate || row.dueDate;
+      const done = !reassign && completed(item,row);
+      const [updated] = await tx.update(s.rhythmOccurrences).set({completions,reports,dueDate,
+        completedAt:reassign ? null : row.completedAt, completedBy:reassign ? null : row.completedBy,
+        urgent:item.category !== "point" && rhythmUrgent(item,dueDate,done,localDate()),version:row.version+1})
+        .where(and(eq(s.rhythmOccurrences.id,row.id),eq(s.rhythmOccurrences.version,row.version))).returning();
+      if (!updated) throw new AppError(409,"מצב הביצוע השתנה. יש לרענן");
+      if (reassign && item.category !== "point") {
+        for (const recipientId of assigneeIds) await tx.insert(s.rhythmMail).values({id:randomUUID(),occurrenceId:row.id,recipientId,kind:"assigned"}).onConflictDoNothing();
+      }
+    }
+    const undoToken = await rememberUndo(tx,p,"item",id,{item:before,occurrences},item.version);
+    return {...item,undoToken};
+  });
+}
+export async function undoRhythm(p: Principal, input: unknown) {
+  assertWrite(p);
+  const {token} = z.object({token:z.string().uuid()}).strict().parse(input);
+  const db = await getDb();
+  return db.transaction(async tx => {
+    const [record] = await tx.delete(s.rhythmUndo).where(and(eq(s.rhythmUndo.id,token),
+      eq(s.rhythmUndo.actorId,p.userId),eq(s.rhythmUndo.organizationId,p.organizationId))).returning();
+    if (!record || record.expiresAt.getTime() < Date.now()) throw new AppError(409,"זמן ביטול הפעולה עבר");
+    if (record.kind === "task") {
+      const saved = record.snapshot.task!;
+      const [updated] = await tx.update(s.tasks).set({...saved,
+        createdAt:new Date(saved.createdAt),updatedAt:new Date(),
+        completedAt:saved.completedAt?new Date(saved.completedAt):null,version:record.expectedVersion+1})
+        .where(and(eq(s.tasks.id,record.entityId),eq(s.tasks.version,record.expectedVersion))).returning();
+      if (!updated) throw new AppError(409,"המשימה השתנתה מאז הפעולה ולכן לא ניתן לבטל");
+    }
+    if (record.kind === "item") {
+      const saved = record.snapshot.item!;
+      const {createdAt, ...fields} = saved;
+      void createdAt;
+      const [updated] = await tx.update(s.rhythmItems).set({...fields,version:record.expectedVersion+1})
+        .where(and(eq(s.rhythmItems.id,record.entityId),eq(s.rhythmItems.version,record.expectedVersion))).returning();
+      if (!updated) throw new AppError(409,"המשימה השתנתה מאז הפעולה ולכן לא ניתן לבטל");
+    }
+    for (const saved of record.snapshot.occurrences) {
+      const expected = record.kind === "item" ? saved.version+1 : record.expectedVersion;
+      const [updated] = await tx.update(s.rhythmOccurrences).set({...saved,
+        completedAt:saved.completedAt ? new Date(saved.completedAt) : null,version:expected+1})
+        .where(and(eq(s.rhythmOccurrences.id,saved.id),eq(s.rhythmOccurrences.version,expected))).returning();
+      if (!updated) throw new AppError(409,"מצב הביצוע השתנה מאז הפעולה ולכן לא ניתן לבטל");
+    }
+    return {ok:true};
+  });
 }
 /** Called by the authenticated scheduler; it never requires an open browser. */
 export async function refreshRhythmSchedule(now = new Date()) {

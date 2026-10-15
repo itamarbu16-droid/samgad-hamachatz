@@ -6,6 +6,7 @@ import { seedDemo } from '../src/server/seed';
 import { getAuth } from '../src/server/auth';
 import { createTask,updateTask,addComment,createDecision,updateDecision,getWorkspace,principalFor } from '../src/server/service';
 import * as s from '../src/server/schema';
+import {undoRhythm} from '../src/server/rhythm';
 import type { Principal } from '../src/server/policy';
 
 let deputy:Principal,company:Principal,contributor:Principal,viewer:Principal;
@@ -73,5 +74,16 @@ describe('persistent domain workflows',()=>{
     const auth=await getAuth();const session=await auth.api.signInEmail({body:{email:'demo@samgad.example',password:process.env.DEMO_PASSWORD!}});expect(session.token).toBeTruthy();
     await expect(auth.api.signInEmail({body:{email:'demo@samgad.example',password:'incorrect-password'}})).rejects.toThrow();
     await expect(auth.api.signUpEmail({body:{email:'unauthorized@samgad.example',name:'Unauthorized',password:'unapproved-password'}})).rejects.toThrow();
+  });
+});
+
+describe('ordinary task undo',()=>{
+  it('restores completion without overwriting newer edits',async()=>{
+    const task=await createTask(deputy,{title:'בדיקת ביטול רגילה',ownerId:deputy.userId,domainId:'safety'});
+    const done=await updateTask(deputy,task.id,{version:1,status:'completed'});
+    await undoRhythm(deputy,{token:done.undoToken});
+    const restored=(await getWorkspace(deputy)).tasks.find(t=>t.id===task.id)!;
+    expect(restored.status).toBe('open');expect(restored.completedAt).toBeNull();
+    await expect(undoRhythm(deputy,{token:done.undoToken})).rejects.toMatchObject({status:409});
   });
 });

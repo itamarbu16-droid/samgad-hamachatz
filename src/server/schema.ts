@@ -64,14 +64,14 @@ export const rhythmItems = pgTable('rhythm_items', {
   id: text('id').primaryKey(), organizationId: text('organization_id').notNull().references(() => organizations.id),
   creatorId: text('creator_id').notNull().references(() => user.id), title: text('title').notNull(), description: text('description').notNull().default(''),
   important: boolean('important').notNull().default(false), manualUrgent: boolean('manual_urgent').notNull().default(false),
-  frequency: text('frequency').notNull(), startDate: date('start_date').notNull(), endDate: date('end_date'),
+  hasDeadline: boolean('has_deadline').notNull().default(true), category: text('category').notNull().default('task'), frequency: text('frequency').notNull(), startDate: date('start_date').notNull(), endDate: date('end_date'),
   completionMode: text('completion_mode').notNull(), assigneeIds: jsonb('assignee_ids').$type<string[]>().notNull(),
   archived: boolean('archived').notNull().default(false), version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 export const rhythmOccurrences = pgTable('rhythm_occurrences', {
   id: text('id').primaryKey(), itemId: text('item_id').notNull().references(() => rhythmItems.id), dueDate: date('due_date').notNull(),
-  completions: jsonb('completions').$type<Record<string, string>>().notNull().default({}), completedBy: text('completed_by').references(() => user.id),
+  reports: jsonb('reports').$type<Record<string, string>>().notNull().default({}), completions: jsonb('completions').$type<Record<string, string>>().notNull().default({}), completedBy: text('completed_by').references(() => user.id),
   completedAt: timestamp('completed_at', { withTimezone: true }), urgent: boolean('urgent').notNull().default(false), version: integer('version').notNull().default(1),
 }, (t) => [uniqueIndex('rhythm_occurrence_item_date').on(t.itemId, t.dueDate)]);
 export const rhythmMail = pgTable('rhythm_mail', {
@@ -94,3 +94,5 @@ export const documentAttachments = pgTable('document_attachments', {
   filename: text('filename').notNull(), contentType: text('content_type').notNull(), byteSize: integer('byte_size').notNull(),
   contentBase64: text('content_base64').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const rhythmUndo = pgTable('rhythm_undo', { id: text('id').primaryKey(), organizationId: text('organization_id').notNull(), actorId: text('actor_id').notNull(), kind: text('kind').notNull(), entityId: text('entity_id').notNull(), snapshot: jsonb('snapshot').$type<{task?: typeof tasks.$inferSelect; item?: typeof rhythmItems.$inferSelect; occurrences: Array<typeof rhythmOccurrences.$inferSelect>}>().notNull(), expectedVersion: integer('expected_version').notNull(), expiresAt: timestamp('expires_at', {withTimezone:true}).notNull() });

@@ -80,6 +80,8 @@ export async function flushRhythmMail() {
       if (
         !record ||
         record.item.archived ||
+        record.item.category === "point" ||
+        (message.kind === "deadline" && !record.item.hasDeadline) ||
         !record.member.active ||
         ["viewer", "admin"].includes(record.member.role) ||
         !record.item.assigneeIds.includes(message.recipientId) ||
@@ -91,7 +93,7 @@ export async function flushRhythmMail() {
           .where(eq(s.rhythmMail.id, message.id));
         continue;
       }
-      const urgent = record.occurrence.dueDate <= addDays(localDate(), 1);
+      const urgent = record.item.manualUrgent || (record.item.hasDeadline && record.occurrence.dueDate <= addDays(localDate(), 1));
       const prefix =
         message.kind === "deadline"
           ? "תזכורת לתג״ב"
@@ -110,7 +112,7 @@ export async function flushRhythmMail() {
         from: process.env.MAIL_FROM,
         to: [record.email],
         subject: `${prefix}: ${record.item.title}`,
-        text: `${prefix}\n\n${record.item.title}\n${record.item.description}\n\nתאריך גמר ביצוע: ${record.occurrence.dueDate}\n\nפתיחת המשימה: ${url}`,
+        text: `${prefix}\n\n${record.item.title}\n${record.item.description}\n\n${record.item.hasDeadline ? `תאריך גמר ביצוע: ${record.occurrence.dueDate}` : "ללא מועד סיום"}\n\nפתיחת המשימה: ${url}`,
       };
       // Persist an immutable provider request before sending, so retries use the
       // same payload even if the task title or application URL changes.

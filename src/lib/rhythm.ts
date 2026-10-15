@@ -64,13 +64,15 @@ export function occurrenceDates(
   return dates;
 }
 export function rhythmUrgent(
-  item: { manualUrgent: boolean; frequency: string },
+  item: { manualUrgent: boolean; frequency: string; hasDeadline?: boolean },
   dueDate: string,
   completed: boolean,
   today: string,
 ) {
   if (completed) return false;
-  if (item.manualUrgent || dueDate <= addDays(today, 1)) return true;
+  if (item.manualUrgent) return true;
+  if (item.hasDeadline === false) return false;
+  if (dueDate <= addDays(today, 1)) return true;
   // The month-end review starts exactly seven days before its final date.
   return (
     item.frequency !== "once" &&

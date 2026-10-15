@@ -116,6 +116,16 @@ export default function DocumentLibrary({
   useEffect(() => {
     void load();
   }, [load]);
+  const openedLink = useRef("");
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("entry");
+    const entry = entries.find(row => row.id === id);
+    if (entry && openedLink.current !== id) {
+      openedLink.current = id!;
+      setFolder(entry.folderId);
+      void openEntry(entry);
+    }
+  }, [entries]);
   function openFolder(id: string | null) {
     setFolder(id);
     setQuery("");

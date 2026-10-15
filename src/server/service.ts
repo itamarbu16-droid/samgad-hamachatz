@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, desc, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, desc, sql, lt, type SQL } from 'drizzle-orm';
 import { randomUUID,createHash } from 'node:crypto';
 import { getDb, isDemo, type Database } from './db';
 import * as s from './schema';
@@ -104,6 +104,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     const before = await findTask(tx,p,id);
     if (before.version !== version) throw new AppError(409, 'המשימה השתנתה מאז שנפתחה. יש לרענן ולנסות שוב');
     if (!isManager(p) && Object.keys(data).some(k => !['status','blockerReason'].includes(k))) throw new AppError(403, 'שינוי פרטי המשימה דורש הרשאת מנהל');
+    if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId) data.status = 'pending_review';
     const next = { ...before, ...data };
     await validateScope(tx,p,next); await validateAssignee(tx,p,next.ownerId,next);
     if (data.status) assertTransition(p,before,data.status);
@@ -112,7 +113,10 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     const [updated] = await tx.update(s.tasks).set({...data, blockerReason: next.status === 'blocked' ? next.blockerReason : null, completedAt: completed ? before.completedAt ?? new Date() : null, completedBy: completed ? before.completedBy ?? p.userId : null, version: version+1, updatedAt: new Date()}).where(and(eq(s.tasks.id,id),eq(s.tasks.version,version),taskScope(p))).returning();
     if (!updated) throw new AppError(409,'המשימה השתנתה. יש לרענן ולנסות שוב');
     await audit(tx,p,'task',id,'task.updated',`עודכנה משימה: ${updated.title}`, {changes: Object.fromEntries(Object.keys(data).map(k=>[k,{before:before[k as keyof Task],after:updated[k as keyof Task]}]))});
-    return updated;
+    const undoToken=randomUUID();
+    await tx.delete(s.rhythmUndo).where(lt(s.rhythmUndo.expiresAt,new Date()));
+    await tx.insert(s.rhythmUndo).values({id:undoToken,organizationId:p.organizationId,actorId:p.userId,kind:'task',entityId:id,snapshot:{task:before,occurrences:[]},expectedVersion:updated.version,expiresAt:new Date(Date.now()+60_000)});
+    return {...updated,undoToken};
   });
 }
 export async function addComment(p: Principal,id: string,input: unknown) {
