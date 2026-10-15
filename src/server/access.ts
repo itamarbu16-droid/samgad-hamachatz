@@ -15,9 +15,12 @@ export async function initializeWorkspace(p: Principal) {
  return p;
 }
 export async function publicPrincipal():Promise<Principal> {
- const db=await getDb();const settings=await db.select().from(s.workspaceSettings).where(eq(s.workspaceSettings.publicRead,true)).limit(2);
- if(settings.length!==1)throw new AppError(401,'יש להתחבר למרחב העבודה');
- return {userId:'public-viewer',organizationId:settings[0].organizationId,name:'צפייה בלבד',role:'viewer',companyId:null,domainId:null,guest:true};
+ throw new AppError(401,'הכניסה למיילים מורשים בלבד. יש להתחבר');
+}
+export async function assertEmailAccess(email:string) {
+ const db=await getDb();
+ const members=await db.select({id:s.memberships.id}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(sql`lower(${s.user.email})=${email.trim().toLowerCase()}`,eq(s.memberships.active,true))).limit(2);
+ if(members.length!==1)throw new AppError(403,'אין הרשאת כניסה למייל הזה. יש לפנות למנהל המערכת');
 }
 export async function ensureResponsibilityDomains(p:Principal) {
  const db=await getDb();
@@ -34,7 +37,7 @@ export async function ensureResponsibilityDomains(p:Principal) {
 export async function getAccess(p:Principal) {
  if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');
  const db=await getDb();const members=await db.select({id:s.user.id,email:s.user.email,name:s.user.name,active:s.memberships.active,editAll:s.memberships.editAll,role:s.memberships.role}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(eq(s.memberships.organizationId,p.organizationId));
- return {members:members.map(m=>({...m,level:m.id===p.userId?'owner':m.editAll?'all':m.role==='viewer'?'view':'own'})),publicRead:true};
+ return {members:members.map(m=>({...m,level:m.id===p.userId?'owner':m.editAll?'all':m.role==='viewer'?'view':'own'})),publicRead:false};
 }
 export async function grantAccess(p:Principal,input:unknown) {
  if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');

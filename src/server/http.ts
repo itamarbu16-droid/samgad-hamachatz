@@ -2,7 +2,6 @@ import { ZodError } from "zod";
 import { getAuth } from "./auth";
 import { AppError, type Principal } from "./policy";
 import { principalFor } from "./service";
-import { publicPrincipal } from "./access";
 import { appUrl } from "./app-url";
 
 export async function api(
@@ -20,14 +19,8 @@ export async function api(
     }
     const auth = await getAuth();
     const session = await auth.api.getSession({ headers: request.headers });
-    let principal: Principal;
-    if(!session){
-      if(request.method!=='GET')throw new AppError(401,"יש להתחבר כדי לערוך");
-      principal=await publicPrincipal();
-    }else{
-      try { principal=await principalFor(session.user.id,session.user.name); }
-      catch(error){if(request.method!=='GET' || !(error instanceof AppError) || error.status!==403)throw error;principal=await publicPrincipal();}
-    }
+    if (!session) throw new AppError(401, "הכניסה למיילים מורשים בלבד. יש להתחבר");
+    const principal: Principal = await principalFor(session.user.id, session.user.name);
     const result = await handler(principal);
     if (result instanceof Response) return result;
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });

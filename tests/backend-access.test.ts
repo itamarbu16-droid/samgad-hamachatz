@@ -5,9 +5,12 @@ import {seedDemo} from '../src/server/seed';
 import {principalFor,createTask,updateTask,getWorkspace} from '../src/server/service';
 import {createRhythmItem,getRhythm,editRhythmItem,completeRhythm} from '../src/server/rhythm';
 import {getAuth} from '../src/server/auth';
-import {grantAccess,getAccess,publicPrincipal} from '../src/server/access';
+import {grantAccess,getAccess,publicPrincipal,assertEmailAccess} from '../src/server/access';
 import {searchWorkspace} from '../src/server/search';
 import {taskTone,compareTasks} from '../src/lib/task-display';
+import {api} from '../src/server/http';
+import {POST as signInRoute} from '../src/app/api/auth/[...all]/route';
+import {GET as workspaceRoute} from '../src/app/api/workspace/route';
 import {localDate,type Principal} from '../src/server/policy';
 import * as s from '../src/server/schema';
 let owner:Principal,company:Principal,other:Principal;
@@ -21,7 +24,7 @@ it('maps deadlines with completed taking precedence and null dates last',()=>{
 it('hides private tasks and points from guests, other assignees, and global editors including search',async()=>{
  const privateItem=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'private-owner-secret',category:'point'});
  const privateTask=await createTask(owner,{title:'private-owner-legacy',ownerId:owner.userId,domainId:'safety'});
- const publicView=await publicPrincipal();
+ const publicView:Principal={userId:'public-viewer',organizationId:owner.organizationId,role:'viewer',name:'guest',companyId:null,domainId:null,guest:true};
  await grantAccess(owner,{email:'contributor@samgad.example',level:'all'});const editor=await principalFor(other.userId,other.name);
  for(const p of [publicView,company,editor]){
   expect((await getRhythm(p)).items.some(i=>i.id===privateItem.id)).toBe(false);
@@ -67,4 +70,37 @@ it('provisions a new email only with an initial password and never resets existi
  const list=await getAccess(owner);expect(list.members.find(m=>m.email==='new-role@example.com')).toMatchObject({level:'own',active:true});
  await grantAccess(owner,{email:'new-role@example.com',level:'revoke'});
  expect((await getAccess(owner)).members.find(m=>m.email==='new-role@example.com')?.active).toBe(false);
+});
+
+it('denies anonymous data requests and unknown emails even when legacy public-read is enabled',async()=>{
+ await expect(publicPrincipal()).rejects.toMatchObject({status:401});
+ const result=await api(new Request('http://localhost:3000/api/workspace'),getWorkspace);
+ expect(result.status).toBe(401);
+ await expect(assertEmailAccess('unknown@samgad.example')).rejects.toMatchObject({status:403});
+ const deniedLogin=await signInRoute(new Request('http://localhost:3000/api/auth/sign-in/email',{method:'POST',headers:{Origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify({email:'unknown@samgad.example',password:'invalid-password-12345'})}));
+ expect(deniedLogin.status).toBe(403);expect(deniedLogin.headers.get('set-cookie')).toBeNull();
+ await expect(assertEmailAccess(' DEMO@SAMGAD.EXAMPLE ')).resolves.toBeUndefined();
+ expect((await getAccess(owner)).publicRead).toBe(false);
+});
+it('enforces email grants and revocation on an already signed-in session without guest fallback',async()=>{
+ const email='session-member@example.com',password='isolated-session-password-12345';
+ await grantAccess(owner,{email,name:'סמ״פ בדיקה',level:'own',password});
+ const response=await signInRoute(new Request('http://localhost:3000/api/auth/sign-in/email',{method:'POST',headers:{Origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify({email,password})}));
+ expect(response.status).toBe(200);
+ const cookie=response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
+ expect(cookie).toContain('session_token');
+ const request=()=>new Request('http://localhost:3000/api/workspace',{headers:{cookie}});
+ const allowed=await workspaceRoute(request());expect(allowed.status).toBe(200);
+ const data=await allowed.json();expect(data.user.permissions).toMatchObject({manageAccess:false,editAll:false,guest:false});
+ await expect(getAccess(await principalFor(data.user.id,'סמ״פ בדיקה'))).rejects.toMatchObject({status:403});
+ await grantAccess(owner,{email,level:'all'});
+ const editor=await (await workspaceRoute(request())).json();expect(editor.user.permissions).toMatchObject({manageAccess:false,editAll:true});
+ await grantAccess(owner,{email,level:'revoke'});
+ await expect(assertEmailAccess(email)).rejects.toMatchObject({status:403});
+ expect((await workspaceRoute(request())).status).toBe(403);
+ const denied=await signInRoute(new Request('http://localhost:3000/api/auth/sign-in/email',{method:'POST',headers:{Origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify({email,password})}));
+ expect(denied.status).toBe(403);expect(denied.headers.get('set-cookie')).toBeNull();
+ await grantAccess(owner,{email,level:'view'});
+ await expect(assertEmailAccess(email)).resolves.toBeUndefined();
+ expect((await workspaceRoute(request())).status).toBe(200);
 });

@@ -31,12 +31,12 @@ test('deadline colors, descending default sorting and seven separated rhythm fre
 test('owner grants an email global editing while guests and editors cannot see owner private content',async({page,browser},testInfo)=>{
  await signInThroughForm(page);const origin=new URL(page.url()).origin;const ws=await (await page.request.get('/api/workspace')).json();const secret=`owner-private-${Date.now()}`;
  const saved=await page.request.post('/api/rhythm/items',{headers:{Origin:origin},data:{clientRequestId:crypto.randomUUID(),title:secret,category:'point'}});expect(saved.ok()).toBe(true);
- await page.getByRole('button',{name:'ניהול הרשאות',exact:true}).click();await expect(page.getByRole('heading',{name:'הרשאות לפי מייל'})).toBeVisible();
+ await page.getByRole('button',{name:'ניהול הרשאות',exact:true}).click();await expect(page.getByRole('heading',{name:'ניהול גישה לפי מייל'})).toBeVisible();
  const email=`editor-ui-${Date.now()}@samgad.example`,password='initial-ui-password-12345';
  const form=page.locator('.access-form');await form.getByLabel('מייל',{exact:true}).fill(email);await form.getByLabel('שם / בעל תפקיד — רשות',{exact:true}).fill('עורך בדיקה');await form.getByRole('combobox',{name:'הרשאה',exact:true}).selectOption('all');await form.getByLabel('סיסמה ראשונית — לחשבון חדש בלבד',{exact:true}).fill(password);await form.getByRole('button',{name:'שמירת הרשאה'}).click();await expect(page.locator('.access-members')).toContainText(email);
  const guest=await browser.newContext();try{
-  const r=await guest.request.get(origin+'/api/rhythm');expect(r.ok()).toBe(true);expect(JSON.stringify(await r.json())).not.toContain(secret);
-  const p=await guest.newPage();await p.goto(origin);await expect(p.getByText('מצב צפייה בלבד',{exact:false})).toBeVisible();await expect(p.locator('nav').getByRole('button',{name:'אישי',exact:true})).toHaveCount(0);await expect(p.getByRole('button',{name:'הוספה מהירה'})).toHaveCount(0);
+  const r=await guest.request.get(origin+'/api/rhythm');expect(r.status()).toBe(401);expect(JSON.stringify(await r.json())).not.toContain(secret);
+  const p=await guest.newPage();await p.goto(origin+'/deputies');await expect(p).toHaveURL(/\/deputies\/login$/);await expect(p.getByRole('heading',{name:'סגני המחץ',exact:true})).toBeVisible();await expect(p.locator('nav').getByRole('button',{name:'אישי',exact:true})).toHaveCount(0);await expect(p.getByRole('button',{name:'הוספה מהירה'})).toHaveCount(0);
   expect((await guest.request.post(origin+'/api/tasks',{headers:{Origin:origin},data:{title:'forbidden'}})).status()).toBe(401);
  }finally{await guest.close();}
  const editor=await browser.newContext();try{
@@ -50,7 +50,7 @@ test('owner grants an email global editing while guests and editors cannot see o
   const otherOwner=ws.users.find((u:{id:string;role:string})=>u.id!==ws.user.id&&!['viewer','admin'].includes(u.role));
   const r=await page.request.post('/api/tasks',{headers:{Origin:origin},data:{title:'global-editor-test',ownerId:otherOwner.id,domainId:'logistics',companyId:otherOwner.companyId||null}});expect(r.ok()).toBe(true);const task=(await r.json()).task;
   expect((await editor.request.patch(origin+`/api/tasks/${task.id}`,{headers:{Origin:origin},data:{version:1,title:'edited by email permission'}})).ok()).toBe(true);
-  const p=await editor.newPage();await p.goto(origin);await expect(p.getByRole('button',{name:'ניהול הרשאות',exact:true})).toHaveCount(0);await expect(p.locator('nav').getByRole('button',{name:'אישי',exact:true})).toHaveCount(0);
+  const p=await editor.newPage();await p.goto(origin+'/deputies');await expect(p.getByRole('heading',{name:'סגני המחץ',exact:true})).toBeVisible();await expect(p.getByText('מנהל המערכת',{exact:true})).toHaveCount(0);await expect(p.getByRole('button',{name:'ניהול הרשאות',exact:true})).toHaveCount(0);await expect(p.locator('nav').getByRole('button',{name:'אישי',exact:true})).toHaveCount(0);
  }finally{await editor.close();await page.request.post('/api/access',{headers:{Origin:origin},data:{email,level:'revoke'}});}
  await page.screenshot({path:`test-results/access-${testInfo.project.name}.png`,fullPage:true});
 });

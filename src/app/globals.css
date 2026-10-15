@@ -1851,6 +1851,15 @@ textarea {
 .access-member > div { min-width:0; overflow-wrap:anywhere; }
 .access-member select { max-width:100%; }
 .access-form label { min-width:0; }
+.login-app-name{font-family:'Heebo',sans-serif;font-size:25px;font-weight:500;margin:0 0 16px;color:#f5eee5}
+.command-access{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin:0 0 18px;padding:14px;border:1px solid #865229;border-radius:13px;background:linear-gradient(120deg,#2b1b10,#12100e)}
+.command-access>button{display:flex;align-items:center;gap:12px;flex:1;text-align:right;background:transparent;border:0;color:#f8e7d2;padding:0;min-height:45px}
+.command-access>button>svg:first-child{color:#fb973f;flex-shrink:0}.command-access>button>svg:last-child{margin-inline-start:auto}
+.command-access strong,.command-access small{display:block}.command-access strong{font-size:18px}.command-access small{color:#bdb1a4;font-size:13px}
+.command-access>a{color:#ffac66;font-size:14px;text-decoration:underline;text-underline-offset:4px}
+.deputies-greeting{margin:0 0 18px}.deputies-greeting>span{color:#e9a36b;font-size:13px}.deputies-greeting h2{font-size:24px;margin:4px 0}
+.deputies-dashboard .command-identity{max-width:80px;overflow-wrap:anywhere}.deputies-dashboard .command-stats span{font-size:13px}
+.deputies-review-note{display:flex;align-items:flex-start;gap:9px;font-size:14px;color:#b4a89b;margin:18px 2px}.deputies-review-note svg{flex-shrink:0;color:#e99c5e}
 
 /* 605 — charcoal, copper and the battalion's original artwork. */
 :root {--navy:#0b0b0a;--canvas:#080808;--surface:#111110;--teal:#f47724;--teal-soft:#2b1b10;--text:#f2efea;--muted:#aaa59e;--border:#34302a;--red:#f14a48;--amber:#ff9c28;--shadow:0 8px 28px #0004;}

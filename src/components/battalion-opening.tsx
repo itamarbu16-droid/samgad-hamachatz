@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 const RECENT_OPENING = 'samgad:opening-at';
 
 export default function BattalionOpening() {
   const [visible, setVisible] = useState(true);
+  const deputies = usePathname().startsWith('/deputies');
 
   useEffect(() => {
     // A sign-in redirect or a quick reload should not replay the introduction.
@@ -32,7 +34,7 @@ export default function BattalionOpening() {
         <div className="opening-glint" />
       </div>
       <div className="opening-caption">
-        <strong>סמג״ד המחץ</strong>
+        <strong>{deputies ? "סגני המחץ" : "סמג״ד המחץ"}</strong>
         <span>ברמה אחרת</span>
       </div>
     </div>

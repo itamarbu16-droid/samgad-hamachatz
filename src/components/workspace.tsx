@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
 import DocumentLibrary from "./document-library";
 import CommandDashboard from "./command-dashboard";
+import DeputiesDashboard from "./deputies-dashboard";
 import AccessSettings from "./access-settings";
 import { taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import PersonalRhythm from "./personal-rhythm";
@@ -191,18 +192,27 @@ export default function Workspace() {
     if (d) p.set("domain", d);
     if (task) p.set("task", task);
     if (q) p.set("q", q);
-    history.pushState({}, "", `/${p.size ? "?" + p : ""}`);
+    history.pushState({}, "", `${data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     sync();
   }
   async function load() {
     try {
       const r = await apiFetch("/api/workspace", { cache: "no-store" });
       if (r.status === 401) {
-        location.href = "/login";
+        location.href = location.pathname.startsWith("/deputies") ? "/deputies/login" : "/login";
         return;
       }
       const j = await r.json();
-      if (!r.ok) throw Error(j.error || "לא ניתן לטעון את המידע");
+      if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
+      const base = j.user.permissions?.manageAccess ? '/' : '/deputies';
+      const params = new URLSearchParams(location.search);
+      if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
+        params.delete('view');
+        setView('dashboard');
+      }
+      const destination = base + (params.size ? '?' + params : '');
+      if (location.pathname !== base) { location.replace(destination); return; }
+      if (location.search !== (params.size ? '?' + params : '')) history.replaceState({}, '', destination);
       setData(j);
       setRefreshed(
         new Date().toLocaleTimeString("he-IL", {
@@ -285,6 +295,7 @@ export default function Workspace() {
         <button className="button primary" onClick={() => void load()}>
           ניסיון נוסף
         </button>
+        <a className="button secondary" href="/login">כניסה עם חשבון אחר</a>
       </main>
     );
   const person = (id: string) =>
@@ -297,6 +308,7 @@ export default function Workspace() {
   );
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
+  const ownerInterface=Boolean(data.user.permissions?.manageAccess);
   const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
   const open = data.tasks.filter(
@@ -399,7 +411,7 @@ export default function Workspace() {
   }
   const title = view==="access"?"הרשאות":nav.find((n) => n[0] === view)?.[1] || "ראשי";
   return (
-    <div className={`app-shell battalion-app ${view === "dashboard" && data.user.permissions?.editAll ? "command-home" : ""}`}>
+    <div className={`app-shell battalion-app ${view === "dashboard" ? "command-home" : ""}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -413,7 +425,7 @@ export default function Workspace() {
             <Layers3 size={24} />
           </span>
           <span>
-            סמג״ד המחץ<small>מרחב ניהול מנהלתי</small>
+            {ownerInterface ? "סמג״ד המחץ" : "סגני המחץ"}<small>{ownerInterface ? "ממשק מנהל" : "מרחב בעלי התפקידים"}</small>
           </span>
         </a>
         <div className="workspace-label">
@@ -439,7 +451,7 @@ export default function Workspace() {
               )}
             </button>
           ))}
-          {data.user.permissions?.manageAccess && <button className={view==="access"?"nav-item active":"nav-item"} onClick={()=>go("access")}><ShieldCheck size={19}/>הרשאות</button>}
+          {data.user.permissions?.manageAccess && <button className={view==="access"?"nav-item active":"nav-item"} onClick={()=>go("access")}><ShieldCheck size={19}/>ניהול גישה</button>}
         </nav>
         <div className="sidebar-bottom">
           <div className="safe-note">
@@ -483,7 +495,7 @@ export default function Workspace() {
             <strong>{title}</strong>
           </div>
           <div className="topbar-actions">
-            {data.user.permissions?.manageAccess && <button className="icon-button" aria-label="ניהול הרשאות" title="הרשאות" onClick={()=>go("access")}><ShieldCheck size={18}/></button>}
+            {data.user.permissions?.manageAccess && <button className="icon-button" aria-label="ניהול הרשאות" title="ניהול גישה לפי מייל" onClick={()=>go("access")}><ShieldCheck size={18}/></button>}
             {guest && <button className="button secondary" onClick={()=>location.href="/login"}>כניסה</button>}
             {data.demo && (
               <span className="demo-label">
@@ -502,7 +514,7 @@ export default function Workspace() {
           </div>
         </header>
         <main className="main-content">
-          <TaskTools key={data.user.id} userId={data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={view === "dashboard" && !data.user.permissions?.editAll} onSaved={load} />
+          <TaskTools key={data.user.id} userId={data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -567,151 +579,8 @@ export default function Workspace() {
               scope="personal"
             />
           )}
-          {view === "dashboard" && data.user.permissions?.editAll && <CommandDashboard key={data.user.id} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
-          {view === "dashboard" && !data.user.permissions?.editAll && (
-            <>
-              <section className="attention-strip">
-                <div className="attention-intro">
-                  <span className="eyebrow">מיקוד להיום</span>
-                  <h2>מה דורש תשומת לב?</h2>
-                  <p>
-                    עודכן בשעה <bdi>{refreshed}</bdi>
-                  </p>
-                </div>
-                {[
-                  {
-                    n: late.length,
-                    label: "משימות באיחור",
-                    text: "לבדיקת מועדים ואחריות",
-                    icon: Clock3,
-                    filter: "overdue",
-                    color: "red",
-                  },
-                  {
-                    n: pending.length,
-                    label: "ממתינות להחלטה",
-                    text: "לעיון ולקבלת החלטה",
-                    icon: CircleHelp,
-                    filter: "decisions",
-                    color: "teal",
-                  },
-                ].map((m) => (
-                  <button
-                    key={m.filter}
-                    className={`metric ${m.color}`}
-                    onClick={() =>
-                      go(
-                        m.filter === "decisions" ? "decisions" : "tasks",
-                        m.filter === "decisions" ? "all" : m.filter,
-                      )
-                    }
-                  >
-                    <span className="metric-top">
-                      <m.icon size={19} />
-                      <ArrowLeft size={17} />
-                    </span>
-                    <strong>{m.n.toString().padStart(2, "0")}</strong>
-                    <span className="metric-label">{m.label}</span>
-                    <small>{m.text}</small>
-                  </button>
-                ))}
-              </section>
-              <div className="dashboard-grid">
-                <div>
-                  <section className="panel">
-                    <PanelHeading
-                      title="על סדר היום"
-                      count={attention.length}
-                      action="לכל המשימות"
-                      onClick={() => go("tasks")}
-                    />
-                    {attention.length ? (
-                      attention.slice(0, 5).map(taskRow)
-                    ) : (
-                      <Empty>
-                        אין משימות דחופות או באיחור. אפשר להתמקד בהמשך העבודה.
-                      </Empty>
-                    )}
-                    <div className="panel-footer">
-                      <span className="mini-dot" />
-                      {open.length} משימות פתוחות במרחב{" "}
-                      <button onClick={() => go("tasks", "active")}>
-                        לתמונה המלאה <ArrowLeft size={14} />
-                      </button>
-                    </div>
-                  </section>
-                  <section className="panel domains-panel">
-                    <PanelHeading
-                      title="תחומי אחריות"
-                      action="לכל התחומים"
-                      onClick={() => go("domains")}
-                    />
-                    <div className="domain-grid">
-                      {data.domains.slice(0, 6).map((d, i) => {
-                        const ts = open.filter((t) => t.domainId === d.id);
-                        return (
-                          <button
-                            className="domain-card"
-                            key={d.id}
-                            onClick={() => go("tasks", "active", d.id)}
-                          >
-                            <span className={`domain-icon tone-${i % 4}`}>
-                              <Layers3 size={18} />
-                            </span>
-                            <strong>{d.name}</strong>
-                            <span>
-                              {ts.length} פתוחות{" "}
-                              <span className="muted">/</span>{" "}
-                              <span
-                                className={ts.some(overdue) ? "late" : "muted"}
-                              >
-                                {ts.filter(overdue).length} באיחור
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                </div>
-                <div>
-                  <section className="panel">
-                    <PanelHeading title="ממתין להחלטה" count={pending.length} />
-                    {pending.length ? (
-                      pending.slice(0, 3).map((d) => (
-                        <button
-                          className="decision-preview"
-                          key={d.id}
-                          onClick={() => go("decisions")}
-                        >
-                          <span className="eyebrow">
-                            {domainName(d.domainId)}
-                          </span>
-                          <strong>{d.title}</strong>
-                          <span className="row-meta">
-                            {person(d.requesterId)} · {date(d.createdAt)}
-                          </span>
-                          <span className="text-action">
-                            לעיון ולהחלטה <ArrowLeft size={14} />
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <Empty>כל ההחלטות מטופלות כרגע.</Empty>
-                    )}
-                  </section>
-                  <section className="panel">
-                    <PanelHeading
-                      title="מה התחדש"
-                      action="הכול"
-                      onClick={() => go("activity")}
-                    />
-                    {activityList(data.activity.slice(0, 4))}
-                  </section>
-                </div>
-              </div>
-            </>
-          )}
+          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
+          {view === "dashboard" && !ownerInterface && <DeputiesDashboard user={data.user} tasks={data.tasks} today={data.today} go={go} />}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
@@ -720,6 +589,7 @@ export default function Workspace() {
               userId={data.user.id}
               role={data.user.role}
               scope="assigned"
+              manageRhythm={ownerInterface}
             />
           )}
           {view === "library" && (
@@ -938,7 +808,7 @@ export default function Workspace() {
       <nav className="mobile-nav" aria-label="ניווט ראשי">
         {[["domains","אחריות",UsersRound],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
       </nav>
-      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation">{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>הרשאות</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
+      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation">{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
       {notice && (

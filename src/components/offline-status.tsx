@@ -27,7 +27,7 @@ export default function OfflineStatus() {
     const timer = setInterval(sync, 30000); sync();
     return () => { mounted = false; clearInterval(timer); window.removeEventListener('online', sync); window.removeEventListener('offline', update); window.removeEventListener('samgad:offline', update); window.removeEventListener('focus', sync); };
   }, []);
-  if (typeof window !== 'undefined' && window.location.pathname === '/login') return null;
+  if (typeof window !== 'undefined' && window.location.pathname.endsWith('/login')) return null;
   const message = error || pending.find(q => q.error)?.error;
   return <aside className={`offline-status ${!online || pending.length || message ? 'offline-pending' : ''}`} aria-label="מצב סנכרון">
     <div role="status" aria-live="polite">{!online ? 'ללא אינטרנט · ' : ''}{pending.length ? `נשמר במכשיר · ${pending.length} שינויים ממתינים לסנכרון` : online ? `מסונכרן${ready ? ' · מוכן לפתיחה אופליין' : ''}` : 'מציג מידע שנשמר במכשיר'}</div>
