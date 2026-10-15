@@ -1,0 +1,15 @@
+# Offline workspace
+
+Open the stable branch URL with an internet connection, sign in, and wait for the sync badge to report that offline opening is ready. On iPhone, add this URL to the Home Screen from Safari's Share menu. Browser storage belongs to an origin: use the same URL for subsequent visits, rather than a different deployment hostname each time.
+
+The public app shell and immutable JavaScript, CSS and font assets are cached by a service worker. Authorized workspace and visited monthly rhythm snapshots are stored per account in IndexedDB. No session tokens or passwords are written to this storage. File uploads, documents editing, decisions, comments and server search still require a connection. Cached document listings remain readable; attachments are not downloaded automatically.
+
+Task and personal-point creation, edits, archive, completion reports and approvals use a durable outbox. Each operation is committed to IndexedDB before network delivery. A new local task can also be edited or completed before its first synchronization. Replay resolves local item and occurrence IDs to server IDs in order. The server validates permissions and versions on every operation. Persistent mutation receipts in the same transaction prevent duplicate task creation or repeated completion when a response was lost.
+
+Pending changes survive a reload or browser restart. Synchronization runs when connectivity returns, when the app regains focus, and every 30 seconds while the app is running. A closed iOS web app resumes synchronization when reopened; background execution while closed is not guaranteed. Long-lived sign-in lasts 30 days and refreshes on active use after a day. Revocation or expiry still requires sign-in before syncing, while the outbox remains stored.
+
+The badge distinguishes pending local edits from completed synchronization. Conflicts (409), permission rejection and expired sessions keep the pending operation, stop the dependent queue, and display a message. Versions are never silently advanced to overwrite another user's edit. Users can inspect stored operation details, retry, or explicitly discard all pending local changes after confirmation. Sign-out is blocked while the active account has pending edits. Account switching never replays another account's pending writes, and signing out clears only the current account's local data.
+
+Device storage can be removed by browser cleanup, private browsing policies or OS eviction. Keep the same normal-browser/Home-Screen installation and verify synchronization before clearing its data. Newly opened sections and months need one connected visit before being available offline.
+
+Validation: offline projection/outbox tests, database integration tests covering idempotent replay and stale versions, plus a production-build Playwright flow that cuts network access, creates and completes a task, reloads offline, reconnects, verifies one persisted task, reverses completion offline, and checks session-cookie lifetime.

@@ -479,8 +479,9 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
 }
 export async function completeRhythm(p: Principal, id: string, input: unknown) {
   assertWrite(p);
-  const data = z
+  const {clientRequestId, ...data} = z
     .object({
+      clientRequestId:z.string().uuid().optional(),
       version: z.number().int().positive(),
       done: z.boolean(),
       recipientId: z.string().optional(),
@@ -490,7 +491,7 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
     .strict()
     .parse(input);
   const db = await getDb();
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx) => receipt(tx,p,clientRequestId || randomUUID(),`occurrence.patch:${id}`,data,async()=>{
     const [record] = await tx
       .select({ item: s.rhythmItems, occurrence: s.rhythmOccurrences })
       .from(s.rhythmOccurrences)
@@ -554,7 +555,7 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
     if (!updated) throw new AppError(409, "הביצוע השתנה. יש לרענן ולנסות שוב");
     const undoToken = await rememberUndo(tx, p, "occurrence", id, {occurrences:[occurrence]}, updated.version);
     return {...updated, undoToken};
-  });
+  }));
 }
 async function resolveRecipientIds(db: Database | Tx, p: Principal, ids: string[]) {
   const unique = [...new Set(ids)];
@@ -575,15 +576,15 @@ async function rememberUndo(tx: Tx, p: Principal, kind: string, entityId: string
 }
 export async function editRhythmItem(p: Principal, id: string, input: unknown) {
   assertWrite(p);
-  const {recipientIds, version, ...data} = z.object({
-    version:z.number().int().positive(), title:z.string().trim().min(2).max(160).optional(),
+  const {clientRequestId,recipientIds, version, ...data} = z.object({
+    clientRequestId:z.string().uuid().optional(), version:z.number().int().positive(), title:z.string().trim().min(2).max(160).optional(),
     description:z.string().trim().max(5000).optional(), important:z.boolean().optional(),
     manualUrgent:z.boolean().optional(), archived:z.boolean().optional(),
     category:z.enum(["task", "point"]).optional(), hasDeadline:z.boolean().optional(),
     startDate:dateInput.optional(), recipientIds:z.array(z.string().min(1)).max(100).optional(),
   }).strict().parse(input);
   const db = await getDb();
-  return db.transaction(async tx => {
+  return db.transaction(async tx => receipt(tx,p,clientRequestId || randomUUID(),`item.patch:${id}`,{version,recipientIds,...data},async()=>{
     const [before] = await tx.select().from(s.rhythmItems).where(and(eq(s.rhythmItems.id,id),
       eq(s.rhythmItems.organizationId,p.organizationId),eq(s.rhythmItems.creatorId,p.userId)));
     if (!before || before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
@@ -617,7 +618,7 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
     }
     const undoToken = await rememberUndo(tx,p,"item",id,{item:before,occurrences},item.version);
     return {...item,undoToken};
-  });
+  }));
 }
 export async function undoRhythm(p: Principal, input: unknown) {
   assertWrite(p);

@@ -12,7 +12,7 @@ export async function getAuth(allowProvisioning = false) {
     baseURL,
     secret: process.env.BETTER_AUTH_SECRET,
     emailAndPassword: { enabled: true, disableSignUp: !allowProvisioning, minPasswordLength: 12 },
-    session: { expiresIn: 60 * 60 * 8, updateAge: 60 * 30 },
+    session: { expiresIn: 60 * 60 * 24 * 30, updateAge: 60 * 60 * 24 },
     rateLimit: { enabled: true, window: 60, max: 30, storage: 'database', modelName: 'rateLimit' },
     advanced: { useSecureCookies: baseURL.startsWith('https://') },
   });

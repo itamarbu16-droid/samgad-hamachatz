@@ -417,3 +417,17 @@ describe("quick task entry, optional dates and undo", () => {
     await expect(searchWorkspace({...deputy,organizationId:"other-org"},marker)).rejects.toThrow();
   });
 });
+
+it('replays uncertain offline completion and item edits idempotently',async()=>{
+  const item=await createRhythmItem(deputy,input());
+  const data=await getRhythm(deputy,today.slice(0,7));
+  const occurrence=data.occurrences.find(row=>row.itemId===item.id)!;
+  const report={version:occurrence.version,done:true,clientRequestId:randomUUID()};
+  const first=await completeRhythm(deputy,occurrence.id,report);
+  const replay=await completeRhythm(deputy,occurrence.id,report);
+  expect(replay.version).toBe(first.version);expect(replay.undoToken).toBe(first.undoToken);
+  const edit={version:item.version,title:'עריכה לאחר ניתוק',clientRequestId:randomUUID()};
+  const edited=await editRhythmItem(deputy,item.id,edit);
+  const repeated=await editRhythmItem(deputy,item.id,edit);
+  expect(repeated.version).toBe(edited.version);
+});

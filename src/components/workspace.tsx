@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
 import DocumentLibrary from "./document-library";
@@ -188,7 +189,7 @@ export default function Workspace() {
   }
   async function load() {
     try {
-      const r = await fetch("/api/workspace", { cache: "no-store" });
+      const r = await apiFetch("/api/workspace", { cache: "no-store" });
       if (r.status === 401) {
         location.href = "/login";
         return;
@@ -210,6 +211,7 @@ export default function Workspace() {
     }
   }
   const taskActions=useTaskMutations(load);
+  useEffect(() => { const refresh = () => void load(); window.addEventListener("samgad:saved", refresh); return () => window.removeEventListener("samgad:saved", refresh); }, []);
   useEffect(() => {
     void load();
   }, []);
@@ -222,7 +224,7 @@ export default function Workspace() {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch(url, {
+      const r = await apiFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -445,11 +447,14 @@ export default function Workspace() {
               className="icon-button"
               aria-label="יציאה מהמערכת"
               onClick={async () => {
-                await fetch("/api/auth/sign-out", {
+                if ((await offlineStatus()).length) { setError("יש שינויים שממתינים לסנכרון. יש לסנכרן לפני יציאה"); return; }
+                const result = await fetch("/api/auth/sign-out", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: "{}",
                 });
+                if (!result.ok) { setError("היציאה לא הצליחה. יש לנסות כשיש אינטרנט"); return; }
+                await clearOffline();
                 location.href = "/login";
               }}
             >

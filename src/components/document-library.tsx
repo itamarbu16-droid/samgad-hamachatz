@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/offline";
 import {
   useCallback,
   useEffect,
@@ -102,7 +103,7 @@ export default function DocumentLibrary({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/documents", { cache: "no-store" });
+      const response = await apiFetch("/api/documents", { cache: "no-store" });
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || "המסמכים אינם זמינים");
       setEntries(value.entries);
@@ -135,7 +136,7 @@ export default function DocumentLibrary({
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/documents/${entry.id}`, {
+      const response = await apiFetch(`/api/documents/${entry.id}`, {
         cache: "no-store",
       });
       const value = await response.json();
@@ -169,7 +170,7 @@ export default function DocumentLibrary({
       const key = JSON.stringify(body);
       if (!selected && !requests.current.has(key))
         requests.current.set(key, crypto.randomUUID());
-      const response = await fetch(
+      const response = await apiFetch(
         selected ? `/api/documents/${selected.id}` : "/api/documents",
         {
           method: selected ? "PATCH" : "POST",

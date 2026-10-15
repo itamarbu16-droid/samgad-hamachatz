@@ -16,6 +16,7 @@ export default function Login() {
         body: JSON.stringify({
           email: f.get("email"),
           password: f.get("password"),
+          rememberMe: true,
         }),
       });
       if (!r.ok) throw Error("כתובת האימייל או הסיסמה אינן תקינות. נסו שוב.");

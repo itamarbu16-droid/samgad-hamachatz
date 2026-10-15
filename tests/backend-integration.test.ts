@@ -31,7 +31,9 @@ describe('persistent domain workflows',()=>{
     const input={title:'בדיקת תהליך מלא',description:'תיאור שנשמר',ownerId:company.userId,domainId:'safety',companyId:'company-a',clientRequestId:randomUUID()};
     const created=await createTask(deputy,input),retry=await createTask(deputy,input);expect(retry.id).toBe(created.id);
     await expect(createTask(deputy,{...input,title:'תוכן שונה'})).rejects.toMatchObject({status:409});
-    const running=await updateTask(deputy,created.id,{version:created.version,status:'in_progress'});expect(running.description).toBe(input.description);
+    const retryPatch={version:created.version,status:'in_progress',clientRequestId:randomUUID()};
+    const running=await updateTask(deputy,created.id,retryPatch);expect(running.description).toBe(input.description);
+    const retriedPatch=await updateTask(deputy,created.id,retryPatch);expect(retriedPatch.version).toBe(running.version);expect(retriedPatch.undoToken).toBe(running.undoToken);
     await expect(updateTask(deputy,created.id,{version:created.version,status:'blocked',blockerReason:'חסום'})).rejects.toMatchObject({status:409});
     await addComment(company,created.id,{body:'התקדמות נשמרה'});
     const completed=await updateTask(deputy,created.id,{version:running.version,status:'completed'});expect(completed.completedBy).toBe(deputy.userId);expect(completed.completedAt).toBeInstanceOf(Date);

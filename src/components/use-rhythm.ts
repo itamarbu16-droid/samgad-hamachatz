@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/offline";
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { RhythmData } from "./task-composer";
@@ -9,7 +10,7 @@ export function useRhythm(month: string) {
   const load = useCallback(async () => {
     const seq = ++sequence.current;
     try {
-      const r = await fetch(`/api/rhythm?month=${encodeURIComponent(month)}`, {
+      const r = await apiFetch(`/api/rhythm?month=${encodeURIComponent(month)}`, {
         cache: "no-store"
       });
       const j = await r.json();
@@ -52,7 +53,7 @@ export function useTaskMutations(reload: () => Promise<void>) {
   async function request(url: string, method: string, body: Record<string, unknown>) {
     const key = url + JSON.stringify(body);
     if (method === "POST" && !requests.current.has(key)) requests.current.set(key, crypto.randomUUID());
-    const r = await fetch(url, {
+    const r = await apiFetch(url, {
       method,
       headers: {
         "Content-Type": "application/json"

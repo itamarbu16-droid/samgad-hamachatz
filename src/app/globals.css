@@ -1801,3 +1801,10 @@ textarea {
 .rhythm-table td:nth-child(2) { min-width:220px; max-width:340px; overflow-wrap:anywhere; }
 .role-chips label,.rhythm-flags label { display:flex; flex-direction:row; gap:8px; align-items:center; }
 .role-chips input[type="checkbox"],.rhythm-flags input[type="checkbox"],.task-row input[type="checkbox"] { width:20px; height:20px; flex:0 0 20px; accent-color:var(--teal); }
+
+.offline-status { position:fixed; bottom:28px; left:180px; z-index:1000; max-width:min(480px,calc(100vw - 192px)); max-height:50vh; overflow:auto; background:#e8f5ef; color:#163e30; border:1px solid #a9cabb; border-radius:12px; padding:8px 12px; box-shadow:0 3px 15px #0001; font-size:13px; }
+.offline-pending { background:#fff5dc; color:#604900; border-color:#dfc47a; }
+.offline-status button { margin:6px 0 0 8px; padding:5px 9px; border:1px solid currentColor; border-radius:7px; background:transparent; color:inherit; cursor:pointer; }
+.offline-status p { margin:5px 0; }
+.offline-status pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; }
+@media(max-width:700px) { .offline-status { bottom:88px; left:90px; max-width:calc(100vw - 102px); } }

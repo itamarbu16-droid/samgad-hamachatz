@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/offline";
 
 import { useState, useEffect, useRef } from "react";
 import { Plus, Search } from "lucide-react";
@@ -81,7 +82,7 @@ export default function TaskTools({
     setSearchError("");
     setSearched(false);
     try {
-      const r = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`, {
+      const r = await apiFetch(`/api/search?q=${encodeURIComponent(query.trim())}`, {
         cache: "no-store"
       });
       const j = await r.json();

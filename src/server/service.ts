@@ -18,7 +18,8 @@ async function idempotent<T>(tx:Tx,p:Principal,action:string,requestId:string|un
     if(!receipt || receipt.fingerprint!==fingerprint) throw new AppError(409,'מזהה הבקשה כבר שימש לפעולה אחרת');
     const result=receipt.result as {id:string};
     // Permissions and assignment can change after the original successful request.
-    if(action==='task.create') await findTask(tx,p,result.id);
+    if(action.startsWith('task.patch:')) await findTask(tx,p,action.slice('task.patch:'.length));
+    else if(action==='task.create') await findTask(tx,p,result.id);
     else if(action.startsWith('task.comment:')) await findTask(tx,p,action.slice('task.comment:'.length));
     else if(action==='decision.create') { const permitted=await tx.select({id:s.decisions.id}).from(s.decisions).where(and(decisionScope(p),eq(s.decisions.id,result.id))).limit(1); if(!permitted.length) throw new AppError(404,'הבקשה לא נמצאה או אינה זמינה לך'); }
     return receipt.result as T;
@@ -99,8 +100,8 @@ export async function createTask(p: Principal, input: unknown) {
   }));
 }
 export async function updateTask(p: Principal, id: string, input: unknown) {
-  assertWrite(p); const {version,...data} = updateTaskInput.parse(input); const db = await getDb();
-  return db.transaction(async tx => {
+  assertWrite(p); const {clientRequestId,version,...data} = updateTaskInput.parse(input); const db = await getDb();
+  return db.transaction(async tx => idempotent(tx,p,`task.patch:${id}`,clientRequestId,{version,...data},async()=>{
     const before = await findTask(tx,p,id);
     if (before.version !== version) throw new AppError(409, 'המשימה השתנתה מאז שנפתחה. יש לרענן ולנסות שוב');
     if (!isManager(p) && Object.keys(data).some(k => !['status','blockerReason'].includes(k))) throw new AppError(403, 'שינוי פרטי המשימה דורש הרשאת מנהל');
@@ -117,7 +118,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     await tx.delete(s.rhythmUndo).where(lt(s.rhythmUndo.expiresAt,new Date()));
     await tx.insert(s.rhythmUndo).values({id:undoToken,organizationId:p.organizationId,actorId:p.userId,kind:'task',entityId:id,snapshot:{task:before,occurrences:[]},expectedVersion:updated.version,expiresAt:new Date(Date.now()+60_000)});
     return {...updated,undoToken};
-  });
+  }));
 }
 export async function addComment(p: Principal,id: string,input: unknown) {
   assertWrite(p); const {body,clientRequestId} = commentInput.parse(input); const db=await getDb();
