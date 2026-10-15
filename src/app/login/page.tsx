@@ -1,7 +1,9 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { ArrowLeft, ShieldCheck, Layers3 } from "lucide-react";
+import { Modal } from "@/components/workspace-primitives";
+import { ArrowLeft } from "lucide-react";
 export default function Login() {
+  const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -27,35 +29,17 @@ export default function Login() {
     }
   }
   return (
-    <main className="login-screen">
-      <section className="login-story">
-        <div className="brand">
-          <span className="brand-mark">
-            <Layers3 size={27} />
-          </span>
-          <div>
-            סמג״ד המחץ<small>בהירות. אחריות. עשייה.</small>
-          </div>
-        </div>
-        <div>
-          <span className="eyebrow">ניהול מנהלתי, במקום אחד</span>
-          <h1>
-            כל האחריות.
-            <br />
-            תמונה אחת ברורה.
-          </h1>
-          <p>
-            משימות, החלטות ואנשים — כדי לדעת מה דורש תשומת לב, ומה הצעד הבא.
-          </p>
-        </div>
-        <span className="login-security">
-          <ShieldCheck size={18} /> סביבת הדגמה עם מידע סינתטי בלבד
-        </span>
-      </section>
+    <main className="login-screen battalion-login">
+      <div className="login-art" role="img" aria-label="סמל גדוד 605 — ברמה אחרת" />
+      <div className="login-entry" hidden={showForm}>
+        <button className="button primary" onClick={() => setShowForm(true)}>כניסה למערכת <ArrowLeft size={25}/></button>
+        <a href="/">המשך לצפייה בלבד</a>
+      </div>
+      {showForm && <Modal title="כניסה למרחב העבודה" close={()=>setShowForm(false)}>
       <section className="login-form">
         <div>
           <span className="eyebrow">טוב לראות אותך</span>
-          <h2>כניסה למרחב העבודה</h2>
+
           <p className="muted">הזינו את פרטי החשבון שהוקצו לכם.</p>
           <form onSubmit={submit}>
             <label>
@@ -95,6 +79,7 @@ export default function Login() {
           </p>
         </div>
       </section>
+      </Modal>}
     </main>
   );
 }

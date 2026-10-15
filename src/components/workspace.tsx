@@ -3,6 +3,7 @@ import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
 import DocumentLibrary from "./document-library";
+import CommandDashboard from "./command-dashboard";
 import AccessSettings from "./access-settings";
 import { taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import PersonalRhythm from "./personal-rhythm";
@@ -33,6 +34,9 @@ import {
   Send,
   ShieldCheck,
   LoaderCircle,
+  Menu,
+  House,
+  UsersRound,
 } from "lucide-react";
 type Person = { id: string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
 type Task = {
@@ -118,7 +122,7 @@ const nav = [
   ["library", "ספרייה", LibraryBig],
   ["records", "סיכומי ישיבות וביקורות", NotebookPen],
   ["decisions", "ממתין להחלטה", CircleHelp],
-  ["domains", "תחומי אחריות", Layers3],
+  ["domains", "אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
 ] as const;
 const date = (s: string | null) =>
@@ -395,7 +399,7 @@ export default function Workspace() {
   }
   const title = view==="access"?"הרשאות":nav.find((n) => n[0] === view)?.[1] || "ראשי";
   return (
-    <div className="app-shell">
+    <div className={`app-shell battalion-app ${view === "dashboard" && data.user.permissions?.editAll ? "command-home" : ""}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -498,7 +502,7 @@ export default function Workspace() {
           </div>
         </header>
         <main className="main-content">
-          <TaskTools key={data.user.id} userId={data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={view === "dashboard"} onSaved={load} />
+          <TaskTools key={data.user.id} userId={data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={view === "dashboard" && !data.user.permissions?.editAll} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -563,7 +567,8 @@ export default function Workspace() {
               scope="personal"
             />
           )}
-          {view === "dashboard" && (
+          {view === "dashboard" && data.user.permissions?.editAll && <CommandDashboard key={data.user.id} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
+          {view === "dashboard" && !data.user.permissions?.editAll && (
             <>
               <section className="attention-strip">
                 <div className="attention-intro">
@@ -930,36 +935,10 @@ export default function Workspace() {
           </footer>
         </main>
       </div>
-      <nav className="mobile-nav">
-        {availableNav
-          .filter(([id]) =>
-            ["dashboard", "tasks", "personal", "library", "records"].includes(
-              id,
-            ),
-          )
-          .map(([id, label, Icon]) => (
-            <button
-              key={id}
-              className={view === id ? "active" : ""}
-              onClick={() => go(id)}
-            >
-              <Icon size={20} />
-              <span>
-                {id === "dashboard"
-                  ? "ראשי"
-                  : id === "decisions"
-                    ? "החלטות"
-                    : id === "personal"
-                      ? "אישי"
-                      : id === "records"
-                        ? "סיכומים"
-                        : id === "domains"
-                          ? "תחומים"
-                          : label}
-              </span>
-            </button>
-          ))}
+      <nav className="mobile-nav" aria-label="ניווט ראשי">
+        {[["domains","אחריות",UsersRound],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
       </nav>
+      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation">{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>הרשאות</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
       {notice && (
@@ -968,7 +947,7 @@ export default function Workspace() {
           {notice}
         </div>
       )}
-      {modal && (
+      {modal && modal !== "navigation" && (
         <Modal
           title={modal === "task" ? "יצירת משימה" : "בקשה להחלטה"}
           close={() => setModal("")}
