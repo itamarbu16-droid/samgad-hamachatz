@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import OfflineStatus from '@/components/offline-status';
+import BattalionOpening from '@/components/battalion-opening';
 export const metadata: Metadata = {
   title: 'סמג״ד המחץ',
   applicationName: 'סמג״ד המחץ',
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="he" dir="rtl"><body>{children}<OfflineStatus /></body></html>;
+  return <html lang="he" dir="rtl"><body>{children}<OfflineStatus /><BattalionOpening /></body></html>;
 }

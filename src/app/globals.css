@@ -4,6 +4,27 @@
 @import "@fontsource/assistant/400.css";
 @import "@fontsource/assistant/600.css";
 @import "@fontsource/assistant/700.css";
+
+/* A short brand introduction. CSS also dismisses it if hydration is unavailable. */
+.battalion-opening{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:radial-gradient(ellipse at 50% 45%,#221207 0%,#080808 57%);overflow:hidden;animation:opening-dismiss .4s ease 2s both;cursor:pointer;pointer-events:auto}
+.opening-emblem{position:relative;width:min(76vw,340px);aspect-ratio:1;flex-shrink:0;isolation:isolate;animation:opening-settle 1.8s cubic-bezier(.2,.7,.2,1) both}
+.opening-outline,.opening-crest,.opening-glint{position:absolute;inset:0;width:100%;height:100%}
+.opening-outline{z-index:2;overflow:visible;animation:opening-outline-fade .45s ease .85s both}
+.opening-outline path{stroke:#f6a34d;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;filter:drop-shadow(0 0 4px #ed741e);animation:opening-trace .85s cubic-bezier(.45,0,.2,1) forwards}
+.opening-crest{background:url('/brand/605-icon-512.png') center/contain no-repeat;animation:opening-build 1.15s cubic-bezier(.2,.65,.2,1) .25s both}
+.opening-glint{z-index:3;background:linear-gradient(110deg,transparent 37%,#ffe9b93d 47%,#fff3d68c 50%,transparent 60%) -160% 0/250% 100% no-repeat;clip-path:polygon(23% 12%,78% 12%,78% 49%,73% 64%,65% 76%,50% 88%,35% 76%,27% 64%,23% 49%);mix-blend-mode:screen;animation:opening-shine .65s ease 1.05s both}
+.opening-caption{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;animation:opening-caption .5s ease 1.2s both}
+.opening-caption strong{font-family:'Heebo',sans-serif;font-size:clamp(25px,7vw,34px);font-weight:500;letter-spacing:.025em;color:#f5eee5}
+.opening-caption span{font-family:'Assistant',sans-serif;font-size:25px;font-style:italic;font-weight:600;color:#ef832c}
+@keyframes opening-trace{to{stroke-dashoffset:0}}
+@keyframes opening-outline-fade{to{opacity:0}}
+@keyframes opening-build{0%{opacity:0;clip-path:inset(0 0 100%)}35%{opacity:1}100%{opacity:1;clip-path:inset(0)}}
+@keyframes opening-shine{0%{opacity:0;background-position:160% 0}20%{opacity:1}80%{opacity:1}100%{opacity:0;background-position:-60% 0}}
+@keyframes opening-settle{from{transform:scale(.94)}to{transform:scale(1)}}
+@keyframes opening-caption{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes opening-dismiss{from{opacity:1;visibility:visible}to{opacity:0;visibility:hidden;pointer-events:none}}
+@media(prefers-reduced-motion:reduce){.battalion-opening{display:none}.battalion-opening *{animation:none!important}}
+
 :root {
   --navy: #112b38;
   --canvas: #f5f6f3;
