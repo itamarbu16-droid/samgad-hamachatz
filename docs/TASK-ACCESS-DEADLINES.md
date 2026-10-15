@@ -1,0 +1,15 @@
+# Tasks, deadlines and access
+
+The main navigation is named ראשי. Task lists offer descending deadline (default), ascending deadline, title, and completion sorting. Missing deadlines remain last. Completed tasks are green even when their dates are past; active tasks are orange on the day before their deadline and on the deadline itself, and red starting the next day. Date comparisons use the workspace's Jerusalem calendar date.
+
+The owner's personal navigation is visible only to the workspace owner. Single-recipient tasks created for oneself and personal points are private at the database-query level. Guests, other members and global editors do not receive another user's private records, occurrences, counts, comments or search matches. Global editing never overrides personal privacy.
+
+One-time tasks (with optional deadline) and recurring שעל״ח items occupy separate tabs. Recurrence is partitioned by daily, weekly, fortnightly, monthly, quarterly, semiannual and annual frequency. Recurring completion reports still require approval by a global editor; personal self-completion is immediate.
+
+Roles are separated from job titles. Existing staff/company job titles no longer confer unrestricted task editing. A normal editor may update only an assigned task and may not change its recipients or assignment. Global editors may edit all shared tasks, including tasks created by another manager. Only the immutable workspace owner can grant, downgrade or revoke email-based access. Private tasks stay inaccessible even to global editors. Members can reopen their own completed tasks. Authorization and optimistic versions are checked again during offline replay.
+
+The access screen supports view-only, own-assigned-task editing and global editing. New accounts require an initial password (minimum 12 characters); existing account passwords are never reset by a permission change. No invitation or other mail is sent by this feature. Access grants are recorded with the granting owner; preview migration permits real email accounts only when they have this explicit provenance and retains the existing isolated-project, single demo organization and database guards.
+
+Public app GET requests are limited to one explicitly enabled workspace; ambiguous multiple public workspaces fail closed. Guest results exclude private records and email addresses. API writes still require a valid authenticated session and the canonical application origin. The Vercel preview access layer must also allow the intended shared link; this does not grant any app edit rights. Guest calendar reads do not materialize new schedules or flush mail.
+
+Responsibilities appear in this order: סמ״פים, תקשוב, טנ״א, לוגיסטיקה, בינוי, הובלות, רפואה, נשקייה ותחמושת. Old safety/people records retain their database IDs and foreign-key history but map into סמ״פים for display, filtering and counts. No tasks are deleted during category changes.

@@ -48,7 +48,8 @@ describe('persistent domain workflows',()=>{
   it('rechecks current scope before replaying an earlier mutation response',async()=>{
     const input={title:'בדיקת הרשאות בחזרה על בקשה',ownerId:company.userId,domainId:'safety',companyId:'company-a',clientRequestId:randomUUID()};
     const task=await createTask(company,input);
-    await updateTask(deputy,task.id,{version:task.version,companyId:'company-b',ownerId:deputy.userId});
+    // Simulate an external permission/scope change; a manager cannot open another user's private task.
+    await (await getDb()).update(s.tasks).set({companyId:'company-b',ownerId:deputy.userId}).where(eq(s.tasks.id,task.id));
     await expect(createTask(company,input)).rejects.toMatchObject({status:404});
   });
   it('contributor can update own status but not ownership or a review-required completion',async()=>{

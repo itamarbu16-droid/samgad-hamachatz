@@ -89,6 +89,7 @@ export default function Login() {
               <ArrowLeft size={17} />
             </button>
           </form>
+          <p><a href="/">המשך לצפייה בלבד</a></p>
           <p className="login-note">
             הגישה והמידע הזמין נקבעים לפי הרשאות החשבון.
           </p>

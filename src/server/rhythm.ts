@@ -8,6 +8,7 @@ import {
   AppError,
   assertWrite,
   isManager,
+  canEditAll,
   localDate,
   type Principal,
 } from "./policy";
@@ -66,6 +67,8 @@ export function rhythmScope(p: Principal) {
     eq(s.rhythmItems.organizationId, p.organizationId),
     p.role === "admin"
       ? sql`false`
+      : p.guest || p.role==="viewer" ? sql`(${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId})))`
+      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
       : sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.assigneeIds} @> ${JSON.stringify([p.userId])}::jsonb)`,
   );
 }
@@ -105,7 +108,7 @@ async function resolveEmails(
   p: Principal,
   emails: string[],
 ) {
-  if (emails.length && !isManager(p))
+  if (emails.length && !canEditAll(p))
     throw new AppError(403, "שיוך לאחרים דורש הרשאת מנהל");
   const people = await eligiblePeople(db, p);
   const ids = new Set<string>();
@@ -407,7 +410,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
   const through = monthEnd(
     month > today.slice(0, 7) ? month : today.slice(0, 7),
   );
-  await materialize(db, items, through, today);
+  if(!p.guest) await materialize(db, items, through, today);
   const rows = items.length
     ? await db
         .select()
@@ -452,7 +455,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
       (member) =>
         visibleIds.has(member.id) ||
         eligible.some((person) => person.id === member.id),
-    ),
+    ).map(member=>({...member,email:p.guest?"":member.email})),
     mailConfigured: Boolean(
       process.env.RESEND_API_KEY &&
         process.env.MAIL_FROM &&
@@ -466,7 +469,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
         const done = completed(
           item,
           row,
-          item.creatorId === p.userId ? undefined : p.userId,
+          item.creatorId === p.userId || canEditAll(p) || p.guest || p.role==="viewer" ? undefined : p.userId,
         );
         return {
           ...row,
@@ -507,18 +510,18 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
     for (const recipientId of [...new Set(data.recipientIds || [data.recipientId || p.userId])]) {
     if (
       !item.assigneeIds.includes(recipientId) ||
-      (recipientId !== p.userId && item.creatorId !== p.userId)
+      (recipientId !== p.userId && !canEditAll(p))
     )
       throw new AppError(403, "אין הרשאה לסמן ביצוע עבור משתמש זה");
     if (
       item.completionMode === "shared" &&
       !item.assigneeIds.includes(p.userId) &&
-      item.creatorId !== p.userId
+      !canEditAll(p)
     )
       throw new AppError(403, "אין הרשאה לסמן ביצוע");
     const assigned = recipientId !== item.creatorId;
     if (data.review) {
-      if (p.userId !== item.creatorId || !assigned)
+      if (!canEditAll(p) || !assigned)
         throw new AppError(403, "רק מקצה המשימה רשאי לאשר ביצוע");
       if (!reports[recipientId] || completions[recipientId])
         throw new AppError(409, "אין דיווח הממתין לאישור");
@@ -559,7 +562,7 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
 }
 async function resolveRecipientIds(db: Database | Tx, p: Principal, ids: string[]) {
   const unique = [...new Set(ids)];
-  if (unique.some(id => id !== p.userId) && !isManager(p))
+  if (unique.some(id => id !== p.userId) && !canEditAll(p))
     throw new AppError(403, "שיוך לאחרים דורש הרשאת מנהל");
   const eligible = await eligiblePeople(db, p);
   if (unique.some(id => id !== p.userId && !eligible.some(person => person.id === id)))
@@ -586,11 +589,15 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
   const db = await getDb();
   return db.transaction(async tx => receipt(tx,p,clientRequestId || randomUUID(),`item.patch:${id}`,{version,recipientIds,...data},async()=>{
     const [before] = await tx.select().from(s.rhythmItems).where(and(eq(s.rhythmItems.id,id),
-      eq(s.rhythmItems.organizationId,p.organizationId),eq(s.rhythmItems.creatorId,p.userId)));
-    if (!before || before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
-    const assigneeIds = recipientIds === undefined ? before.assigneeIds :
+      rhythmScope(p)));
+    if (!before) throw new AppError(404,"המשימה אינה זמינה לך");
+    if (!canEditAll(p) && !before.assigneeIds.includes(p.userId)) throw new AppError(403,"אפשר לערוך רק משימה שהוקצתה לך");
+    if (!canEditAll(p) && recipientIds && JSON.stringify(recipientIds)!==JSON.stringify(before.assigneeIds)) throw new AppError(403,"שינוי אחראים דורש הרשאת עריכה כללית");
+    if (before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
+    const assigneeIds = recipientIds === undefined || JSON.stringify(recipientIds)===JSON.stringify(before.assigneeIds) ? before.assigneeIds :
       (await resolveRecipientIds(tx,p,recipientIds));
     if (!assigneeIds.length) assigneeIds.push(p.userId);
+    if(data.category==="point" && before.creatorId!==p.userId)throw new AppError(403,"רק יוצר המשימה יכול להעביר אותה לנקודות פרטיות");
     const next = {...before,...data,assigneeIds};
     if (next.category === "point" && (next.frequency !== "once" || assigneeIds.length !== 1 || assigneeIds[0] !== p.userId))
       throw new AppError(422,"נקודה לעיסוק חייבת להישאר פרטית");

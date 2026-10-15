@@ -33,7 +33,7 @@ export const companies = pgTable('companies', { id: text('id').primaryKey(), org
 export const domains = pgTable('domains', { id: text('id').primaryKey(), organizationId: text('organization_id').notNull().references(() => organizations.id), name: text('name').notNull(), color: text('color').notNull().default('#267d75') });
 export const memberships = pgTable('memberships', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => user.id), organizationId: text('organization_id').notNull().references(() => organizations.id),
-  role: text('role').notNull(), companyId: text('company_id').references(() => companies.id), domainId: text('domain_id').references(() => domains.id), active: boolean('active').notNull().default(true),
+  role: text('role').notNull(), editAll: boolean('edit_all').notNull().default(false), companyId: text('company_id').references(() => companies.id), domainId: text('domain_id').references(() => domains.id), active: boolean('active').notNull().default(true),
 }, (t) => [uniqueIndex('membership_user_org').on(t.userId, t.organizationId)]);
 export const tasks = pgTable('tasks', {
   id: text('id').primaryKey(), organizationId: text('organization_id').notNull().references(() => organizations.id), companyId: text('company_id').references(() => companies.id), domainId: text('domain_id').notNull().references(() => domains.id),
@@ -96,3 +96,11 @@ export const documentAttachments = pgTable('document_attachments', {
 });
 
 export const rhythmUndo = pgTable('rhythm_undo', { id: text('id').primaryKey(), organizationId: text('organization_id').notNull(), actorId: text('actor_id').notNull(), kind: text('kind').notNull(), entityId: text('entity_id').notNull(), snapshot: jsonb('snapshot').$type<{task?: typeof tasks.$inferSelect; item?: typeof rhythmItems.$inferSelect; occurrences: Array<typeof rhythmOccurrences.$inferSelect>}>().notNull(), expectedVersion: integer('expected_version').notNull(), expiresAt: timestamp('expires_at', {withTimezone:true}).notNull() });
+
+export const workspaceSettings = pgTable('workspace_settings', {
+  organizationId: text('organization_id').primaryKey().references(() => organizations.id),
+  ownerId: text('owner_id').notNull().references(() => user.id),
+  publicRead: boolean('public_read').notNull().default(true),
+});
+
+export const workspaceAccessGrants=pgTable('workspace_access_grants', {userId:text('user_id').primaryKey().references(()=>user.id),organizationId:text('organization_id').notNull().references(()=>organizations.id),grantedBy:text('granted_by').notNull().references(()=>user.id),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()});

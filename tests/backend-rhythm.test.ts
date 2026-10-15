@@ -235,7 +235,7 @@ describe("private and assigned persisted workflows", () => {
         companyA,
         input({ emails: ["company.b@samgad.example"] }),
       ),
-    ).rejects.toMatchObject({ status: 422 });
+    ).rejects.toMatchObject({ status: 403 });
     await expect(
       createRhythmItem(
         contributor,
@@ -369,7 +369,7 @@ describe("quick task entry, optional dates and undo", () => {
     await undoRhythm(deputy,{token:converted.undoToken});
     expect((await getRhythm(companyA)).items.some(r=>r.id===point.id)).toBe(false);
     expect((await getRhythm(deputy)).items.find(r=>r.id===point.id)?.category).toBe("point");
-    await expect(editRhythmItem(contributor,point.id,{version:3,recipientIds:[companyA.userId]})).rejects.toMatchObject({status:409});
+    await expect(editRhythmItem(contributor,point.id,{version:3,recipientIds:[companyA.userId]})).rejects.toMatchObject({status:404});
   });
   it("undoes a completion once and refuses another actor or a newer version", async () => {
     const item=await createRhythmItem(deputy,{clientRequestId:request(),title:"ביטול ביצוע"});

@@ -70,7 +70,7 @@ test("submit and resolve a decision through the actual UI", async ({
   await dialog
     .getByRole("combobox", { name: "מחליט", exact: true })
     .selectOption(workspace.user.id);
-  await dialog.getByLabel("תחום אחריות").selectOption("safety");
+  await dialog.getByLabel("תחום אחריות").selectOption(workspace.domains[0].id);
   await dialog.getByRole("button", { name: "שליחת בקשה" }).click();
   await expect(dialog).not.toBeVisible();
   const card = page

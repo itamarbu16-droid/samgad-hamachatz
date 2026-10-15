@@ -1,4 +1,5 @@
 "use client";
+import { taskTone } from "@/lib/task-display";
 import { apiFetch } from "@/lib/offline";
 
 import { useState, useEffect, useRef } from "react";
@@ -27,12 +28,14 @@ export default function TaskTools({
   role,
   tasks,
   dashboard,
+  personalAllowed=false,
   onSaved
 }: {
   userId: string;
   role: string;
   tasks: Task[];
   dashboard: boolean;
+  personalAllowed?:boolean;
   onSaved: () => Promise<void>;
 }) {
   const [month] = useState(currentMonth),
@@ -53,6 +56,7 @@ export default function TaskTools({
     await Promise.all([load(), onSaved()]);
   };
   const actions = useTaskMutations(reload);
+  const manager=["deputy","staff"].includes(role);
   const canWrite = ["deputy", "staff", "company_commander", "contributor"].includes(role);
   const rows = data?.occurrences.map(occurrence => ({
     occurrence,
@@ -61,7 +65,7 @@ export default function TaskTools({
   const pendingRows = rows.filter(({
     item,
     occurrence
-  }) => item.creatorId === userId && !occurrence.done && item.assigneeIds.some(id => occurrence.reports[id] && !occurrence.completions[id]));
+  }) => manager && !occurrence.done && item.assigneeIds.some(id => occurrence.reports[id] && !occurrence.completions[id]));
   const todayRows = rows.filter(({
     item,
     occurrence
@@ -70,7 +74,7 @@ export default function TaskTools({
     item,
     occurrence
   }) => item.hasDeadline && !occurrence.done && occurrence.dueDate < (data?.today || ""));
-  const legacyPending = tasks.filter(t => t.creatorId === userId && t.status === "pending_review"),
+  const legacyPending = tasks.filter(t => manager && t.status === "pending_review"),
     legacyToday = tasks.filter(t => t.dueDate === data?.today && !["completed", "cancelled"].includes(t.status)),
     legacyLate = tasks.filter(t => t.dueDate && t.dueDate < (data?.today || "") && !["completed", "cancelled"].includes(t.status));
   const list = modal === "pending" ? pendingRows : modal === "today" ? todayRows : lateRows;
@@ -125,7 +129,7 @@ export default function TaskTools({
         count: lateRows.length + legacyLate.length
       }].map(card => <button key={card.id} className="panel focus-card" onClick={() => setModal(card.id)}><strong>{data ? card.count : "…"}</strong><span>{card.label}</span></button>)}
     </section>}
-    {canWrite && <button className="capture-button" aria-label="הוספה מהירה" onClick={() => {
+    {["deputy","staff"].includes(role) && <button className="capture-button" aria-label="הוספה מהירה" onClick={() => {
       setMode("task");
       setModal("capture");
     }}><Plus size={24} /><span>הוספה</span></button>}
@@ -136,8 +140,8 @@ export default function TaskTools({
     }} wide={modal !== "capture"}>
       {(error || actions.error) && <p className="error-banner" role="alert">{actions.error || error}</p>}
       {modal === "capture" ? <>
-        <div className="rhythm-tabs"><button className={mode === "task" ? "button primary" : "button secondary"} onClick={() => setMode("task")}>משימה</button><button className={mode === "point" ? "button primary" : "button secondary"} onClick={() => setMode("point")}>נקודה לעיסוק</button></div>
-        {data ? <TaskComposer key={mode} data={data} userId={userId} role={role} point={mode === "point"} busy={actions.busy} onSave={async body => {
+        <div className="rhythm-tabs"><button className={mode === "task" ? "button primary" : "button secondary"} onClick={() => setMode("task")}>משימה</button>{personalAllowed && <button className={mode === "point" ? "button primary" : "button secondary"} onClick={() => setMode("point")}>נקודה לעיסוק</button>}</div>
+        {data ? <TaskComposer key={mode} data={data} userId={userId} role={role} point={personalAllowed && mode === "point"} busy={actions.busy} onSave={async body => {
           const ok = await actions.run([{
             url: "/api/rhythm/items",
             method: "POST",
@@ -157,11 +161,11 @@ export default function TaskTools({
         {list.map(({
           item,
           occurrence
-        }) => <section className="panel focus-task" key={occurrence.id}><h3>{item.title}</h3><a href={`/?view=${item.assigneeIds.length === 1 && item.assigneeIds[0] === item.creatorId ? "personal" : "tasks"}&rhythmFilter=all&occurrence=${encodeURIComponent(occurrence.id)}`}>פתיחת המשימה</a>
+        }) => <section className={`panel focus-task ${taskTone(occurrence.done,item.hasDeadline?occurrence.dueDate:null,data?.today || "")}`} key={occurrence.id}><h3>{item.title}</h3><a href={`/?view=${item.assigneeIds.length === 1 && item.assigneeIds[0] === item.creatorId ? "personal" : "tasks"}&rhythmFilter=all&occurrence=${encodeURIComponent(occurrence.id)}`}>פתיחת המשימה</a>
           {canWrite && item.assigneeIds.map(id => {
             const pending = occurrence.reports[id] && !occurrence.completions[id];
             if (modal === "pending" && !pending) return null;
-            return <div className="completion-controls" key={id}><span>{data?.people.find(p => p.id === id)?.name}</span>{pending && item.creatorId === userId ? <><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([{
+            return <div className="completion-controls" key={id}><span>{data?.people.find(p => p.id === id)?.name}</span>{pending && manager ? <><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([{
                   url: `/api/rhythm/occurrences/${occurrence.id}`,
                   method: "PATCH",
                   body: {
@@ -179,7 +183,7 @@ export default function TaskTools({
                     done: false,
                     review: "reject"
                   }
-                }])}>החזר לטיפול</button></> : id === userId || item.creatorId === userId ? <button className="button primary" disabled={actions.busy || Boolean(pending) || Boolean(occurrence.completions[id])} onClick={() => void actions.run([{
+                }])}>החזר לטיפול</button></> : id === userId || manager ? <button className="button primary" disabled={actions.busy || Boolean(pending) || Boolean(occurrence.completions[id])} onClick={() => void actions.run([{
                 url: `/api/rhythm/occurrences/${occurrence.id}`,
                 method: "PATCH",
                 body: {
@@ -190,14 +194,14 @@ export default function TaskTools({
               }])}>{pending ? "ממתין לאישור" : "בוצע"}</button> : null}</div>;
           })}
         </section>)}
-        {legacy.map(task => <section className="panel focus-task" key={task.id}><h3>{task.title}</h3><a href={`/?view=tasks&task=${encodeURIComponent(task.id)}`}>פתיחת המשימה</a>{canWrite && (task.creatorId === userId || task.ownerId === userId) && <div className="completion-controls"><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([{
+        {legacy.map(task => <section className={`panel focus-task ${taskTone(task.status==="completed",task.dueDate,data?.today || "")}`} key={task.id}><h3>{task.title}</h3><a href={`/?view=tasks&task=${encodeURIComponent(task.id)}`}>פתיחת המשימה</a>{canWrite && (manager || task.ownerId === userId) && <div className="completion-controls"><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([{
               url: `/api/tasks/${task.id}`,
               method: "PATCH",
               body: {
                 version: task.version,
-                status: task.creatorId === userId ? "completed" : "pending_review"
+                status: manager ? "completed" : "pending_review"
               }
-            }])}>{task.status === "pending_review" && task.creatorId === userId ? "אשר" : "בוצע"}</button>{task.status === "pending_review" && task.creatorId === userId && <button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([{
+            }])}>{task.status === "pending_review" && manager ? "אשר" : "בוצע"}</button>{task.status === "pending_review" && manager && <button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([{
               url: `/api/tasks/${task.id}`,
               method: "PATCH",
               body: {

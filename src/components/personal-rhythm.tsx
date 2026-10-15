@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Plus, CheckCheck, CalendarDays, Users, NotebookPen } from "lucide-react";
 import { isPersonalItem } from "@/lib/unit-roles";
+import { taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import { frequencies } from "@/lib/rhythm";
 import { Modal, Empty } from "./workspace-primitives";
 import { TaskComposer, type Item, type Occurrence } from "./task-composer";
@@ -18,8 +19,9 @@ export default function PersonalRhythm({
 }) {
   const [month, setMonth] = useState(currentMonth),
     [tab, setTab] = useState("tasks"),
-    [filter, setFilter] = useState("open"),
+    [filter, setFilter] = useState("all"),
     [query, setQuery] = useState("");
+  const [sort,setSort]=useState<TaskSort>("deadline_desc"),[frequency,setFrequency]=useState("all");
   const [modal, setModal] = useState(""),
     [editing, setEditing] = useState<Item>(),
     [selection, setSelection] = useState<string[]>([]),
@@ -35,7 +37,7 @@ export default function PersonalRhythm({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("rhythmFilter")) setFilter(params.get("rhythmFilter")!);
-    if (params.get("tab") === "points") setTab("points");
+    if (["points","rhythm"].includes(params.get("tab") || "")) setTab(params.get("tab")!);
   }, []);
   useEffect(() => {
     if (!data) return;
@@ -64,7 +66,8 @@ export default function PersonalRhythm({
     occurrence
   }) => {
     if (item.archived || (tab === "points" ? item.category !== "point" : item.category === "point")) return false;
-    if (tab === "rhythm" && (item.frequency === "once" || !occurrence.dueDate.startsWith(month))) return false;
+    if (tab === "tasks" && item.frequency !== "once") return false;
+    if (tab === "rhythm" && (item.frequency === "once" || !occurrence.dueDate.startsWith(month) || frequency !== "all" && item.frequency !== frequency)) return false;
     if (query && !`${item.title} ${item.description} ${item.assigneeIds.map(person).join(" ")}`.toLowerCase().includes(query.toLowerCase())) return false;
     if (filter === "pending") return !occurrence.done && item.assigneeIds.some(id => occurrence.reports[id] && !occurrence.completions[id]);
     if (filter === "today") return item.hasDeadline && occurrence.dueDate === data.today && !occurrence.done;
@@ -73,7 +76,7 @@ export default function PersonalRhythm({
     if (filter === "important") return item.important;
     if (filter === "completed") return occurrence.done;
     return filter !== "open" || !occurrence.done;
-  });
+  }).sort((a,b)=>compareTasks({id:a.occurrence.id,title:a.item.title,done:a.occurrence.done,dueDate:a.item.hasDeadline?a.occurrence.dueDate:null},{id:b.occurrence.id,title:b.item.title,done:b.occurrence.done,dueDate:b.item.hasDeadline?b.occurrence.dueDate:null},sort));
   const patch = (item: Item, body: Record<string, unknown>) => ({
     url: `/api/rhythm/items/${item.id}`,
     method: "PATCH",
@@ -107,7 +110,7 @@ export default function PersonalRhythm({
       occurrence
     } of visible.filter(r => selection.includes(r.occurrence.id))) {
       if (kind === "assign") {
-        if (item.creatorId === userId && !seen.has(item.id) && bulkOwner) {
+        if ((manager || item.creatorId === userId) && !seen.has(item.id) && bulkOwner) {
           ops.push(patch(item, {
             recipientIds: [bulkOwner]
           }));
@@ -115,7 +118,7 @@ export default function PersonalRhythm({
         }
         continue;
       }
-      const ids = item.assigneeIds.filter(id => kind === "approve" ? item.creatorId === userId && occurrence.reports[id] && !occurrence.completions[id] : (id === userId || item.creatorId === userId) && !occurrence.completions[id] && !occurrence.reports[id]);
+      const ids = item.assigneeIds.filter(id => kind === "approve" ? manager && occurrence.reports[id] && !occurrence.completions[id] : (id === userId || manager) && !occurrence.completions[id] && !occurrence.reports[id]);
       if (ids.length) ops.push({
         url: `/api/rhythm/occurrences/${occurrence.id}`,
         method: "PATCH",
@@ -137,15 +140,17 @@ export default function PersonalRhythm({
   }) => item.creatorId === userId && Object.keys(occurrence.reports).some(id => !occurrence.completions[id])).length;
   return <div className="rhythm-workspace">
     <div className="rhythm-tabs" role="group" aria-label="תצוגת המרחב האישי">
-      {[["tasks", scope === "personal" ? "משימות אישיות" : "שיוכים וביצוע", CheckCheck], ...(scope === "personal" ? [["rhythm", "שעל״ח — שעון לחימה", CalendarDays], ["points", "נקודות לעיסוק", NotebookPen]] : manager ? [["groups", "בעלי תפקידים וקבוצות", Users]] : [])].map(([id, label, Icon]) => {
+      {[["tasks", scope === "personal" ? "משימות אישיות עם תג״ב" : "שיוכים וביצוע", CheckCheck], ["rhythm", "שעל״ח — שעון לחימה", CalendarDays], ...(scope === "personal" ? [["points", "נקודות לעיסוק", NotebookPen]] : manager ? [["groups", "בעלי תפקידים וקבוצות", Users]] : [])].map(([id, label, Icon]) => {
         const I = Icon as typeof Plus;
         return <button key={String(id)} className={tab === id ? "button primary" : "button secondary"} onClick={() => {
           setTab(String(id));
-          setFilter(id === "rhythm" ? "all" : "open");
+          setFilter("all");
           setSelection([]);
         }}><I size={17} />{String(label)}</button>;
       })}
     </div>
+    {tab === "rhythm" && <div className="frequency-tabs" role="group" aria-label="תדירות שעל״ח"><button type="button" aria-pressed={frequency==="all"} className={frequency==="all"?"button primary":"button secondary"} onClick={()=>setFrequency("all")}>כל התדירויות</button>{Object.entries(frequencies).filter(([id])=>id!=="once").map(([id,label])=><button type="button" key={id} aria-pressed={frequency===id} className={frequency===id?"button primary":"button secondary"} onClick={()=>setFrequency(id)}>{label}</button>)}</div>}
+    {tab === "tasks" && <p className="rhythm-info">משימות חד־פעמיות שהוספת. תג״ב הוא לבחירתך; המשימות החוזרות נמצאות בנפרד בשעל״ח.</p>}
     <div className="rhythm-summary"><span><strong>{active.length}</strong> פתוחות</span><span className="late"><strong>{active.filter(r => r.occurrence.urgent).length}</strong> דחופות</span>{pendingCount > 0 && <button className="button secondary" onClick={() => {
         setTab("tasks");
         setFilter("pending");
@@ -180,28 +185,29 @@ export default function PersonalRhythm({
               important: "חשובות",
               completed: "בוצע"
             }).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+        <label>מיון<select aria-label="מיון משימות" value={sort} onChange={e=>setSort(e.target.value as TaskSort)}>{Object.entries(taskSorts).map(([id,label])=><option value={id} key={id}>{label}</option>)}</select></label>
         {tab === "rhythm" && <label>חודש<input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
-        {canWrite && <button className="button primary" onClick={() => {
+        {canWrite && (manager || scope==="personal") && <button className="button primary" onClick={() => {
           setEditing(undefined);
           setModal(tab === "points" ? "point" : "create");
         }}><Plus size={17} />{tab === "points" ? "הוספת נקודה" : "הוספת משימה"}</button>}
       </div>
       {tab === "points" && <p className="rhythm-info">מקום פרטי לנושאים שתרצה לקדם. אפשר להוסיף נקודה בלי מועד, ובהמשך להפוך אותה למשימה ולבחור אחראי.</p>}
       {selection.length > 0 && canWrite && <div className="bulk-toolbar" role="group" aria-label="פעולות על משימות נבחרות"><strong>{selection.length} נבחרו</strong><button className="button primary" disabled={actions.busy} onClick={() => void batch("done")}>סימון בוצע</button>{manager && <><button className="button secondary" disabled={actions.busy} onClick={() => void batch("approve")}>אישור דיווחים</button><select aria-label="אחראי למשימות הנבחרות" value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="button secondary" disabled={actions.busy || !bulkOwner} onClick={() => void batch("assign")}>שינוי אחראי</button></>}<button className="button secondary" onClick={() => setSelection([])}>ניקוי בחירה</button></div>}
-      <section className="panel rhythm-table-wrap"><table className="rhythm-table"><caption>{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}</caption><thead><tr><th><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.map(r => r.occurrence.id) : [])} /></th><th>המשימה</th><th>מועד</th><th>ביצוע</th><th>ניהול</th></tr></thead><tbody>
+      <section className="panel rhythm-table-wrap"><table className="rhythm-table"><caption>{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}</caption><thead><tr><th>{canWrite && <input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} />}</th><th>המשימה</th><th>מועד</th><th>ביצוע</th><th>ניהול</th></tr></thead><tbody>
         {visible.map(({
               item,
               occurrence
-            }) => <tr id={`occurrence-${occurrence.id}`} key={occurrence.id} className={occurrence.urgent ? "rhythm-urgent" : ""}>
-          <td><input type="checkbox" aria-label={`בחירת ${item.title}`} checked={selection.includes(occurrence.id)} onChange={e => setSelection(ids => e.target.checked ? [...ids, occurrence.id] : ids.filter(id => id !== occurrence.id))} /></td>
+            }) => <tr id={`occurrence-${occurrence.id}`} key={occurrence.id} className={taskTone(occurrence.done,item.hasDeadline?occurrence.dueDate:null,data.today)}>
+          <td>{canWrite && (manager || item.assigneeIds.includes(userId)) && <input type="checkbox" aria-label={`בחירת ${item.title}`} checked={selection.includes(occurrence.id)} onChange={e => setSelection(ids => e.target.checked ? [...ids, occurrence.id] : ids.filter(id => id !== occurrence.id))} />}</td>
           <td><strong>{item.title}</strong>{item.description && <small>{item.description}</small>}<small>{isPersonalItem(item, userId) ? "פרטי" : `הוקצה על ידי ${person(item.creatorId)}`}{item.frequency !== "once" ? ` · ${frequencies[item.frequency]}` : ""}</small>{item.important && <span className="badge high">חשוב</span>}{occurrence.urgent && <span className="badge urgent">דחוף</span>}</td>
           <td>{item.hasDeadline && item.category !== "point" ? new Date(occurrence.dueDate + "T12:00:00Z").toLocaleDateString("he-IL") : "ללא מועד"}{item.hasDeadline && occurrence.dueDate < data.today && !occurrence.done && <small className="late">באיחור</small>}</td>
           <td>{item.assigneeIds.map(id => {
                   const approved = Boolean(occurrence.completions[id]) || item.completionMode === "shared" && Boolean(occurrence.completedAt);
                   const pending = Boolean(occurrence.reports[id]) && !approved;
-                  return <div className="completion-controls" key={id}><span>{item.assigneeIds.length > 1 || !isPersonalItem(item, userId) ? `${person(id)} · ` : ""}{approved ? "בוצע" : pending ? "ממתין לאישור" : "לא בוצע"}</span>{canWrite && (id === userId || item.creatorId === userId) && <button className={approved || pending ? "button secondary" : "button primary"} disabled={actions.busy} aria-label={`${approved || pending ? "לא בוצע" : "בוצע"}: ${item.title} ${person(id)}`} onClick={() => void actions.run([complete(occurrence, id, !(approved || pending))])}>{approved || pending ? "לא בוצע" : "בוצע"}</button>}{pending && item.creatorId === userId && canWrite && <><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, true, "approve")])}>אשר</button><button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, false, "reject")])}>החזר לטיפול</button></>}</div>;
+                  return <div className="completion-controls" key={id}><span>{item.assigneeIds.length > 1 || !isPersonalItem(item, userId) ? `${person(id)} · ` : ""}{approved ? "בוצע" : pending ? "ממתין לאישור" : "לא בוצע"}</span>{canWrite && (id === userId || manager) && <button className={approved || pending ? "button secondary" : "button primary"} disabled={actions.busy} aria-label={`${approved || pending ? "לא בוצע" : "בוצע"}: ${item.title} ${person(id)}`} onClick={() => void actions.run([complete(occurrence, id, !(approved || pending))])}>{approved || pending ? "לא בוצע" : "בוצע"}</button>}{pending && manager && canWrite && <><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, true, "approve")])}>אשר</button><button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, false, "reject")])}>החזר לטיפול</button></>}</div>;
                 })}</td>
-          <td>{item.creatorId === userId && canWrite && <div className="completion-controls"><button className="button secondary" onClick={() => {
+          <td>{(manager || item.assigneeIds.includes(userId)) && canWrite && <div className="completion-controls"><button className="button secondary" onClick={() => {
                     setEditing(item);
                     setModal(item.category === "point" ? "point" : "edit");
                   }}>עריכה</button>{item.category === "point" && <button className="button primary" onClick={() => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq,and } from "drizzle-orm";
 import { getDb, isDemo } from "./db";
 import { getAuth } from "./auth";
 import * as s from "./schema";
@@ -39,8 +39,9 @@ export async function refreshHostedPreviewRoles() {
   const organizations = await db.select().from(s.organizations);
   if (organizations.length !== 1 || organizations[0].id !== "demo-org")
     throw new Error("Role refresh requires the existing synthetic workspace");
-  const users = await db.select({ email: s.user.email }).from(s.user);
-  if (users.some((user) => !user.email.endsWith("@samgad.example")))
+  const users = await db.select({ id:s.user.id,email: s.user.email }).from(s.user);
+  const explicitGrants=await db.select({userId:s.workspaceAccessGrants.userId}).from(s.workspaceAccessGrants).innerJoin(s.workspaceSettings,and(eq(s.workspaceAccessGrants.organizationId,s.workspaceSettings.organizationId),eq(s.workspaceAccessGrants.grantedBy,s.workspaceSettings.ownerId))).where(eq(s.workspaceAccessGrants.organizationId,"demo-org"));
+  if (users.some((user) => !user.email.endsWith("@samgad.example") && !explicitGrants.some(g=>g.userId===user.id)))
     throw new Error("Role refresh refuses non-synthetic accounts");
   return seedSyntheticWorkspace();
 }
@@ -163,13 +164,16 @@ async function seedSyntheticWorkspace() {
       .insert(s.domains)
       .values(
         [
-          { id: "safety", name: "בטיחות", color: "#d49245" },
+          { id: "safety", name: "סמ״פים", color: "#d49245" },
           { id: "logistics", name: "לוגיסטיקה", color: "#358c85" },
-          { id: "maintenance", name: "אחזקה וטנ״א", color: "#688bba" },
+          { id: "maintenance", name: "טנ״א", color: "#688bba" },
           { id: "communications", name: "תקשוב", color: "#8877b5" },
-          { id: "medical", name: "תיאום רפואה", color: "#c1778d" },
-          { id: "infrastructure", name: "תשתיות ומחנה", color: "#7b9273" },
-          { id: "people", name: "כוח אדם וניהול", color: "#5e95a4" },
+          { id: "medical", name: "רפואה", color: "#c1778d" },
+          { id: "infrastructure", name: "בינוי", color: "#7b9273" },
+          { id: "people", name: "סמ״פים", color: "#5e95a4" },
+          { id: "demo-org:deputies", name: "סמ״פים", color: "#d49245" },
+          { id: "demo-org:transport", name: "הובלות", color: "#5e95a4" },
+          { id: "demo-org:armory", name: "נשקייה ותחמושת", color: "#967348" },
         ].map((d) => ({ ...d, organizationId: "demo-org" })),
       )
       .onConflictDoNothing();
@@ -186,6 +190,7 @@ async function seedSyntheticWorkspace() {
         })),
       )
       .onConflictDoNothing();
+    await tx.insert(s.workspaceSettings).values({organizationId:"demo-org",ownerId:ids[0],publicRead:true}).onConflictDoNothing();
     await tx
       .update(s.tasks)
       .set({ status: "in_progress", blockerReason: null })

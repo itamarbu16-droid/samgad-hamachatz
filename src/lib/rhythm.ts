@@ -1,9 +1,9 @@
 export const frequencies = {
   once: "חד־פעמית",
-  daily: "כל יום",
-  weekly: "פעם בשבוע",
-  fortnightly: "פעם בשבועיים",
-  monthly: "פעם בחודש",
+  daily: "יומי",
+  weekly: "שבועי",
+  fortnightly: "דו שבועי",
+  monthly: "חודשי",
   quarterly: "פעם ברבעון",
   semiannual: "פעם בחצי שנה",
   annual: "פעם בשנה",

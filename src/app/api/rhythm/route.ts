@@ -9,7 +9,7 @@ export async function GET(request: Request) {
       p,
       new URL(request.url).searchParams.get("month") || undefined,
     );
-    after(async () => {
+    if(!p.guest) after(async () => {
       try {
         await flushRhythmMail();
       } catch {

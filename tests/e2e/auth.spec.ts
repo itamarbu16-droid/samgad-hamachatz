@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { signInThroughForm } from './login';
 
-test('anonymous users cannot read the workspace', async ({ request }) => {
+test('anonymous visitors receive a read-only shared workspace', async ({ request }) => {
   const response = await request.get('/api/workspace');
-  expect(response.status()).toBe(401);
+  expect(response.status()).toBe(200);
+  const data=await response.json();expect(data.user.permissions.guest).toBe(true);expect(data.user.role).toBe('viewer');
+  expect(data.tasks.every((t:{creatorId:string;ownerId:string})=>t.creatorId!==t.ownerId)).toBe(true);
 });
 
 test('Hebrew login form signs a synthetic user into a persisted session', async ({ page }) => {

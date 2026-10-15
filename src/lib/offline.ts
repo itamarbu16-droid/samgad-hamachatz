@@ -46,7 +46,7 @@ export function project(snapshot: Row, queue: Pending[], user: Row): Row {
     if (op.url.startsWith('/api/tasks') && data.tasks) {
       if (op.method === 'POST') data.tasks.unshift({ ...b, id: `local-${op.id}`, creatorId: user.id, status: 'open', priority: 'normal', dueDate: null, description: '', comments: [], createdAt: now, updatedAt: now, version: 1, ...b });
       else { const row = data.tasks.find((r: Row) => r.id === id); if (row) {
-        const status = b.status === 'completed' && row.status !== 'pending_review' && row.ownerId !== row.creatorId && user.id !== row.creatorId ? 'pending_review' : b.status || row.status;
+        const status = b.status === 'completed' && row.status !== 'pending_review' && row.ownerId !== row.creatorId && user.id !== row.creatorId && !user.permissions?.editAll ? 'pending_review' : b.status || row.status;
         Object.assign(row, b, { status, version: b.version + 1 });
       } }
     }
@@ -106,6 +106,7 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
         const body = await response.clone().json();
         if (url === '/api/workspace') {
           if (!state || state.user.id !== body.user.id) state = await read(body.user.id) || { user: body.user, snapshots: {}, queue: [] };
+          state.user=body.user;
           localStorage.setItem(ACTIVE, body.user.id);
         }
         if (state && (url === '/api/workspace' || url.startsWith('/api/rhythm?') || url === '/api/documents')) { state.snapshots[url] = body; await write(state); return json(project(body, state.queue, state.user)); }

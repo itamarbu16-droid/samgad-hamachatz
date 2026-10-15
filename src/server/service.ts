@@ -2,7 +2,9 @@ import { and, eq, inArray, or, desc, sql, lt, type SQL } from 'drizzle-orm';
 import { randomUUID,createHash } from 'node:crypto';
 import { getDb, isDemo, type Database } from './db';
 import * as s from './schema';
-import { AppError, assertTransition, assertWrite, canRead, isManager, calculateMetrics, localDate, type Principal } from './policy';
+import { AppError, assertTransition, assertWrite, assertOwnTask, canEditAll, canRead, isManager, calculateMetrics, localDate, type Principal } from './policy';
+import { initializeWorkspace,ensureResponsibilityDomains } from './access';
+import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -32,22 +34,22 @@ export async function principalFor(userId: string, name: string): Promise<Princi
   const db = await getDb();
   const member = await db.select().from(s.memberships).where(and(eq(s.memberships.userId, userId), eq(s.memberships.active, true))).limit(2);
   if (member.length !== 1) throw new AppError(403, 'לא נמצאה הרשאה פעילה וחד־משמעית לארגון');
-  return { userId, name, organizationId: member[0].organizationId, role: member[0].role, companyId: member[0].companyId, domainId: member[0].domainId };
+  return initializeWorkspace({ userId, name, organizationId: member[0].organizationId, role: member[0].role, editAll:member[0].editAll, companyId:member[0].editAll?null:member[0].companyId, domainId:member[0].editAll?null:member[0].domainId });
 }
 function taskScope(p: Principal): SQL | undefined {
-  const filters = [eq(s.tasks.organizationId, p.organizationId)];
+  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.tasks.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.tasks.domainId, p.domainId));
-  if (p.role === 'contributor') filters.push(eq(s.tasks.ownerId, p.userId));
+  if (p.role === 'contributor' && !canEditAll(p)) filters.push(eq(s.tasks.ownerId, p.userId));
   return and(...filters);
 }
 function decisionScope(p: Principal): SQL | undefined {
-  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId)];
+  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.decisions.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.decisions.domainId, p.domainId));
-  if (p.role === 'contributor') filters.push(or(eq(s.decisions.requesterId, p.userId), eq(s.decisions.deciderId, p.userId)));
+  if (p.role === 'contributor' && !canEditAll(p)) filters.push(or(eq(s.decisions.requesterId, p.userId), eq(s.decisions.deciderId, p.userId)));
   return and(...filters);
 }
 async function findTask(db: Executor, p: Principal, id: string): Promise<Task> {
@@ -66,12 +68,13 @@ async function validateScope(db: Executor, p: Principal, record: { organizationI
 }
 async function validateAssignee(db: Executor, p: Principal, userId: string, scope: { companyId: string | null; domainId: string }, decision = false) {
   const [member] = await db.select().from(s.memberships).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.userId, userId), eq(s.memberships.active, true))).limit(1);
-  if (!member || ['admin','viewer'].includes(member.role) || (member.companyId && member.companyId !== scope.companyId) || (member.domainId && member.domainId !== scope.domainId) || (decision && !['deputy','staff','company_commander'].includes(member.role))) throw new AppError(422, 'לבעל התפקיד שנבחר אין הרשאה מתאימה לפריט זה');
+  if (!member || ['admin','viewer'].includes(member.role) || (member.companyId && member.companyId !== scope.companyId) || (member.domainId && member.domainId !== scope.domainId) || (decision && !member.editAll && !['deputy','staff','company_commander'].includes(member.role))) throw new AppError(422, 'לבעל התפקיד שנבחר אין הרשאה מתאימה לפריט זה');
 }
 async function audit(db: Executor, p: Principal, type: 'task'|'decision', id: string, action: string, summary: string, details: Record<string,unknown> = {}) {
   await db.insert(s.auditEvents).values({ id: randomUUID(), organizationId: p.organizationId, entityType: type, entityId: id, actorId: p.userId, action, summary, details });
 }
 export async function getWorkspace(p: Principal) {
+  if(canEditAll(p)) await ensureResponsibilityDomains(p);
   const db = await getDb();
   const taskRows = await db.select().from(s.tasks).where(taskScope(p)).orderBy(desc(s.tasks.updatedAt));
   const decisionRows = await db.select().from(s.decisions).where(decisionScope(p)).orderBy(desc(s.decisions.createdAt));
@@ -86,13 +89,15 @@ export async function getWorkspace(p: Principal) {
   const userRows = await db.select({ id: s.user.id, name: s.user.name, role: s.memberships.role, companyId: s.memberships.companyId, domainId: s.memberships.domainId }).from(s.memberships).innerJoin(s.user, eq(s.memberships.userId, s.user.id)).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.active, true)));
   const visibleUserIds = new Set([p.userId, ...taskRows.flatMap(t => [t.ownerId,t.creatorId]), ...decisionRows.flatMap(d => [d.deciderId,d.requesterId])]);
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
-  return { user: { id: p.userId, name: p.name, role: p.role }, tasks: taskRows.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: domainRows, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
+  const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));
+  const normalizedTasks=taskRows.map(t=>({...t,domainId:['safety','people'].includes(t.domainId)?`${p.organizationId}:deputies`:t.domainId}));
+  return { user: { id: p.userId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
 }
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();
   return db.transaction(async tx => idempotent(tx,p,'task.create',clientRequestId,data,async()=>{
     const task = { ...data, id: randomUUID(), organizationId: p.organizationId, companyId: data.companyId ?? p.companyId, creatorId: p.userId };
-    if (!isManager(p) && data.ownerId !== p.userId) throw new AppError(403, 'ניתן ליצור משימות לעצמך בלבד');
+    if (!canEditAll(p) && data.ownerId !== p.userId) throw new AppError(403, 'ניתן ליצור משימות לעצמך בלבד');
     await validateScope(tx,p,task); await validateAssignee(tx,p,task.ownerId,task);
     const [created] = await tx.insert(s.tasks).values(task).returning();
     await audit(tx,p,'task',created.id,'task.created',`נוצרה משימה: ${created.title}`,{ownerId:created.ownerId});
@@ -104,8 +109,9 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
   return db.transaction(async tx => idempotent(tx,p,`task.patch:${id}`,clientRequestId,{version,...data},async()=>{
     const before = await findTask(tx,p,id);
     if (before.version !== version) throw new AppError(409, 'המשימה השתנתה מאז שנפתחה. יש לרענן ולנסות שוב');
-    if (!isManager(p) && Object.keys(data).some(k => !['status','blockerReason'].includes(k))) throw new AppError(403, 'שינוי פרטי המשימה דורש הרשאת מנהל');
-    if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId) data.status = 'pending_review';
+    assertOwnTask(p,before);
+    if (!canEditAll(p) && Object.keys(data).some(k => ['ownerId','companyId','domainId','requiresReview'].includes(k))) throw new AppError(403,'שינוי הקצאה דורש הרשאת עריכה כללית');
+    if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId && !canEditAll(p)) data.status = 'pending_review';
     const next = { ...before, ...data };
     await validateScope(tx,p,next); await validateAssignee(tx,p,next.ownerId,next);
     if (data.status) assertTransition(p,before,data.status);
@@ -122,7 +128,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
 }
 export async function addComment(p: Principal,id: string,input: unknown) {
   assertWrite(p); const {body,clientRequestId} = commentInput.parse(input); const db=await getDb();
-  return db.transaction(async tx => idempotent(tx,p,`task.comment:${id}`,clientRequestId,{body},async()=>{ const task=await findTask(tx,p,id); const [comment]=await tx.insert(s.comments).values({id:randomUUID(),taskId:id,actorId:p.userId,body}).returning(); await audit(tx,p,'task',id,'task.comment',`נוסף עדכון למשימה: ${task.title}`); return comment; }));
+  return db.transaction(async tx => idempotent(tx,p,`task.comment:${id}`,clientRequestId,{body},async()=>{ const task=await findTask(tx,p,id); assertOwnTask(p,task); const [comment]=await tx.insert(s.comments).values({id:randomUUID(),taskId:id,actorId:p.userId,body}).returning(); await audit(tx,p,'task',id,'task.comment',`נוסף עדכון למשימה: ${task.title}`); return comment; }));
 }
 export async function createDecision(p: Principal,input: unknown) {
   assertWrite(p); const {clientRequestId,...data}=createDecisionInput.parse(input); const db=await getDb();
