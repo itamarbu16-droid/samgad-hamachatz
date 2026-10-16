@@ -2,11 +2,13 @@
 
 ## Behavior
 
-- A physical rightward swipe reveals personal pin/unpin and, where authorized, delete. A leftward swipe reveals deadline extension and calendar scheduling. Vertical scrolling is preserved. The ellipsis button provides the same actions for keyboard and desktop users. Swiping alone never deletes a task.
+- The task card follows the finger horizontally and snaps open to expose colored action buttons underneath: orange pin/unpin and authorized red delete on a physical rightward swipe; blue deadline extension and green calendar on a leftward swipe. Vertical scrolling is preserved. The ellipsis button opens an accessible actions dialog with the same operations, including editing and archiving where permitted. Only one card remains open; touching outside, swiping back, Escape, or saving closes it. Swiping alone never deletes a task.
 - Pins persist per workspace/user/task and take precedence over the selected sort order. One user's pins do not affect anyone else's list.
 - Managers or task creators may delete tasks. Assigned contributors may update their deadlines, but cannot delete a task created by their manager. Deletion hides the task and offers 60 seconds to undo; recurring deletion explicitly covers the series. Completed legacy tasks can also be deleted and restored with their completion state intact.
 - A recurring deadline extension changes only one occurrence. Its immutable scheduled date remains its identity, so subsequent calendar reads do not recreate the original occurrence.
 - Task deletion and deadline extension do not silently delete or move an event already added to Google Calendar.
+
+Cards share a readable title/owner/deadline hierarchy, restrained status colors, 44px minimum action targets and visible keyboard focus. Search remains visible while secondary filters and sorting are collapsed in a native disclosure.
 
 ## Calendar setup — required before real account connection
 
@@ -30,6 +32,6 @@ Google Calendar does not provide an atomic free/busy-check-and-insert operation.
 
 ## Validation
 
-Automated tests use an isolated synthetic database and mocked Google HTTP responses. They cover personal pin isolation/sorting, permissions, optimistic versions, deleting completed work, undo, independent recurrence extension without duplicate regeneration, OAuth state account binding, encrypted tokens, failed availability checks, booking retry recovery, account changes, boundaries and Jerusalem DST. No real calendar credentials or events were used. Physical touch/Safari and real OAuth consent remain unverified.
+Automated tests use an isolated synthetic database and mocked Google HTTP responses. They cover personal pin isolation/sorting, permissions, optimistic versions, deleting completed work, undo, independent recurrence extension without duplicate regeneration, OAuth state account binding, encrypted tokens, failed availability checks, booking retry recovery, account changes, boundaries and Jerusalem DST. No real calendar credentials or events were used. Gesture intent, snap thresholds, permission-dependent action widths, server-rendered inert rails, and the keyboard dialog alternative are covered by additional automated tests. Physical touch/Safari and real OAuth consent remain unverified.
 
 Official API references: https://developers.google.com/identity/protocols/oauth2/web-server and https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query .

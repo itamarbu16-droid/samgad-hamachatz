@@ -5,6 +5,7 @@ import { Plus, CheckCheck, CalendarDays, Users, NotebookPen } from "lucide-react
 import { isPersonalItem } from "@/lib/unit-roles";
 import { hasPendingReport,matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import { frequencies } from "@/lib/rhythm";
+import {TaskFilters} from "./task-filters";
 import {TaskActions,SwipeTaskRow} from "./task-actions";
 import { Modal, Empty } from "./workspace-primitives";
 import { TaskComposer, type Item, type Occurrence } from "./task-composer";
@@ -187,8 +188,7 @@ export default function PersonalRhythm({
             }]);
           }}><label>שם<input name="name" required defaultValue={group.name} /></label><fieldset className="role-chips"><legend>חברי הקבוצה</legend>{data.people.map(p => <label key={p.id}><input name="members" value={p.email} type="checkbox" defaultChecked={group.emails.includes(p.email)} /> {p.name}</label>)}</fieldset><button className="button secondary" disabled={actions.busy}>שמירה</button></form></section>)}</div>
     </> : <>
-      <div className="rhythm-toolbar">
-        <label>חיפוש<input value={query} onChange={e => updateView({q:e.target.value})} placeholder="משימה או בעל תפקיד" /></label>
+      <TaskFilters count={visible.length} active={filter!=="all"||sort!=="deadline_desc"} search={<label>חיפוש<input value={query} onChange={e => updateView({q:e.target.value})} placeholder="חיפוש משימה או בעל תפקיד…" /></label>}>
         <label>סינון<select value={filter} onChange={e => updateView({filter:e.target.value==="pending"?"pending_review":e.target.value==="open"?"active":e.target.value})} aria-label="סינון">{Object.entries({
               open: "פתוחות",
               actionable: "לביצוע",
@@ -202,30 +202,31 @@ export default function PersonalRhythm({
               completed: "בוצע",
               mine: "המשימות שלי",
               assigned: "הוקצו על ידי"
-            }).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+            }).map(([id, label]) => <option key={id} value={id==="pending"?"pending_review":id==="open"?"active":id}>{label}</option>)}</select></label>
         <label>מיון<select aria-label="מיון משימות" value={sort} onChange={e=>updateView({sort:e.target.value})}>{Object.entries(taskSorts).map(([id,label])=><option value={id} key={id}>{label}</option>)}</select></label>
         {tab === "rhythm" && <label>חודש<input type="month" value={month} onChange={e => updateView({month:e.target.value})} /></label>}
-        {canWrite && (manager || scope==="personal") && <button className="button primary" onClick={() => {
+      </TaskFilters>
+      <div className="rhythm-create-action">        {canWrite && (manager || scope==="personal") && <button className="button primary" onClick={() => {
           setEditing(undefined);
           setModal(tab === "points" ? "point" : "create");
         }}><Plus size={17} />{tab === "points" ? "הוספת נקודה" : "הוספת משימה"}</button>}
       </div>
       {tab === "points" && <p className="rhythm-info">מקום פרטי לנושאים שתרצה לקדם. אפשר להוסיף נקודה בלי מועד, ובהמשך להפוך אותה למשימה ולבחור אחראי.</p>}
       {selection.length > 0 && canWrite && <div className="bulk-toolbar" role="group" aria-label="פעולות על משימות נבחרות"><strong>{selection.length} נבחרו</strong><button className="button primary" disabled={actions.busy} onClick={() => void batch("done")}>סימון בוצע</button>{manager && <><button className="button secondary" disabled={actions.busy} onClick={() => void batch("approve")}>אישור דיווחים</button><select aria-label="אחראי למשימות הנבחרות" value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="button secondary" disabled={actions.busy || !bulkOwner} onClick={() => void batch("assign")}>שינוי אחראי</button></>}<button className="button secondary" onClick={() => setSelection([])}>ניקוי בחירה</button></div>}
-      <section className="panel rhythm-table-wrap"><table className="rhythm-table" role="table"><caption>{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}{canWrite && <label className="rhythm-select-all"><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} /><span>בחירת הכול</span></label>}</caption><thead><tr><th aria-label="בחירה"></th><th>המשימה</th><th>מועד</th><th>ביצוע</th><th>ניהול</th></tr></thead><tbody>
+      <section className="rhythm-card-list" aria-label="רשימת משימות"><div className="rhythm-list-heading">{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}{canWrite && <label className="rhythm-select-all"><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} /><span>בחירת הכול</span></label>}</div><div className="rhythm-cards">
         {visible.map(({
               item,
               occurrence
-            }) => <SwipeTaskRow as="tr" task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} id={`occurrence-${occurrence.id}`} key={occurrence.id} className={taskTone(occurrence.done,item.hasDeadline?occurrence.dueDate:null,data.today)}>
-          <td>{canWrite && (manager || item.assigneeIds.includes(userId)) && <label className="task-select-touch"><input type="checkbox" aria-label={`בחירת ${item.title}`} checked={selection.includes(occurrence.id)} onChange={e => setSelection(ids => e.target.checked ? [...ids, occurrence.id] : ids.filter(id => id !== occurrence.id))} /></label>}</td>
-          <td><strong>{data.pinnedTaskKeys?.includes("rhythm:"+item.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{item.title}</strong>{item.description && <small>{item.description}</small>}<small>{isPersonalItem(item, userId) ? "פרטי" : `הוקצה על ידי ${person(item.creatorId)}`}{item.frequency !== "once" ? ` · ${frequencies[item.frequency]}` : ""}</small>{item.important && <span className="badge high">חשוב</span>}{occurrence.urgent && <span className="badge urgent">דחוף</span>}</td>
-          <td>{item.hasDeadline && item.category !== "point" ? new Date(occurrence.dueDate + "T12:00:00Z").toLocaleDateString("he-IL") : "ללא מועד"}{item.hasDeadline && occurrence.dueDate < data.today && !occurrence.done && <small className="late">באיחור</small>}</td>
-          <td>{item.assigneeIds.map(id => {
+            }) => <SwipeTaskRow task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} title={item.title} pinned={Boolean(data.pinnedTaskKeys?.includes("rhythm:"+item.id))} canEdit={canWrite&&(manager||item.assigneeIds.includes(userId))} canDelete={canWrite&&(manager||item.creatorId===userId)} id={`occurrence-${occurrence.id}`} key={occurrence.id} className={`rhythm-task-card ${taskTone(occurrence.done,item.hasDeadline?occurrence.dueDate:null,data.today)}`}>
+          <div className="rhythm-task-selection">{canWrite && (manager || item.assigneeIds.includes(userId)) && <label className="task-select-touch"><input type="checkbox" aria-label={`בחירת ${item.title}`} checked={selection.includes(occurrence.id)} onChange={e => setSelection(ids => e.target.checked ? [...ids, occurrence.id] : ids.filter(id => id !== occurrence.id))} /></label>}</div>
+          <div className="rhythm-task-content"><strong>{data.pinnedTaskKeys?.includes("rhythm:"+item.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{item.title}</strong>{item.description && <small>{item.description}</small>}<small>{isPersonalItem(item, userId) ? "פרטי" : `הוקצה על ידי ${person(item.creatorId)}`}{item.frequency !== "once" ? ` · ${frequencies[item.frequency]}` : ""}</small>{item.important && <span className="badge high">חשוב</span>}{occurrence.urgent && <span className="badge urgent">דחוף</span>}</div>
+          <div className="rhythm-task-deadline"><span className="deadline-label">תג״ב: </span>{item.hasDeadline && item.category !== "point" ? new Date(occurrence.dueDate + "T12:00:00Z").toLocaleDateString("he-IL") : "ללא מועד"}{item.hasDeadline && occurrence.dueDate < data.today && !occurrence.done && <small className="late">באיחור</small>}</div>
+          <div className="rhythm-task-completion">{item.assigneeIds.map(id => {
                   const approved = Boolean(occurrence.completions[id]) || item.completionMode === "shared" && Boolean(occurrence.completedAt);
                   const pending = Boolean(occurrence.reports[id]) && !approved;
                   return <div className="completion-controls" key={id}><span>{item.assigneeIds.length > 1 || !isPersonalItem(item, userId) ? `${person(id)} · ` : ""}{approved ? "בוצע" : pending ? "ממתין לאישור" : "לא בוצע"}</span>{canWrite && (id === userId || manager) && <button className={approved || pending ? "button secondary" : "button primary"} disabled={actions.busy} aria-label={`${approved || pending ? "לא בוצע" : "בוצע"}: ${item.title} ${person(id)}`} onClick={() => void actions.run([complete(occurrence, id, !(approved || pending))])}>{approved || pending ? "לא בוצע" : "בוצע"}</button>}{pending && manager && canWrite && <><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, true, "approve")])}>אשר</button><button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, false, "reject")])}>החזר לטיפול</button></>}</div>;
-                })}</td>
-          <td><TaskActions task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} title={item.title} version={item.version} occurrenceVersion={occurrence.version} dueDate={item.hasDeadline?occurrence.dueDate:null} pinned={Boolean(data.pinnedTaskKeys?.includes("rhythm:"+item.id))} canEdit={canWrite&&(manager||item.assigneeIds.includes(userId))} canDelete={canWrite&&(manager||item.creatorId===userId)} recurring={item.frequency!=="once"} onSaved={load}/>{(manager || item.assigneeIds.includes(userId)) && canWrite && <div className="completion-controls"><button className="button secondary" onClick={() => {
+                })}</div>
+          <div className="rhythm-task-management"><TaskActions task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} title={item.title} version={item.version} occurrenceVersion={occurrence.version} dueDate={item.hasDeadline?occurrence.dueDate:null} pinned={Boolean(data.pinnedTaskKeys?.includes("rhythm:"+item.id))} canEdit={canWrite&&(manager||item.assigneeIds.includes(userId))} canDelete={canWrite&&(manager||item.creatorId===userId)} recurring={item.frequency!=="once"} onSaved={load}>{(manager || item.assigneeIds.includes(userId)) && canWrite && <div className="completion-controls"><button className="button secondary" onClick={() => {
                     setEditing(item);
                     setModal(item.category === "point" ? "point" : "edit");
                   }}>עריכה</button>{item.category === "point" && <button className="button primary" onClick={() => {
@@ -233,9 +234,9 @@ export default function PersonalRhythm({
                     setModal("convert");
                   }}>הפיכה למשימה</button>}{(manager||item.creatorId===userId)&&<button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([patch(item, {
                     archived: true
-                  })])}>ארכוב</button>}</div>}</td>
+                  })])}>ארכוב</button>}</div>}</TaskActions></div>
         </SwipeTaskRow>)}
-      </tbody></table>{!visible.length && <Empty>אין פריטים בתצוגה הזו. אפשר להוסיף חדש או לשנות סינון.</Empty>}</section>
+      </div>{!visible.length && <Empty>אין פריטים בתצוגה הזו. אפשר להוסיף חדש או לשנות סינון.</Empty>}</section>
       {canWrite && <details><summary>ארכיון</summary>{data.items.filter(item => item.archived && (scope === "personal" ? isPersonalItem(item, userId) : tab === "all" || !manageRhythm || !isPersonalItem(item, userId)) && item.creatorId === userId).map(item => <p key={item.id}>{item.title} <button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([patch(item, {
             archived: false
           })])}>שחזור</button></p>)}</details>}

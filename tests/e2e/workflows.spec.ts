@@ -33,14 +33,16 @@ test("create with only a title and complete a private task with persisted status
     .click();
   await expect(dialog).not.toBeVisible();
   await expect(openCount).toHaveText(String(before + 1));
+  if (!await page.getByLabel("סינון", {exact:true}).isVisible()) await page.locator(".task-filter-details > summary").click();
   await page.getByLabel("סינון", { exact: true }).selectOption("all");
-  const row = page.locator(".rhythm-table tbody tr").filter({ hasText: title });
+  const row = page.locator(".rhythm-task-card").filter({ hasText: title });
   await expect(row).toContainText("פרטי");
   await expect(row).toContainText("ללא מועד");
   await row.getByRole("button", {name: /^בוצע:/}).click();
   await expect(row).toContainText("בוצע");
   await expect(openCount).toHaveText(String(before));
   await page.reload();
+  if (!await page.getByLabel("סינון", {exact:true}).isVisible()) await page.locator(".task-filter-details > summary").click();
   await page.getByLabel("סינון", { exact: true }).selectOption("all");
   await expect(row).toContainText("בוצע");
   const persisted = await (await page.request.get("/api/rhythm")).json();

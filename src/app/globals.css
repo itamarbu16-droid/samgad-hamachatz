@@ -1950,18 +1950,28 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 .badge.blocked,.badge.pending_review,.badge.clarification_requested{background:#3a2a12;color:#ffcf83}
 .badge.completed,.badge.approved{background:#17331f;color:#b0e9be}
 
-/* Task gestures expose explicit actions; a swipe never deletes by itself. */
-.swipe-task-row{touch-action:pan-y;position:relative}
-.task-action-control{position:relative;min-width:44px;overflow:visible}
-.task-action-menu{display:flex;flex-wrap:wrap;gap:7px;align-items:center;padding:10px;margin-top:6px;border:1px solid #66513a;border-radius:12px;background:#1e1913;max-width:100%}
-.task-action-menu>button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:9px 12px;background:#2b231b;color:#f4eee7;border:1px solid #514131;border-radius:9px;font-size:14px}
-.task-action-menu>button.danger-action{color:#ffbdb3;background:#351a17;border-color:#6b3931}
-.task-action-error{color:#ffbdb3;overflow-wrap:anywhere;font-size:14px;margin:8px 0}
-.task-pin-label{color:#ffc687;font-size:14px;font-weight:500}
-.task-swipe-help{font-size:14px;color:#bdb3a6;line-height:1.7;margin:10px 0}
-.task-row>.task-action-control{flex-basis:100%;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-.task-row>.task-action-control>.task-options{margin-inline-start:auto}
-.task-row .task-action-menu{flex:1}
+/* Sliding task cards: screen directions intentionally stay physical in RTL. */
+.swipe-task-shell{position:relative;isolation:isolate;overflow:hidden;border-radius:14px;margin:0 14px 12px;scroll-margin-block:110px;background:#25211b}
+.swipe-task-front{position:relative;z-index:1;touch-action:pan-y pinch-zoom;transform:translate3d(var(--swipe-offset,0px),0,0);transition:transform 220ms cubic-bezier(.2,.8,.2,1);backface-visibility:hidden}
+.is-dragging .swipe-task-front{transition:none;user-select:none;cursor:grabbing}
+.task-underlay{position:absolute;top:0;bottom:0;display:flex;direction:ltr;visibility:hidden}
+.task-underlay-right{left:0}.task-underlay-left{right:0}
+.is-revealing-right>.task-underlay-right,.is-revealing-left>.task-underlay-left{visibility:visible}
+.task-underlay>button{width:76px;min-width:76px;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;border:0;border-radius:0;padding:10px 3px;direction:rtl;font-size:13px;font-weight:700;line-height:1.35;cursor:pointer}
+.swipe-delete{background:#aa2b30!important;color:#fff!important}
+.swipe-pin{background:#ee8c32!important;color:#211204!important}
+.swipe-extend{background:#245e9b!important;color:#fff!important}
+.swipe-calendar{background:#206d4d!important;color:#fff!important}
+.task-action-control{position:relative;min-width:44px}
+.task-action-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0;border:0;background:transparent;margin:18px 0}
+.task-action-menu>button{display:flex;align-items:center;justify-content:center;gap:9px;min-height:58px;padding:12px;border:0;border-radius:12px;font-size:15px;font-weight:600}
+.task-menu-title{font-size:18px;line-height:1.6;overflow-wrap:anywhere}
+.task-extra-actions{border-top:1px solid var(--border);padding-top:14px}
+.task-extra-actions .completion-controls{display:flex;flex-wrap:wrap;gap:10px}
+.task-action-error{color:#ffbdb3;overflow-wrap:anywhere;font-size:15px;margin:8px 0}
+.task-pin-label{display:inline-flex;gap:4px;color:#ffc687;font-size:14px;font-weight:600}
+.task-swipe-help{font-size:14px;color:#c5bdb2;line-height:1.7;margin:10px 0}
+.task-list-hint{padding:0 18px;margin:0 0 12px}
 .task-action-notice{z-index:300;bottom:calc(100px + env(safe-area-inset-bottom));background:#1f2118;border-color:#83925d;color:#f2efea}
 .dialog-actions,.deadline-shortcuts{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
 .button.danger{background:#9f3127;border-color:#e38274;color:#fff}
@@ -1972,7 +1982,62 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 .calendar-slots{display:grid;gap:10px;margin-top:18px}.calendar-slots>label{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px;border:1px solid var(--border);border-radius:10px}
 .calendar-slots input[type=radio]{width:20px;height:20px;accent-color:#f47724}
 .calendar-slots small,.calendar-reconnect{display:block;color:#bab1a5;font-size:14px;margin-top:12px}
-@media(min-width:701px){.task-row:has(>.task-action-control){flex-wrap:wrap}.task-row>.task-action-control{flex-basis:auto}.task-row .task-action-menu{position:absolute;top:44px;left:0;width:350px;z-index:30;box-shadow:0 8px 28px #0009}}
-@media(max-width:700px){.task-action-menu{width:100%;gap:6px}.task-action-menu>button{flex:1}.calendar-window{grid-template-columns:minmax(0,1fr)}.task-row>.task-action-control>.task-options{margin-inline-start:0}.task-row>.task-action-control{border-top:1px solid var(--border);padding-top:6px}.task-row .task-action-menu{flex-basis:100%}}
+
+@media(max-width:700px){.calendar-window{grid-template-columns:minmax(0,1fr)}}
 .calendar-fields{border:0;padding:0;margin:0;min-width:0}
-@media(min-width:701px){.task-row .task-action-menu{max-width:min(350px,calc(100vw - 32px))}}
+
+
+/* One hierarchy across manager, deputies and personal tasks. */
+.battalion-app .swipe-task-front.task-row,.rhythm-task-card{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto 44px;gap:12px;align-items:center;min-width:0;padding:18px 16px;border:1px solid #484138;border-inline-start:4px solid #5c5346;border-radius:14px;background:#191816!important;color:#f4f1ec}
+.battalion-app .swipe-task-front.task-done,.rhythm-task-card.task-done{background:#171d17!important;border-inline-start-color:#63bd7b!important;color:#f4f1ec}
+.battalion-app .swipe-task-front.task-overdue,.rhythm-task-card.task-overdue{background:#201918!important;border-inline-start-color:#ff7771!important;color:#f4f1ec}
+.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#211d17!important;border-inline-start-color:#ffb34f!important;color:#f4f1ec}
+.task-row>.status-dot{display:none}
+.task-row>.task-main{grid-column:2;text-align:start;padding:0;min-height:44px;align-self:center}
+.task-row>input{grid-column:1;grid-row:1;align-self:center;justify-self:center}
+.task-row>.task-row-end{grid-column:3;grid-row:1;align-items:flex-start}
+.task-row>.button{grid-column:4;grid-row:1;min-height:44px;min-width:72px}
+.task-row>.task-action-control{grid-column:5;grid-row:1}
+.battalion-app .task-main strong,.rhythm-task-content>strong{font-size:17px;line-height:1.55;font-weight:650;color:#f4f1ec}
+.battalion-app .task-row .row-meta,.battalion-app .task-row .date,.rhythm-task-card small,.rhythm-task-deadline{color:#c9c2b8;font-size:14px;line-height:1.6}
+.task-row .row-meta{display:block}.task-row .date{white-space:normal}
+.rhythm-task-card .late,.battalion-app .task-row .date.late{color:#ffb5ad}
+.task-row .badge,.rhythm-task-card .badge{font-size:12px;padding:4px 8px}
+.rhythm-card-list{min-width:0}.rhythm-list-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;font-size:17px;font-weight:700;padding:8px 0 12px}
+.rhythm-cards{display:grid;gap:12px;min-width:0}.rhythm-cards>.swipe-task-shell{margin:0}
+.rhythm-task-card{grid-template-columns:32px minmax(180px,1fr) minmax(90px,130px) minmax(150px,260px) 44px;align-items:start}
+.rhythm-task-selection{grid-column:1}.rhythm-task-content{grid-column:2;overflow-wrap:anywhere;min-width:0}
+.rhythm-task-content small{display:block;margin-top:5px}.rhythm-task-content .badge{margin:6px 0 0 6px}
+.rhythm-task-deadline{grid-column:3;padding-top:5px}.rhythm-task-deadline small{display:block}
+.rhythm-task-completion{grid-column:4;min-width:0}.rhythm-task-management{grid-column:5}
+.rhythm-task-completion .completion-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:3px 0 8px;line-height:1.5;font-size:14px}
+.rhythm-task-completion .completion-controls>span{flex:1;min-width:70px}.rhythm-task-completion .button{min-height:44px;font-size:14px}
+.rhythm-task-card input[type=checkbox]{width:20px;height:20px;accent-color:var(--teal)}
+.task-filterbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:16px 18px;margin-bottom:6px;min-width:0;background:#151310;border-radius:12px}
+.task-filter-search{flex:1 1 220px;min-width:0}.task-filter-search label{margin:0;color:#c9c2b8;font-size:14px}
+.task-filter-search .search-field{margin:0;padding:0 12px}.task-filter-search input{width:100%;min-height:46px;font-size:16px}
+.task-filter-details{display:block;flex:0 0 auto}.task-filter-details[open]{flex-basis:100%;order:3}.task-filter-details[open]>summary{width:max-content}.task-filter-details>summary{display:flex;list-style:none;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:10px 12px;border:1px solid #5d5143;border-radius:10px;background:#211b15;cursor:pointer;font-size:14px;font-weight:600}
+.task-filter-details>summary::-webkit-details-marker{display:none}
+.task-filter-details[open]>summary>svg:last-child{transform:rotate(180deg)}
+.task-filter-fields{display:flex;flex-wrap:wrap;gap:12px;flex-basis:100%;width:100%;padding-top:8px;order:3}
+.task-filter-fields>label{flex:1 1 180px;margin:0;font-size:14px;color:#c9c2b8;min-width:0}
+.task-filter-fields select,.task-filter-fields input{width:100%;min-height:46px;font-size:16px}
+.task-result-count{font-size:14px;color:#c9c2b8;white-space:nowrap}
+.filter-active-dot{width:8px;height:8px;border-radius:50%;background:#ffac62}
+.rhythm-create-action{margin:10px 0}.rhythm-create-action:empty{display:none}
+.task-tabs button{min-height:44px;font-size:14px}.task-tabs{scrollbar-width:thin}
+button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #ffc477!important;outline-offset:3px}
+.task-underlay button:focus-visible{outline-offset:-4px}
+@media(max-width:1000px){.rhythm-task-card{grid-template-columns:32px minmax(0,1fr) 44px}.rhythm-task-content{grid-column:2;grid-row:1}.rhythm-task-selection{grid-row:1}.rhythm-task-management{grid-column:3;grid-row:1}.rhythm-task-deadline{grid-column:2;grid-row:2;padding:0}.rhythm-task-completion{grid-column:2/-1;grid-row:3;border-top:1px solid #413a31;padding-top:10px}}
+@media(max-width:700px){
+ .battalion-app .swipe-task-front.task-row{grid-template-columns:28px minmax(0,1fr) 44px;gap:8px;padding:14px 12px;align-items:start}
+ .task-row>.task-main{grid-column:2;grid-row:1}.task-row>.task-row-end{grid-column:2/-1;grid-row:2;flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+ .task-row>.task-action-control{grid-column:3;grid-row:1}.task-row>.button{grid-column:2/-1;grid-row:3;justify-self:start;margin-top:4px}
+ .rhythm-task-card{padding:14px 12px;gap:8px;grid-template-columns:28px minmax(0,1fr) 44px}
+ .task-filterbar{padding:12px;gap:10px}.task-filter-search{flex-basis:100%}.task-filter-details>summary{flex:1}.task-filter-fields{flex-direction:column;gap:12px}.task-filter-fields>label{flex:initial;width:100%}
+ .task-result-count{margin-inline-start:auto}.swipe-task-shell{margin-inline:10px}
+ .battalion-app .capture-button{width:52px;height:52px;min-width:52px;left:18px;right:auto}
+ .battalion-app .main-content{padding-bottom:calc(170px + env(safe-area-inset-bottom))}
+ .tasks-panel{padding-bottom:72px}
+}
+@media(prefers-reduced-motion:reduce){.swipe-task-front{transition:none}.task-filter-details>summary>svg{transition:none}}

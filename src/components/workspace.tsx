@@ -7,6 +7,7 @@ import CommandDashboard from "./command-dashboard";
 import DeputiesDashboard from "./deputies-dashboard";
 import AccessSettings from "./access-settings";
 import {TaskActions,TaskActionNotice,SwipeTaskRow} from "./task-actions";
+import {TaskFilters} from "./task-filters";
 import {CalendarConnection} from "./task-calendar";
 import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import PersonalRhythm from "./personal-rhythm";
@@ -28,7 +29,6 @@ import {
   Clock3,
   AlertCircle,
   ChevronLeft,
-  SlidersHorizontal,
   RefreshCw,
   UserRound,
   CalendarDays,
@@ -343,13 +343,13 @@ export default function Workspace() {
   ];
   function taskRow(t: Task) {
     const canAct = canEditTask(t);
-    return <SwipeTaskRow key={t.id} task={{kind:"task",id:t.id}} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
+    return <SwipeTaskRow key={t.id} task={{kind:"task",id:t.id}} title={t.title} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
       {view === "tasks" && canAct && <input type="checkbox" aria-label={`בחירת ${t.title}`} checked={taskSelection.includes(t.id)} onChange={e=>setTaskSelection(ids=>e.target.checked?[...ids,t.id]:ids.filter(id=>id!==t.id))}/>}
       <span className={`status-dot ${t.status}`} />
       <button className="task-main task-open" onClick={() => go(view, filter, domain, t.id, query)}>
         <strong>{data!.pinnedTaskKeys?.includes("task:"+t.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{t.title}</strong><span className="row-meta">{domainName(t.domainId)} · {person(t.ownerId)}</span>
       </button>
-      <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>{date(t.dueDate)}</span></span>
+      <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
       <TaskActions task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
@@ -628,8 +628,7 @@ export default function Workspace() {
                   </button>
                 ))}
               </div>
-              <div className="filters">
-                <label className="search-field">
+              <TaskFilters count={filtered.length} active={Boolean(domain)||sort!=="deadline_desc"} search={<label className="search-field">
                   <Search size={17} />
                   <input
                     aria-label="חיפוש משימות"
@@ -644,9 +643,8 @@ export default function Workspace() {
                       window.dispatchEvent(new PopStateEvent("popstate"));
                     }}
                   />
-                </label>
+                </label>}>
                 <label className="filter-select">
-                  <SlidersHorizontal size={16} />
                   <select
                     aria-label="תחום אחריות"
                     value={domain}
@@ -663,8 +661,8 @@ export default function Workspace() {
                   </select>
                 </label>
                 <label>מיון<select aria-label="מיון רשימת המשימות" value={sort} onChange={e=>{const p=new URLSearchParams(location.search);p.set("sort",e.target.value);history.replaceState({},"",location.pathname+"?"+p);window.dispatchEvent(new PopStateEvent("popstate"));}}>{Object.entries(taskSorts).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
-                <span className="results-count">{filtered.length} משימות</span>
-              </div>
+              </TaskFilters>
+              <p className="task-swipe-help task-list-hint">החליקו משימה לפעולות מהירות · או לחצו על ⋯</p>
               {taskSelection.length>0 && canWrite && <div className="bulk-toolbar"><strong>{taskSelection.length} נבחרו</strong><button className="button primary" disabled={taskActions.busy} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && !["completed","cancelled"].includes(t.status) && (manager || t.ownerId===data.user.id) && (t.status!=="pending_review" || manager)).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:manager?"completed":"pending_review"}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>ביצוע / אישור</button>{manager && <><select aria-label="אחראי למשימות הנבחרות" value={batchOwner} onChange={e=>setBatchOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.users.filter(u=>!["viewer","admin"].includes(u.role)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><button className="button secondary" disabled={taskActions.busy || !batchOwner} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && manager).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,ownerId:batchOwner}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>שינוי אחראי</button></>}<button className="button secondary" onClick={()=>setTaskSelection([])}>ניקוי בחירה</button></div>}
               {filtered.length ? (
                 filtered.map(taskRow)
