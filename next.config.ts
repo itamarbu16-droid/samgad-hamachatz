@@ -10,7 +10,8 @@ const config: NextConfig = {
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }
-    ] }];
+    ] }, ...(process.env.VERCEL_GIT_COMMIT_REF === 'feature/tutorial-recording' ? [{source:'/training',headers:[{key:'X-Frame-Options',value:'SAMEORIGIN'}]}] : [])];
   }
 };
 export default config;
+
