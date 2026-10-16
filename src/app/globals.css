@@ -2041,3 +2041,9 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,s
  .tasks-panel{padding-bottom:72px}
 }
 @media(prefers-reduced-motion:reduce){.swipe-task-front{transition:none}.task-filter-details>summary>svg{transition:none}}
+
+/* Gesture owns horizontal moves; vertical moves retain normal page scrolling. */
+.swipe-task-front{touch-action:auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.battalion-app .swipe-task-front.task-done,.rhythm-task-card.task-done{background:#101a12!important;border-inline-start-color:#347a46!important}
+.battalion-app .swipe-task-front.task-overdue,.rhythm-task-card.task-overdue{background:#211110!important;border-inline-start-color:#a33e39!important}
+.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#211b0d!important;border-inline-start-color:#aa7726!important}

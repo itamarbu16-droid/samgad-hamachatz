@@ -1,3 +1,4 @@
+import {flushPush} from "@/server/notifications";
 import { timingSafeEqual } from "node:crypto";
 import { refreshRhythmSchedule } from "@/server/rhythm";
 import { flushRhythmMail } from "@/server/rhythm-mail";
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     await refreshRhythmSchedule();
+    await flushPush();
     const result = await flushRhythmMail();
     return Response.json(result, {
       status: result.failed ? 503 : 200,

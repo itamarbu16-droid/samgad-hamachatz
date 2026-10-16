@@ -1,3 +1,5 @@
+import {after} from "next/server";
+import {flushPush} from "./notifications";
 import { ZodError } from "zod";
 import { getAuth } from "./auth";
 import { AppError, type Principal } from "./policy";
@@ -22,6 +24,7 @@ export async function api(
     if (!session) throw new AppError(401, "הכניסה למיילים מורשים בלבד. יש להתחבר");
     const principal: Principal = await principalFor(session.user.id, session.user.name);
     const result = await handler(principal);
+    if(!["GET","HEAD"].includes(request.method)&&!new URL(request.url).pathname.startsWith("/api/push"))after(async()=>{try{await flushPush();}catch{console.error("Push delivery deferred");}});
     if (result instanceof Response) return result;
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

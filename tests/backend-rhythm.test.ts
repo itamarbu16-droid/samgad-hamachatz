@@ -264,7 +264,7 @@ describe("private and assigned persisted workflows", () => {
       version: rows[0].version,
       done: true,
     });
-    await refreshRhythmSchedule(new Date(addDays(today, 35) + "T12:00:00Z"));
+    await refreshRhythmSchedule(new Date(addDays(today, 20) + "T12:00:00Z"));
     rows = (await getRhythm(deputy)).occurrences.filter(
       (row) => row.itemId === item.id,
     );

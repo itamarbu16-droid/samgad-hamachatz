@@ -12,8 +12,9 @@ export function hasPendingReport(reports:Record<string,string>,completions:Recor
 }
 export function matchesTaskFilter(task:FilterTask,filter:string,today:string,userId?:string) {
  const active=!task.done && !task.cancelled;
+ if(task.done && filter!=='completed')return false;
  switch(filter) {
-  case 'all': return !task.cancelled;
+  case 'all': return active;
   case 'mine': return task.ownerId===userId || Boolean(userId && task.assigneeIds?.includes(userId));
   case 'assigned': return task.creatorId===userId;
   case 'active': case 'open': return active;

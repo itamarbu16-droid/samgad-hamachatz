@@ -79,7 +79,7 @@ export function TaskComposer({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const date = String(form.get("startDate") || "");
+    const date = item && role!=="deputy" ? item.hasDeadline?item.startDate:"" : String(form.get("startDate") || "");
     const common = {
       title: String(form.get("title")),
       description: String(form.get("description") || ""),
@@ -88,7 +88,7 @@ export function TaskComposer({
       recipientIds: isPoint ? [userId] : recipients,
       category: isPoint ? "point" : "task",
       hasDeadline: !isPoint && (frequency !== "once" || Boolean(date)),
-      ...(!item || item.frequency === "once" ? {
+      ...(!item || item.frequency === "once" && role==="deputy" ? {
         startDate: date || data.today
       } : {})
     };
@@ -109,7 +109,7 @@ export function TaskComposer({
         {data.people.map(person => <button key={person.id} type="button" className={recipients.includes(person.id) ? "button primary" : "button secondary"} aria-pressed={recipients.includes(person.id)} onClick={() => toggle(person.id)}>{person.id === userId ? "אני" : person.name}</button>)}
         {data.groups.filter(g => g.emails.length > 1).map(group => <button key={group.id} type="button" className="button secondary" onClick={() => setRecipients([...new Set(data.people.filter(p => group.emails.includes(p.email)).map(p => p.id))])}>{group.name}</button>)}
       </fieldset>}
-      <label>{frequency === "once" ? "מועד סיום — רשות" : "מועד התחלה"}<input type="date" name="startDate" defaultValue={item?.hasDeadline || frequency !== "once" ? item?.startDate || data.today : ""} disabled={Boolean(item && item.frequency !== "once")} /></label>
+      <label>{frequency === "once" ? "מועד סיום — רשות" : "מועד התחלה"}<input type="date" name="startDate" defaultValue={item?.hasDeadline || frequency !== "once" ? item?.startDate || data.today : ""} disabled={Boolean(item && (item.frequency !== "once" || role!=="deputy"))} /></label>
     </>}
     <details open={Boolean(item?.description || item?.important || item?.manualUrgent || recurring)}>
       <summary>פרטים נוספים — הכול לבחירה</summary>

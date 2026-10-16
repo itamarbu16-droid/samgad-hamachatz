@@ -32,7 +32,7 @@ it('keeps pins personal and puts pinned tasks first for every sorting choice',as
  await actOnTask(deputy,{kind:'task',id:task.id,action:'pin',pinned:false});expect(await getPins(deputy)).not.toContain('task:'+task.id);
 });
 it('extends permitted deadlines, rejects stale versions and protects manager-assigned deletions',async()=>{
- const task=await assigned();await actOnTask(deputy,{kind:'task',id:task.id,action:'extend',version:1,date:addDays(today,4)});
+ const task=await assigned();await expect(actOnTask(deputy,{kind:'task',id:task.id,action:'extend',version:1,date:addDays(today,4)})).rejects.toMatchObject({status:403});await actOnTask(owner,{kind:'task',id:task.id,action:'extend',version:1,date:addDays(today,4)});
  expect((await getWorkspace(deputy)).tasks.find(t=>t.id===task.id)?.dueDate).toBe(addDays(today,4));
  await expect(actOnTask(owner,{kind:'task',id:task.id,action:'delete',version:1})).rejects.toMatchObject({status:409});
  await expect(actOnTask(deputy,{kind:'task',id:task.id,action:'delete',version:2})).rejects.toMatchObject({status:403});
