@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useRef,useState,type ReactNode,type PointerEvent} from 'react';
 import {createPortal} from 'react-dom';
-import {swipeIntent,swipeTarget,clampSwipe} from '@/lib/task-swipe';
+import {swipeIntent,swipeTarget,clampSwipe,renderedSwipeOffset} from '@/lib/task-swipe';
 import {CalendarPlus,MoreHorizontal,Pin,PinOff,Trash2,CalendarClock} from 'lucide-react';
 import {Modal} from './workspace-primitives';
 import {addDays} from '@/lib/rhythm';
@@ -14,29 +14,44 @@ async function send(url:string,body:object){const r=await fetch(url,{method:'POS
 type SwipeAction = 'pin'|'delete'|'extend'|'calendar';
 type SwipeRowProps = Pick<TaskActionProps,'task'|'title'|'pinned'|'canEdit'|'canDelete'> & {className?:string;children:ReactNode;id?:string};
 export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,className='',children,id}:SwipeRowProps){
- const root=useRef<HTMLDivElement>(null);
- const start=useRef<{x:number;y:number;id:number;base:number;horizontal:boolean}|null>(null);
- const swiped=useRef(false);
- const [offset,setOffset]=useState(0),[dragging,setDragging]=useState(false);
+ const root=useRef<HTMLDivElement>(null),front=useRef<HTMLDivElement>(null);
+ const start=useRef<{x:number;y:number;id:number;base:number;rest:number;horizontal:boolean;lastX:number;lastTime:number;velocity:number}|null>(null);
+ const offset=useRef(0),frame=useRef<number|null>(null),swiped=useRef(false);
+ const [openSide,setOpenSide]=useState(0);
  const key=rowKey(task),rightWidth=canDelete?152:76,leftWidth=canEdit?152:76;
- const close=useCallback(()=>{start.current=null;setDragging(false);setOffset(0);},[]);
+ // Movement is transient DOM state: React only updates when the card settles.
+ const paint=useCallback((value:number,keepRail=false)=>{
+  const element=root.current;if(!element)return;
+  element.style.setProperty('--swipe-offset',`${value}px`);
+  if(value||!keepRail){element.classList.toggle('is-revealing-right',value>0);element.classList.toggle('is-revealing-left',value<0);}
+ },[]);
+ const settle=useCallback((target:number)=>{
+  if(frame.current!==null){cancelAnimationFrame(frame.current);frame.current=null;}
+  paint(offset.current,true);
+  // Commit the last finger position before enabling the settle transition.
+  if(root.current?.classList.contains('is-dragging'))front.current?.getBoundingClientRect();
+  root.current?.classList.remove('is-dragging');
+  root.current?.classList.toggle('is-open',target!==0);
+  start.current=null;offset.current=target;paint(target,true);setOpenSide(Math.sign(target));
+ },[paint]);
+ const close=useCallback(()=>settle(0),[settle]);
  useEffect(()=>{
   const other=(event:Event)=>{if((event as CustomEvent).detail?.key!==key)close();};
-  window.addEventListener('samgad:swipe-open',other);
-  window.addEventListener('samgad:saved',close);
-  return()=>{window.removeEventListener('samgad:swipe-open',other);window.removeEventListener('samgad:saved',close);};
+  window.addEventListener('samgad:swipe-open',other);window.addEventListener('samgad:saved',close);
+  return()=>{window.removeEventListener('samgad:swipe-open',other);window.removeEventListener('samgad:saved',close);if(frame.current!==null)cancelAnimationFrame(frame.current);};
  },[key,close]);
  useEffect(()=>{
-  if(!offset||dragging)return;
+  if(!openSide)return;
   const outside=(event:globalThis.PointerEvent)=>{if(!root.current?.contains(event.target as Node))close();};
   const escape=(event:KeyboardEvent)=>{if(event.key==='Escape')close();};
   document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
   return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);};
- },[offset,dragging,close]);
+ },[openSide,close]);
  function begin(event:PointerEvent<HTMLDivElement>){
   if(event.isPrimary)swiped.current=false;
   if(!event.isPrimary||event.button!==0||(event.target as HTMLElement).closest('input,select,textarea,label,.task-action-control'))return;
-  start.current={x:event.clientX,y:event.clientY,id:event.pointerId,base:offset,horizontal:false};
+  const base=renderedSwipeOffset(getComputedStyle(event.currentTarget).transform,offset.current);
+  start.current={x:event.clientX,y:event.clientY,id:event.pointerId,base,rest:offset.current,horizontal:false,lastX:event.clientX,lastTime:event.timeStamp,velocity:0};
  }
  function move(event:PointerEvent<HTMLDivElement>){
   const gesture=start.current;if(!gesture||gesture.id!==event.pointerId)return;
@@ -45,33 +60,48 @@ export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,className='',c
    const intent=swipeIntent(dx,dy);
    if(intent==='vertical'){start.current=null;return;}
    if(intent!=='horizontal')return;
-   gesture.horizontal=true;swiped.current=true;setDragging(true);
+   gesture.horizontal=true;swiped.current=true;setOpenSide(0);
+   root.current?.classList.add('is-dragging');
+   // Child buttons may have implicit touch capture. Their bubbled capture-loss
+   // event is not cancellation of the foreground's gesture.
    event.currentTarget.setPointerCapture(event.pointerId);
    window.dispatchEvent(new CustomEvent('samgad:swipe-open',{detail:{key}}));
   }
-  setOffset(clampSwipe(gesture.base+dx,rightWidth,leftWidth));
+  const dt=event.timeStamp-gesture.lastTime;
+  if(dt>0){gesture.velocity=(event.clientX-gesture.lastX)/dt;gesture.lastTime=event.timeStamp;gesture.lastX=event.clientX;}
+  offset.current=clampSwipe(gesture.base+dx,rightWidth,leftWidth);
+  if(frame.current===null)frame.current=requestAnimationFrame(()=>{frame.current=null;paint(offset.current);});
  }
  function finish(event:PointerEvent<HTMLDivElement>){
   const gesture=start.current;if(!gesture||gesture.id!==event.pointerId)return;
-  start.current=null;setDragging(false);
-  if(gesture.horizontal)setOffset(swipeTarget(gesture.base+event.clientX-gesture.x,rightWidth,leftWidth));
+  if(!gesture.horizontal){start.current=null;return;}
+  const velocity=event.timeStamp-gesture.lastTime<100?gesture.velocity:0;
+  const finalOffset=clampSwipe(gesture.base+event.clientX-gesture.x,rightWidth,leftWidth);
+  settle(swipeTarget(finalOffset,rightWidth,leftWidth,velocity,gesture.base));
+ }
+ function cancel(event:PointerEvent<HTMLDivElement>){
+  const gesture=start.current;
+  if(gesture?.id===event.pointerId)settle(gesture.rest);
  }
  function action(value:SwipeAction){close();window.dispatchEvent(new CustomEvent('samgad:task-action',{detail:{key,action:value}}));}
- return <div ref={root} id={id} className={`swipe-task-shell ${dragging?'is-dragging':''} ${offset?'is-open':''} ${offset>0?'is-revealing-right':offset<0?'is-revealing-left':''}`} style={{'--swipe-offset':`${offset}px`} as React.CSSProperties}
+ return <div ref={root} id={id} className="swipe-task-shell"
   onKeyDown={event=>{if(event.key==='Escape')close();}}
   onClickCapture={event=>{
-   if(swiped.current&&(event.target as HTMLElement).closest('.swipe-task-front')){event.preventDefault();event.stopPropagation();swiped.current=false;return;}
-   if(offset&&(event.target as HTMLElement).closest('.swipe-task-front')){event.preventDefault();event.stopPropagation();close();}
+   if(!(event.target as HTMLElement).closest('.swipe-task-front'))return;
+   if(swiped.current){event.preventDefault();event.stopPropagation();swiped.current=false;return;}
+   if(offset.current){event.preventDefault();event.stopPropagation();close();}
   }}>
-  <div className="task-underlay task-underlay-right" role="group" aria-label={`הצמדה ומחיקה: ${title}`} aria-hidden={offset<=0||dragging} inert={offset<=0||dragging}>
+  <div className="task-underlay task-underlay-right" role="group" aria-label={`הצמדה ומחיקה: ${title}`} aria-hidden={openSide!==1} inert={openSide!==1}>
    {canDelete&&<button type="button" className="swipe-delete" aria-label={`מחיקת ${title}`} onClick={()=>action('delete')}><Trash2 size={24}/><span>מחיקה</span></button>}
    <button type="button" className="swipe-pin" aria-label={`${pinned?'ביטול הצמדת':'הצמדת'} ${title}`} onClick={()=>action('pin')}>{pinned?<PinOff size={24}/>:<Pin size={24}/>}<span>{pinned?'בטל הצמדה':'הצמדה'}</span></button>
   </div>
-  <div className="task-underlay task-underlay-left" role="group" aria-label={`תג״ב ויומן: ${title}`} aria-hidden={offset>=0||dragging} inert={offset>=0||dragging}>
+  <div className="task-underlay task-underlay-left" role="group" aria-label={`תג״ב ויומן: ${title}`} aria-hidden={openSide!==-1} inert={openSide!==-1}>
    {canEdit&&<button type="button" className="swipe-extend" aria-label={`הארכת תג״ב: ${title}`} onClick={()=>action('extend')}><CalendarClock size={24}/><span>הארך תג״ב</span></button>}
    <button type="button" className="swipe-calendar" aria-label={`הוספת ${title} ליומן`} onClick={()=>action('calendar')}><CalendarPlus size={24}/><span>הוסף ליומן</span></button>
   </div>
-  <div className={`${className} swipe-task-front`} onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={close} onLostPointerCapture={()=>{if(start.current)close();}}>{children}</div>
+  <div ref={front} className={`${className} swipe-task-front`} onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel}
+   onLostPointerCapture={event=>{if(event.target===event.currentTarget)cancel(event);}}
+   onTransitionEnd={event=>{if(event.target===event.currentTarget&&event.propertyName==='transform'&&!offset.current)paint(0);}}>{children}</div>
  </div>;
 }
 export function TaskActions(props:TaskActionProps & {children?:ReactNode}){

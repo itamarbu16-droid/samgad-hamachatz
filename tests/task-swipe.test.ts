@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {swipeIntent,swipeTarget,clampSwipe} from '../src/lib/task-swipe';
+import {swipeIntent,swipeTarget,clampSwipe,renderedSwipeOffset} from '../src/lib/task-swipe';
 import {SwipeTaskRow,TaskActions} from '../src/components/task-actions';
 import {TaskFilters} from '../src/components/task-filters';
 
@@ -22,6 +22,26 @@ describe('task gesture intent and physical directions',()=>{
  it('closes or changes sides when dragging an already open card back',()=>{
   expect(swipeTarget(152-130,152,152)).toBe(0);
   expect(swipeTarget(152-220,152,152)).toBe(-152);
+ });
+ it('opens a quick short flick in either physical direction but ignores slow jitter',()=>{
+  expect(swipeTarget(24,152,152,.7)).toBe(152);
+  expect(swipeTarget(-24,152,152,-.7)).toBe(-152);
+  expect(swipeTarget(24,152,152,.05)).toBe(0);
+ });
+ it('closes an open card with a short reverse flick instead of snapping open again',()=>{
+  expect(swipeTarget(130,152,152,-.6,152)).toBe(0);
+  expect(swipeTarget(-130,152,152,.6,-152)).toBe(0);
+ });
+ it('supports a modest slow return stroke and keeps small accidental drags open',()=>{
+  expect(swipeTarget(100,152,152,0,152)).toBe(0);
+  expect(swipeTarget(140,152,152,0,152)).toBe(152);
+  expect(swipeTarget(-100,152,152,0,-152)).toBe(0);
+ });
+ it('resumes from the actual on-screen position when a settle animation is interrupted',()=>{
+  const actual=renderedSwipeOffset('matrix(1, 0, 0, 1, 61.5, 0)',152);
+  expect(actual).toBe(61.5);expect(clampSwipe(actual+15,152,152)).toBe(76.5);
+  expect(renderedSwipeOffset('matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -42, 0, 0, 1)',-152)).toBe(-42);
+  expect(renderedSwipeOffset('none',152)).toBe(0);
  });
  it('never exposes more than the available actions even with a long drag',()=>{
   expect(clampSwipe(800,76,152)).toBe(76);expect(clampSwipe(-800,76,152)).toBe(-152);

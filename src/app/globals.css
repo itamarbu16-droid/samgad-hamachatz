@@ -1952,8 +1952,8 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 
 /* Sliding task cards: screen directions intentionally stay physical in RTL. */
 .swipe-task-shell{position:relative;isolation:isolate;overflow:hidden;border-radius:14px;margin:0 14px 12px;scroll-margin-block:110px;background:#25211b}
-.swipe-task-front{position:relative;z-index:1;touch-action:pan-y pinch-zoom;transform:translate3d(var(--swipe-offset,0px),0,0);transition:transform 220ms cubic-bezier(.2,.8,.2,1);backface-visibility:hidden}
-.is-dragging .swipe-task-front{transition:none;user-select:none;cursor:grabbing}
+.swipe-task-front{position:relative;z-index:1;touch-action:pan-y pinch-zoom;transform:translate3d(var(--swipe-offset,0px),0,0);transition:transform 190ms cubic-bezier(.22,.75,.25,1);backface-visibility:hidden}
+.is-dragging .swipe-task-front{transition:none;user-select:none;-webkit-user-select:none;cursor:grabbing;will-change:transform}
 .task-underlay{position:absolute;top:0;bottom:0;display:flex;direction:ltr;visibility:hidden}
 .task-underlay-right{left:0}.task-underlay-left{right:0}
 .is-revealing-right>.task-underlay-right,.is-revealing-left>.task-underlay-left{visibility:visible}
