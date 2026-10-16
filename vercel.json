@@ -1,9 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/rhythm",
-      "schedule": "0 5 * * *"
-    }
-  ],
-  "buildCommand": "npm run db:preview-rhythm && npm run build"
+  "buildCommand": "npm run build"
 }
