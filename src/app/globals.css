@@ -1949,3 +1949,30 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 .badge.in_progress,.badge.pending,.badge.high{background:#172d36;color:#a2d9ed}
 .badge.blocked,.badge.pending_review,.badge.clarification_requested{background:#3a2a12;color:#ffcf83}
 .badge.completed,.badge.approved{background:#17331f;color:#b0e9be}
+
+/* Task gestures expose explicit actions; a swipe never deletes by itself. */
+.swipe-task-row{touch-action:pan-y;position:relative}
+.task-action-control{position:relative;min-width:44px;overflow:visible}
+.task-action-menu{display:flex;flex-wrap:wrap;gap:7px;align-items:center;padding:10px;margin-top:6px;border:1px solid #66513a;border-radius:12px;background:#1e1913;max-width:100%}
+.task-action-menu>button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:9px 12px;background:#2b231b;color:#f4eee7;border:1px solid #514131;border-radius:9px;font-size:14px}
+.task-action-menu>button.danger-action{color:#ffbdb3;background:#351a17;border-color:#6b3931}
+.task-action-error{color:#ffbdb3;overflow-wrap:anywhere;font-size:14px;margin:8px 0}
+.task-pin-label{color:#ffc687;font-size:14px;font-weight:500}
+.task-swipe-help{font-size:14px;color:#bdb3a6;line-height:1.7;margin:10px 0}
+.task-row>.task-action-control{flex-basis:100%;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.task-row>.task-action-control>.task-options{margin-inline-start:auto}
+.task-row .task-action-menu{flex:1}
+.task-action-notice{z-index:300;bottom:calc(100px + env(safe-area-inset-bottom));background:#1f2118;border-color:#83925d;color:#f2efea}
+.dialog-actions,.deadline-shortcuts{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
+.button.danger{background:#9f3127;border-color:#e38274;color:#fff}
+.calendar-connection{padding:24px;max-width:750px;line-height:1.8}.calendar-connection>svg{color:#ffab63}
+.calendar-setup-note{background:#2b2115;border:1px solid #79603a;padding:16px;border-radius:12px}
+.calendar-window{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}
+.calendar-window label{min-width:0}.calendar-window input,.calendar-window select{width:100%;min-height:44px}
+.calendar-slots{display:grid;gap:10px;margin-top:18px}.calendar-slots>label{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px;border:1px solid var(--border);border-radius:10px}
+.calendar-slots input[type=radio]{width:20px;height:20px;accent-color:#f47724}
+.calendar-slots small,.calendar-reconnect{display:block;color:#bab1a5;font-size:14px;margin-top:12px}
+@media(min-width:701px){.task-row:has(>.task-action-control){flex-wrap:wrap}.task-row>.task-action-control{flex-basis:auto}.task-row .task-action-menu{position:absolute;top:44px;left:0;width:350px;z-index:30;box-shadow:0 8px 28px #0009}}
+@media(max-width:700px){.task-action-menu{width:100%;gap:6px}.task-action-menu>button{flex:1}.calendar-window{grid-template-columns:minmax(0,1fr)}.task-row>.task-action-control>.task-options{margin-inline-start:0}.task-row>.task-action-control{border-top:1px solid var(--border);padding-top:6px}.task-row .task-action-menu{flex-basis:100%}}
+.calendar-fields{border:0;padding:0;margin:0;min-width:0}
+@media(min-width:701px){.task-row .task-action-menu{max-width:min(350px,calc(100vw - 32px))}}

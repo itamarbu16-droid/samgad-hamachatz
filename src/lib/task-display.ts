@@ -35,7 +35,8 @@ export function taskTone(done:boolean,due:string|null,today:string) {
  if(due<=addDays(today,1))return 'task-due-soon';
  return '';
 }
-export function compareTasks(a:{title:string;dueDate:string|null;done:boolean;id:string},b:typeof a,sort:TaskSort) {
+export function compareTasks(a:{title:string;dueDate:string|null;done:boolean;id:string;pinned?:boolean},b:typeof a,sort:TaskSort) {
+ if(Boolean(a.pinned)!==Boolean(b.pinned))return Number(Boolean(b.pinned))-Number(Boolean(a.pinned));
  if(sort==='title')return a.title.localeCompare(b.title,'he') || a.id.localeCompare(b.id);
  if(sort==='status' && a.done!==b.done)return Number(a.done)-Number(b.done);
  if(!a.dueDate && b.dueDate)return 1;

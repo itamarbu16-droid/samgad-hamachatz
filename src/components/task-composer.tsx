@@ -37,6 +37,7 @@ export type Occurrence = {
   completedBy: string | null;
 };
 export type RhythmData = {
+  pinnedTaskKeys?:string[];
   today: string;
   month: string;
   items: Item[];

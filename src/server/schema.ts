@@ -1,6 +1,10 @@
+import {sql} from 'drizzle-orm';
 import { pgTable, text, timestamp, boolean, integer, date, jsonb, index, uniqueIndex, bigint } from 'drizzle-orm/pg-core';
 
 export const rateLimit = pgTable('auth_rate_limit', { id: text('id').primaryKey(), key: text('key').notNull().unique(), count: integer('count').notNull(), lastRequest: bigint('last_request', { mode: 'number' }).notNull() });
+export const taskPins=pgTable('task_pins',{id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),userId:text('user_id').notNull(),taskKey:text('task_key').notNull()});
+export const calendarConnections=pgTable('calendar_connections',{id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),userId:text('user_id').notNull(),encryptedTokens:text('encrypted_tokens').notNull()});
+export const calendarBookings=pgTable('calendar_bookings',{id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),userId:text('user_id').notNull(),taskKey:text('task_key').notNull(),eventId:text('event_id').notNull(),eventUrl:text('event_url').notNull(),startsAt:text('starts_at').notNull(),endsAt:text('ends_at').notNull()});
 export const mutationReceipts = pgTable('mutation_receipts', { key: text('key').primaryKey(), fingerprint: text('fingerprint').notNull(), result: jsonb('result'), createdAt: timestamp('created_at', {withTimezone:true}).notNull().defaultNow() });
 
 export const user = pgTable('auth_user', {
@@ -70,10 +74,10 @@ export const rhythmItems = pgTable('rhythm_items', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 export const rhythmOccurrences = pgTable('rhythm_occurrences', {
-  id: text('id').primaryKey(), itemId: text('item_id').notNull().references(() => rhythmItems.id), dueDate: date('due_date').notNull(),
+  id: text('id').primaryKey(), itemId: text('item_id').notNull().references(() => rhythmItems.id), dueDate: date('due_date').notNull(), scheduledDate:date('scheduled_date'),
   reports: jsonb('reports').$type<Record<string, string>>().notNull().default({}), completions: jsonb('completions').$type<Record<string, string>>().notNull().default({}), completedBy: text('completed_by').references(() => user.id),
   completedAt: timestamp('completed_at', { withTimezone: true }), urgent: boolean('urgent').notNull().default(false), version: integer('version').notNull().default(1),
-}, (t) => [uniqueIndex('rhythm_occurrence_item_date').on(t.itemId, t.dueDate)]);
+}, (t) => [uniqueIndex('rhythm_occurrence_schedule').on(t.itemId, sql`coalesce(${t.scheduledDate},${t.dueDate})`)]);
 export const rhythmMail = pgTable('rhythm_mail', {
   id: text('id').primaryKey(), occurrenceId: text('occurrence_id').notNull().references(() => rhythmOccurrences.id),
   recipientId: text('recipient_id').notNull().references(() => user.id), kind: text('kind').notNull(),

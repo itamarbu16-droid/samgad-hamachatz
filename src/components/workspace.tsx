@@ -6,6 +6,8 @@ import DocumentLibrary from "./document-library";
 import CommandDashboard from "./command-dashboard";
 import DeputiesDashboard from "./deputies-dashboard";
 import AccessSettings from "./access-settings";
+import {TaskActions,TaskActionNotice,SwipeTaskRow} from "./task-actions";
+import {CalendarConnection} from "./task-calendar";
 import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import PersonalRhythm from "./personal-rhythm";
 import TaskTools from "./task-tools";
@@ -79,6 +81,7 @@ type Decision = {
 };
 type Data = {
   user: Person;
+  pinnedTaskKeys?: string[];
   tasks: Task[];
   decisions: Decision[];
   domains: { id: string; name: string; color: string }[];
@@ -125,6 +128,7 @@ const nav = [
   ["decisions", "ממתין להחלטה", CircleHelp],
   ["domains", "אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
+  ["calendar", "היומן שלי", CalendarDays],
 ] as const;
 const date = (s: string | null) =>
   s
@@ -329,7 +333,7 @@ export default function Workspace() {
       (!domain || t.domainId === domain) &&
       matchesTaskFilter({done:t.status==='completed',pending:t.status==='pending_review',cancelled:t.status==='cancelled',dueDate:t.dueDate,urgent:t.priority==='urgent',important:['high','urgent'].includes(t.priority),ownerId:t.ownerId,creatorId:t.creatorId,status:t.status},filter,data.today,data.user.id),
   );
-  filtered.sort((a,b)=>compareTasks({...a,done:a.status==="completed"},{...b,done:b.status==="completed"},sort));
+  filtered.sort((a,b)=>compareTasks({...a,done:a.status==="completed",pinned:data.pinnedTaskKeys?.includes("task:"+a.id)},{...b,done:b.status==="completed",pinned:data.pinnedTaskKeys?.includes("task:"+b.id)},sort));
   const canEditTask=(t:Task)=>canWrite && (manager || t.ownerId===data!.user.id);
   const attention = [
     ...late,
@@ -339,15 +343,16 @@ export default function Workspace() {
   ];
   function taskRow(t: Task) {
     const canAct = canEditTask(t);
-    return <div key={t.id} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
+    return <SwipeTaskRow key={t.id} task={{kind:"task",id:t.id}} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
       {view === "tasks" && canAct && <input type="checkbox" aria-label={`בחירת ${t.title}`} checked={taskSelection.includes(t.id)} onChange={e=>setTaskSelection(ids=>e.target.checked?[...ids,t.id]:ids.filter(id=>id!==t.id))}/>}
       <span className={`status-dot ${t.status}`} />
       <button className="task-main task-open" onClick={() => go(view, filter, domain, t.id, query)}>
-        <strong>{t.title}</strong><span className="row-meta">{domainName(t.domainId)} · {person(t.ownerId)}</span>
+        <strong>{data!.pinnedTaskKeys?.includes("task:"+t.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{t.title}</strong><span className="row-meta">{domainName(t.domainId)} · {person(t.ownerId)}</span>
       </button>
       <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>{date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
-    </div>;
+      <TaskActions task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+    </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"]) {
     return items.length ? (
@@ -571,8 +576,9 @@ export default function Workspace() {
               scope="personal"
             />
           )}
-          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
-          {view === "dashboard" && !ownerInterface && <DeputiesDashboard user={data.user} tasks={data.tasks} today={data.today} go={go} />}
+          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
+          {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
+          {view === "calendar" && <CalendarConnection/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
@@ -804,6 +810,7 @@ export default function Workspace() {
         {[["domains","אחריות",UsersRound],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
       </nav>
       {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation">{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
+      <TaskActionNotice/>
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
       {notice && (

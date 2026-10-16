@@ -4,6 +4,7 @@ import { getDb, isDemo, type Database } from './db';
 import * as s from './schema';
 import { AppError, assertTransition, assertWrite, assertOwnTask, canEditAll, canRead, isManager, calculateMetrics, localDate, type Principal } from './policy';
 import { initializeWorkspace,ensureResponsibilityDomains } from './access';
+import {getPins} from './task-pins';
 import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
 
@@ -52,7 +53,7 @@ function decisionScope(p: Principal): SQL | undefined {
   if (p.role === 'contributor' && !canEditAll(p)) filters.push(or(eq(s.decisions.requesterId, p.userId), eq(s.decisions.deciderId, p.userId)));
   return and(...filters);
 }
-async function findTask(db: Executor, p: Principal, id: string): Promise<Task> {
+export async function findTask(db: Executor, p: Principal, id: string): Promise<Task> {
   const rows = await db.select().from(s.tasks).where(and(taskScope(p), eq(s.tasks.id, id))).limit(1);
   if (!rows[0]) throw new AppError(404, 'המשימה לא נמצאה או אינה זמינה לך');
   return rows[0];
@@ -91,7 +92,7 @@ export async function getWorkspace(p: Principal) {
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
   const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));
   const normalizedTasks=taskRows.map(t=>({...t,domainId:['safety','people'].includes(t.domainId)?`${p.organizationId}:deputies`:t.domainId}));
-  return { user: { id: p.userId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
+  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
 }
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();
@@ -152,4 +153,18 @@ export async function updateDecision(p: Principal,id: string,input: unknown) {
     if(!updated) throw new AppError(409,'הבקשה השתנתה. יש לרענן ולנסות שוב');
     await audit(tx,p,'decision',id,'decision.resolved',`עודכנה החלטה: ${updated.title}`,{before:before.status,after:updated.status,notes:updated.notes}); return updated;
   });
+}
+
+export async function deleteTask(p:Principal,id:string,version:number){
+ assertWrite(p);const db=await getDb();
+ return db.transaction(async tx=>{
+  const before=await findTask(tx,p,id);assertOwnTask(p,before);
+  if(!canEditAll(p)&&before.creatorId!==p.userId)throw new AppError(403,'רק יוצר המשימה או מנהל רשאי למחוק אותה');
+  if(before.version!==version)throw new AppError(409,'המשימה השתנתה. יש לרענן');
+  const [updated]=await tx.update(s.tasks).set({status:'cancelled',completedAt:null,completedBy:null,version:version+1,updatedAt:new Date()}).where(and(eq(s.tasks.id,id),eq(s.tasks.version,version),taskScope(p))).returning();
+  if(!updated)throw new AppError(409,'המשימה השתנתה. יש לרענן');
+  await audit(tx,p,'task',id,'task.deleted',`נמחקה משימה: ${before.title}`);
+  const undoToken=randomUUID();await tx.insert(s.rhythmUndo).values({id:undoToken,organizationId:p.organizationId,actorId:p.userId,kind:'task',entityId:id,snapshot:{task:before,occurrences:[]},expectedVersion:updated.version,expiresAt:new Date(Date.now()+60000)});
+  return {...updated,undoToken};
+ });
 }

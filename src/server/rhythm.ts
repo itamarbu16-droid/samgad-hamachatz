@@ -1,3 +1,4 @@
+import {getPins} from './task-pins';
 import { and, eq, inArray, sql, lt } from "drizzle-orm";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
@@ -178,7 +179,7 @@ async function materialize(
         .values(
           dates
             .slice(index, index + 100)
-            .map((dueDate) => ({ id: randomUUID(), itemId: item.id, dueDate })),
+            .map((dueDate) => ({ id: randomUUID(), itemId: item.id, dueDate, scheduledDate:dueDate })),
         )
         .onConflictDoNothing()
         .returning();
@@ -447,6 +448,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
     );
   const eligible = isManager(p) ? await eligiblePeople(db, p) : [];
   return {
+    pinnedTaskKeys:await getPins(p),
     month,
     today,
     items,
@@ -569,7 +571,7 @@ async function resolveRecipientIds(db: Database | Tx, p: Principal, ids: string[
     throw new AppError(403, "אחד מבעלי התפקידים אינו זמין לשיוך");
   return unique;
 }
-async function rememberUndo(tx: Tx, p: Principal, kind: string, entityId: string,
+export async function rememberUndo(tx: Tx, p: Principal, kind: string, entityId: string,
   snapshot: typeof s.rhythmUndo.$inferInsert["snapshot"], expectedVersion: number) {
   const id = randomUUID();
   await tx.delete(s.rhythmUndo).where(lt(s.rhythmUndo.expiresAt,new Date()));
@@ -593,6 +595,7 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
     if (!before) throw new AppError(404,"המשימה אינה זמינה לך");
     if (!canEditAll(p) && !before.assigneeIds.includes(p.userId)) throw new AppError(403,"אפשר לערוך רק משימה שהוקצתה לך");
     if (!canEditAll(p) && recipientIds && JSON.stringify(recipientIds)!==JSON.stringify(before.assigneeIds)) throw new AppError(403,"שינוי אחראים דורש הרשאת עריכה כללית");
+    if(data.archived!==undefined&&!canEditAll(p)&&before.creatorId!==p.userId)throw new AppError(403,"רק יוצר המשימה או מנהל רשאי למחוק אותה");
     if (before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
     const assigneeIds = recipientIds === undefined || JSON.stringify(recipientIds)===JSON.stringify(before.assigneeIds) ? before.assigneeIds :
       (await resolveRecipientIds(tx,p,recipientIds));
@@ -614,7 +617,7 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
       const reports = reassign ? {} : row.reports;
       const dueDate = data.startDate || row.dueDate;
       const done = !reassign && completed(item,row);
-      const [updated] = await tx.update(s.rhythmOccurrences).set({completions,reports,dueDate,
+      const [updated] = await tx.update(s.rhythmOccurrences).set({completions,reports,dueDate,scheduledDate:data.startDate||row.scheduledDate,
         completedAt:reassign ? null : row.completedAt, completedBy:reassign ? null : row.completedBy,
         urgent:item.category !== "point" && rhythmUrgent(item,dueDate,done,localDate()),version:row.version+1})
         .where(and(eq(s.rhythmOccurrences.id,row.id),eq(s.rhythmOccurrences.version,row.version))).returning();
