@@ -153,7 +153,7 @@ function Badge({
     </span>
   );
 }
-export default function Workspace() {
+export default function Workspace({recording=false}:{recording?:boolean}={}) {
   const [data, setData] = useState<Data | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -200,7 +200,8 @@ export default function Workspace() {
     if (q) p.set("q", q);
     if(sort!=="deadline_desc")p.set("sort",sort);
     if(v==="tasks" && location.search.includes("tab=all"))p.set("tab","all");
-    history.pushState({}, "", `${data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
+    if(recording)p.set("role",data?.user.permissions?.manageAccess?"manager":"deputy");
+    history.pushState({}, "", `${recording?"/training":data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
   async function load() {
@@ -212,7 +213,7 @@ export default function Workspace() {
       }
       const j = await r.json();
       if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
-      const base = j.user.permissions?.manageAccess ? '/' : '/deputies';
+      const base = recording?'/training':j.user.permissions?.manageAccess ? '/' : '/deputies';
       const params = new URLSearchParams(location.search);
       if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
         params.delete('view');
