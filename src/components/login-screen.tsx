@@ -2,12 +2,13 @@
 import { useState, type FormEvent } from "react";
 import { Modal } from "@/components/workspace-primitives";
 import { ArrowLeft } from "lucide-react";
-export default function LoginScreen({deputies=false}:{deputies?:boolean}) {
+export default function LoginScreen({deputies=false,recordingEnter}:{deputies?:boolean;recordingEnter?:()=>void}) {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if(recordingEnter){recordingEnter();return;}
     setBusy(true);
     setError("");
     const f = new FormData(e.currentTarget);
@@ -53,6 +54,7 @@ export default function LoginScreen({deputies=false}:{deputies?:boolean}) {
               אימייל
               <input
                 name="email"
+                defaultValue={recordingEnter?deputies?"deputy@example.com":"manager@example.com":undefined}
                 type="email"
                 dir="ltr"
                 autoComplete="username"
@@ -64,6 +66,7 @@ export default function LoginScreen({deputies=false}:{deputies?:boolean}) {
               סיסמה
               <input
                 name="password"
+                defaultValue={recordingEnter?"example-only":undefined}
                 type="password"
                 dir="ltr"
                 autoComplete="current-password"

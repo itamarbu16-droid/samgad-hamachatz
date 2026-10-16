@@ -10,6 +10,8 @@ import {TaskActions,TaskActionNotice,SwipeTaskRow} from "./task-actions";
 import {TaskFilters} from "./task-filters";
 import {CalendarConnection} from "./task-calendar";
 import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
+import {DeadlineRequests} from "./deadline-requests";
+import {PushSettings} from "./push-settings";
 import PersonalRhythm from "./personal-rhythm";
 import TaskTools from "./task-tools";
 import {useTaskMutations} from "./use-rhythm";
@@ -200,8 +202,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
     if (q) p.set("q", q);
     if(sort!=="deadline_desc")p.set("sort",sort);
     if(v==="tasks" && location.search.includes("tab=all"))p.set("tab","all");
-    if(recording)p.set("role",data?.user.permissions?.manageAccess?"manager":"deputy");
-    history.pushState({}, "", `${recording?"/training":data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
+    history.pushState({}, "", `${recording ? "/training" : data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
   async function load() {
@@ -213,7 +214,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
       }
       const j = await r.json();
       if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
-      const base = recording?'/training':j.user.permissions?.manageAccess ? '/' : '/deputies';
+      const base = recording ? '/training' : j.user.permissions?.manageAccess ? '/' : '/deputies';
       const params = new URLSearchParams(location.search);
       if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
         params.delete('view');
@@ -344,7 +345,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
   ];
   function taskRow(t: Task) {
     const canAct = canEditTask(t);
-    return <SwipeTaskRow key={t.id} task={{kind:"task",id:t.id}} title={t.title} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
+    return <SwipeTaskRow canExtendDirectly={ownerInterface} key={t.id} task={{kind:"task",id:t.id}} title={t.title} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
       {view === "tasks" && canAct && <input type="checkbox" aria-label={`בחירת ${t.title}`} checked={taskSelection.includes(t.id)} onChange={e=>setTaskSelection(ids=>e.target.checked?[...ids,t.id]:ids.filter(id=>id!==t.id))}/>}
       <span className={`status-dot ${t.status}`} />
       <button className="task-main task-open" onClick={() => go(view, filter, domain, t.id, query)}>
@@ -352,7 +353,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
       </button>
       <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
-      <TaskActions task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+      <TaskActions canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"]) {
@@ -512,6 +513,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
           </div>
         </header>
         <main className="main-content">
+          <DeadlineRequests manager={ownerInterface}/>
           <TaskTools key={data.user.id} userId={data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
           <div className="page-heading">
             <div>
@@ -612,10 +614,10 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
                   ["all", "כל המשימות"],
                   ["mine", "המשימות שלי"],
                   ["actionable", "לביצוע"],
-                  ["tomorrow", "למחר"],
+                  ["tomorrow", "דחוף"],
                   ["overdue", "באיחור"],
                   ["pending_review", "לבדיקה"],
-                  ["completed", "הושלמו"],
+                  ["completed", "ארכיון משימות שבוצעו"],
                 ].map(([id, label]) => (
                   <button
                     key={id}
@@ -629,7 +631,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
                   </button>
                 ))}
               </div>
-              <TaskFilters count={filtered.length} active={Boolean(domain)||sort!=="deadline_desc"} search={<label className="search-field">
+              <TaskFilters archived={filter==="completed"} onArchive={()=>go("tasks",filter==="completed"?"all":"completed")} count={filtered.length} active={Boolean(domain)||sort!=="deadline_desc"} search={<label className="search-field">
                   <Search size={17} />
                   <input
                     aria-label="חיפוש משימות"
@@ -806,9 +808,9 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
         </main>
       </div>
       <nav className="mobile-nav" aria-label="ניווט ראשי">
-        {[["domains","אחריות",UsersRound],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
+        {[["records","סיכומי ישיבות",NotebookPen],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
       </nav>
-      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation">{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
+      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation"><PushSettings/>{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
       <TaskActionNotice/>
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
@@ -992,7 +994,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
                             dueDate: f.get("dueDate") || null,
                           }
                         : {
-                            title:f.get("title"),status: f.get("status"),priority:f.get("priority"),dueDate:f.get("dueDate")||null,
+                            title:f.get("title"),status: f.get("status"),priority:f.get("priority"),dueDate:manager?f.get("dueDate")||null:task.dueDate,
                           }),
                     },
                     "פרטי המשימה עודכנו",
@@ -1070,6 +1072,7 @@ export default function Workspace({recording=false}:{recording?:boolean}={}) {
                           name="dueDate"
                           type="date"
                           defaultValue={task.dueDate || ""}
+                          disabled={!manager}
                         />
                       </label>
                     </>

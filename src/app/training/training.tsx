@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import LoginScreen from '@/components/login-screen';
 import Workspace from '@/components/workspace';
 import fixtures from './fixtures.json';
 // This recording-only entry uses the original workspace/components and styles.
@@ -7,7 +8,8 @@ import fixtures from './fixtures.json';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row=Record<string,any>;
 export default function Training(){
- const [ready,setReady]=useState(false);
+ const [ready,setReady]=useState(false),[entered,setEntered]=useState(false);
+ const role=typeof window!=='undefined'&&new URLSearchParams(location.search).get('role')==='manager'?'manager':'deputy';
  useEffect(()=>{
   const role=new URLSearchParams(location.search).get('role')==='manager'?'manager':'deputy';
   const state:Row=structuredClone(fixtures[role]),original=window.fetch.bind(window);
@@ -17,6 +19,7 @@ export default function Training(){
    const method=init?.method||'GET',body=init?.body?JSON.parse(String(init.body)):{};
    const respond=(data:unknown,status=200)=>Response.json(data,{status});
    if(method==='GET'){
+    if(path==='/api/deadline-requests')return respond(state.requests||[]);
     if(path==='/api/workspace')return respond(state.workspace);
     if(path==='/api/rhythm')return respond(state.rhythm);
     if(path==='/api/documents')return respond(state.documents);
@@ -24,6 +27,7 @@ export default function Training(){
     if(path==='/api/calendar')return respond({configured:false,connected:false});
     if(path.startsWith('/api/documents/'))return respond({entry:state.details.find((e:Row)=>e.id===path.split('/').pop())});
    }
+   if(path==='/api/deadline-requests'&&method==='POST'){const task=state.workspace.tasks.find((t:Row)=>t.id===body.id);const request={id:crypto.randomUUID(),title:task?.title||'משימת הדרכה',requesterName:'סמ״פ א׳',originalDate:task?.dueDate,requestedDate:body.date,reason:body.reason,status:'pending'};state.requests=[request];return respond(request);}
    if(path==='/api/task-actions'){
     const key=body.kind+':'+body.id,pins:string[]=state.workspace.pinnedTaskKeys||[];
     if(body.action==='pin'){state.workspace.pinnedTaskKeys=body.pinned?[...new Set([...pins,key])]:pins.filter(p=>p!==key);state.rhythm.pinnedTaskKeys=state.workspace.pinnedTaskKeys;return respond({});}
@@ -47,5 +51,5 @@ export default function Training(){
   setReady(true);
   return()=>{window.fetch=original;};
  },[]);
- return ready?<Workspace recording/>:<p>מכינים תצוגת הדרכה…</p>;
+ return ready?(entered?<Workspace recording/>:<LoginScreen deputies={role==='deputy'} recordingEnter={()=>setEntered(true)}/>):<p>מכינים תצוגת הדרכה…</p>;
 }

@@ -1,3 +1,5 @@
+import {purgeCompletedTasks} from "./task-archive";
+import {queueTaskNotification} from "./notifications";
 import { and, eq, inArray, or, desc, sql, lt, type SQL } from 'drizzle-orm';
 import { randomUUID,createHash } from 'node:crypto';
 import { getDb, isDemo, type Database } from './db';
@@ -75,6 +77,7 @@ async function audit(db: Executor, p: Principal, type: 'task'|'decision', id: st
   await db.insert(s.auditEvents).values({ id: randomUUID(), organizationId: p.organizationId, entityType: type, entityId: id, actorId: p.userId, action, summary, details });
 }
 export async function getWorkspace(p: Principal) {
+  await purgeCompletedTasks(p.organizationId);
   if(canEditAll(p)) await ensureResponsibilityDomains(p);
   const db = await getDb();
   const taskRows = await db.select().from(s.tasks).where(taskScope(p)).orderBy(desc(s.tasks.updatedAt));
@@ -102,6 +105,7 @@ export async function createTask(p: Principal, input: unknown) {
     await validateScope(tx,p,task); await validateAssignee(tx,p,task.ownerId,task);
     const [created] = await tx.insert(s.tasks).values(task).returning();
     await audit(tx,p,'task',created.id,'task.created',`נוצרה משימה: ${created.title}`,{ownerId:created.ownerId});
+    await queueTaskNotification(tx,p,[created.ownerId],"משימה חדשה שויכה אליך",created.title);
     return {...created, comments:[]};
   }));
 }
@@ -111,6 +115,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     const before = await findTask(tx,p,id);
     if (before.version !== version) throw new AppError(409, 'המשימה השתנתה מאז שנפתחה. יש לרענן ולנסות שוב');
     assertOwnTask(p,before);
+    if(!p.manageAccess&&data.dueDate!==undefined&&data.dueDate!==before.dueDate)throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
     if (!canEditAll(p) && Object.keys(data).some(k => ['ownerId','companyId','domainId','requiresReview'].includes(k))) throw new AppError(403,'שינוי הקצאה דורש הרשאת עריכה כללית');
     if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId && !canEditAll(p)) data.status = 'pending_review';
     const next = { ...before, ...data };
@@ -121,6 +126,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     const [updated] = await tx.update(s.tasks).set({...data, blockerReason: next.status === 'blocked' ? next.blockerReason : null, completedAt: completed ? before.completedAt ?? new Date() : null, completedBy: completed ? before.completedBy ?? p.userId : null, version: version+1, updatedAt: new Date()}).where(and(eq(s.tasks.id,id),eq(s.tasks.version,version),taskScope(p))).returning();
     if (!updated) throw new AppError(409,'המשימה השתנתה. יש לרענן ולנסות שוב');
     await audit(tx,p,'task',id,'task.updated',`עודכנה משימה: ${updated.title}`, {changes: Object.fromEntries(Object.keys(data).map(k=>[k,{before:before[k as keyof Task],after:updated[k as keyof Task]}]))});
+    await queueTaskNotification(tx,p,[updated.ownerId,updated.creatorId],updated.status==='pending_review'?'ביצוע משימה ממתין לאישורך':'המשימה עודכנה',updated.title);
     const undoToken=randomUUID();
     await tx.delete(s.rhythmUndo).where(lt(s.rhythmUndo.expiresAt,new Date()));
     await tx.insert(s.rhythmUndo).values({id:undoToken,organizationId:p.organizationId,actorId:p.userId,kind:'task',entityId:id,snapshot:{task:before,occurrences:[]},expectedVersion:updated.version,expiresAt:new Date(Date.now()+60_000)});
@@ -129,7 +135,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
 }
 export async function addComment(p: Principal,id: string,input: unknown) {
   assertWrite(p); const {body,clientRequestId} = commentInput.parse(input); const db=await getDb();
-  return db.transaction(async tx => idempotent(tx,p,`task.comment:${id}`,clientRequestId,{body},async()=>{ const task=await findTask(tx,p,id); assertOwnTask(p,task); const [comment]=await tx.insert(s.comments).values({id:randomUUID(),taskId:id,actorId:p.userId,body}).returning(); await audit(tx,p,'task',id,'task.comment',`נוסף עדכון למשימה: ${task.title}`); return comment; }));
+  return db.transaction(async tx => idempotent(tx,p,`task.comment:${id}`,clientRequestId,{body},async()=>{ const task=await findTask(tx,p,id); assertOwnTask(p,task); const [comment]=await tx.insert(s.comments).values({id:randomUUID(),taskId:id,actorId:p.userId,body}).returning(); await audit(tx,p,'task',id,'task.comment',`נוסף עדכון למשימה: ${task.title}`); await queueTaskNotification(tx,p,[task.ownerId,task.creatorId],'נוסף עדכון למשימה',task.title); return comment; }));
 }
 export async function createDecision(p: Principal,input: unknown) {
   assertWrite(p); const {clientRequestId,...data}=createDecisionInput.parse(input); const db=await getDb();
@@ -164,6 +170,7 @@ export async function deleteTask(p:Principal,id:string,version:number){
   const [updated]=await tx.update(s.tasks).set({status:'cancelled',completedAt:null,completedBy:null,version:version+1,updatedAt:new Date()}).where(and(eq(s.tasks.id,id),eq(s.tasks.version,version),taskScope(p))).returning();
   if(!updated)throw new AppError(409,'המשימה השתנתה. יש לרענן');
   await audit(tx,p,'task',id,'task.deleted',`נמחקה משימה: ${before.title}`);
+  await queueTaskNotification(tx,p,[before.ownerId,before.creatorId],"משימה נמחקה",before.title);
   const undoToken=randomUUID();await tx.insert(s.rhythmUndo).values({id:undoToken,organizationId:p.organizationId,actorId:p.userId,kind:'task',entityId:id,snapshot:{task:before,occurrences:[]},expectedVersion:updated.version,expiresAt:new Date(Date.now()+60000)});
   return {...updated,undoToken};
  });

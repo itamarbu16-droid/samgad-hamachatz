@@ -1,3 +1,5 @@
+import {purgeCompletedTasks} from "./task-archive";
+import {queueTaskNotification} from "./notifications";
 import {getPins} from './task-pins';
 import { and, eq, inArray, sql, lt } from "drizzle-orm";
 import { randomUUID, createHash } from "node:crypto";
@@ -166,12 +168,13 @@ async function materialize(
   today: string,
 ) {
   for (const item of items.filter((item) => !item.archived)) {
+    const expired=new Set((await db.select().from(s.expiredTaskRecords).where(sql`${s.expiredTaskRecords.taskKey} LIKE ${item.id+':%'}`)).map(r=>r.taskKey));
     const dates = occurrenceDates(
       item.startDate,
       item.frequency as Frequency,
       through,
       item.endDate,
-    );
+    ).filter(date=>!expired.has(`${item.id}:${date}`));
     // Bulk creation also makes concurrent calendar reads harmless.
     for (let index = 0; index < dates.length; index += 100) {
       const inserted = await db
@@ -335,6 +338,7 @@ export async function createRhythmItem(p: Principal, input: unknown) {
             : monthEnd(today.slice(0, 7)),
           today,
         );
+        await queueTaskNotification(tx,p,item.assigneeIds,"משימה חדשה שויכה אליך",item.title);
         return item;
       },
     ),
@@ -398,6 +402,7 @@ export async function saveRhythmGroup(
   });
 }
 export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
+  await purgeCompletedTasks(p.organizationId);
   if (
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) ||
     month < addDays(localDate(), -730).slice(0, 7) ||
@@ -558,6 +563,7 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       )
       .returning();
     if (!updated) throw new AppError(409, "הביצוע השתנה. יש לרענן ולנסות שוב");
+    await queueTaskNotification(tx,p,[...item.assigneeIds,item.creatorId],data.review?"ביצוע המשימה נבדק":data.done?"דיווח ביצוע משימה":"עדכון במשימה",item.title);
     const undoToken = await rememberUndo(tx, p, "occurrence", id, {occurrences:[occurrence]}, updated.version);
     return {...updated, undoToken};
   }));
@@ -596,6 +602,7 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
     if (!canEditAll(p) && !before.assigneeIds.includes(p.userId)) throw new AppError(403,"אפשר לערוך רק משימה שהוקצתה לך");
     if (!canEditAll(p) && recipientIds && JSON.stringify(recipientIds)!==JSON.stringify(before.assigneeIds)) throw new AppError(403,"שינוי אחראים דורש הרשאת עריכה כללית");
     if(data.archived!==undefined&&!canEditAll(p)&&before.creatorId!==p.userId)throw new AppError(403,"רק יוצר המשימה או מנהל רשאי למחוק אותה");
+    if(!p.manageAccess&&((data.startDate!==undefined&&data.startDate!==before.startDate)||(data.hasDeadline!==undefined&&data.hasDeadline!==before.hasDeadline)))throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
     if (before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
     const assigneeIds = recipientIds === undefined || JSON.stringify(recipientIds)===JSON.stringify(before.assigneeIds) ? before.assigneeIds :
       (await resolveRecipientIds(tx,p,recipientIds));
@@ -626,6 +633,7 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
         for (const recipientId of assigneeIds) await tx.insert(s.rhythmMail).values({id:randomUUID(),occurrenceId:row.id,recipientId,kind:"assigned"}).onConflictDoNothing();
       }
     }
+    await queueTaskNotification(tx,p,[...item.assigneeIds,item.creatorId],"המשימה עודכנה",item.title);
     const undoToken = await rememberUndo(tx,p,"item",id,{item:before,occurrences},item.version);
     return {...item,undoToken};
   }));
@@ -666,6 +674,7 @@ export async function undoRhythm(p: Principal, input: unknown) {
 }
 /** Called by the authenticated scheduler; it never requires an open browser. */
 export async function refreshRhythmSchedule(now = new Date()) {
+  await purgeCompletedTasks(undefined,now);
   const db = await getDb();
   const items = await db
     .select()

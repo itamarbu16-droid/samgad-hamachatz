@@ -118,3 +118,18 @@ export const documentUploadChunks=pgTable('document_upload_chunks',{
  id:text('id').primaryKey(),uploadId:text('upload_id').notNull().references(()=>documentUploads.id,{onDelete:'cascade'}),
  chunkIndex:integer('chunk_index').notNull(),contentBase64:text('content_base64').notNull(),
 });
+
+export const deadlineRequests=pgTable('deadline_requests',{
+ id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),requesterId:text('requester_id').notNull().references(()=>user.id),
+ kind:text('kind').notNull(),taskId:text('task_id').notNull(),occurrenceId:text('occurrence_id'),title:text('title').notNull(),
+ originalDate:date('original_date'),requestedDate:date('requested_date').notNull(),reason:text('reason').notNull(),status:text('status').notNull().default('pending'),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),resolvedAt:timestamp('resolved_at',{withTimezone:true}),resolvedBy:text('resolved_by').references(()=>user.id),
+});
+export const pushSubscriptions=pgTable('push_subscriptions',{
+ id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),userId:text('user_id').notNull().references(()=>user.id),endpoint:text('endpoint').notNull().unique(),p256dh:text('p256dh').notNull(),auth:text('auth').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const pushEvents=pgTable('push_events',{
+ id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),recipientId:text('recipient_id').notNull().references(()=>user.id),title:text('title').notNull(),body:text('body').notNull(),url:text('url').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),sentAt:timestamp('sent_at',{withTimezone:true}),attempts:integer('attempts').notNull().default(0),
+});
+export const pushConfig=pgTable('push_config',{organizationId:text('organization_id').primaryKey(),publicKey:text('public_key').notNull(),encryptedPrivateKey:text('encrypted_private_key').notNull()});
+export const expiredTaskRecords=pgTable('expired_task_records',{taskKey:text('task_key').primaryKey(),expiredAt:timestamp('expired_at',{withTimezone:true}).notNull().defaultNow()});

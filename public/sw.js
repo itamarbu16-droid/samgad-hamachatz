@@ -32,3 +32,19 @@ self.addEventListener('message', event => {
   const assets = event.data.assets.filter(name => { const url = new URL(name); return url.origin === self.location.origin && url.pathname.startsWith('/_next/static/'); });
   event.waitUntil(caches.open(SHELL).then(cache => cache.addAll(assets)).then(() => event.ports[0]?.postMessage({ ok: true })).catch(() => event.ports[0]?.postMessage({ ok: false })));
 });
+
+// An empty authenticated Web Push wakes this worker. Event details are fetched
+// using this device's current authenticated session, never embedded in a token.
+self.addEventListener('push',event=>{
+ event.waitUntil((async()=>{
+  try{
+   const response=await fetch('/api/push/events',{credentials:'same-origin',cache:'no-store'});
+   if(!response.ok)throw Error('session');
+   const rows=await response.json();
+   if(!rows.length)return self.registration.showNotification('המחץ',{body:'יש עדכון באפליקציה',icon:'/brand/605-icon-192.png',data:{url:'/deputies'}});
+   for(const row of rows)await self.registration.showNotification(row.title,{body:row.body,tag:row.id,icon:'/brand/605-icon-192.png',data:{url:row.url}});
+   await fetch('/api/push/events',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:rows.map(r=>r.id)})});
+  }catch{await self.registration.showNotification('המחץ',{body:'פתח את האפליקציה כדי לראות עדכונים',icon:'/brand/605-icon-192.png',data:{url:'/deputies'}});}
+ })());
+});
+self.addEventListener('notificationclick',event=>{event.notification.close();const target=new URL(event.notification.data?.url||'/deputies',self.location.origin);if(target.origin!==self.location.origin)return;event.waitUntil(self.clients.openWindow(target.href));});
