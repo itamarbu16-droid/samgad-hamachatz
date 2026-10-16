@@ -78,7 +78,10 @@ export const documentFolders = [
   },
 ] as const;
 export type DocumentSection = "library" | "records";
-export const MAX_DOCUMENT_BYTES = 3 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_DOCUMENT_TOTAL_BYTES = 100 * 1024 * 1024;
+export const INLINE_DOCUMENT_BYTES = 3 * 1024 * 1024;
+export const DOCUMENT_CHUNK_BYTES = 1024 * 1024;
 export const documentExtensions = {
   pdf: "application/pdf",
   doc: "application/msword",

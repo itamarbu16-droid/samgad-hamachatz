@@ -22,10 +22,10 @@ import {
   documentFolders,
   descendants,
   folderPath,
-  MAX_DOCUMENT_BYTES,
   documentExtensions,
   type DocumentSection,
 } from "@/lib/document-folders";
+import {prepareDocumentFiles,validateDocumentFiles,type DocumentUploadCache} from "@/lib/document-uploads";
 import { Modal, Empty } from "./workspace-primitives";
 
 type Attachment = { id: string; filename: string; byteSize: number };
@@ -49,20 +49,6 @@ const size = (bytes: number) =>
   bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(1)} מ״ב`
     : `${Math.ceil(bytes / 1024)} ק״ב`;
-async function encodeFile(
-  file: File,
-): Promise<{ filename: string; contentBase64: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      resolve({
-        filename: file.name,
-        contentBase64: String(reader.result).split(",")[1],
-      });
-    reader.onerror = () => reject(new Error("לא ניתן לקרוא את הקובץ"));
-    reader.readAsDataURL(file);
-  });
-}
 export default function DocumentLibrary({
   section,
   userId,
@@ -83,6 +69,8 @@ export default function DocumentLibrary({
     [editing, setEditing] = useState(false),
     [creating, setCreating] = useState(false),
     [files, setFiles] = useState<File[]>([]);
+  const uploadCache=useRef<DocumentUploadCache>(new Map());
+  const [uploadProgress,setUploadProgress]=useState("");
   const requests = useRef(new Map<string, string>());
   const manager = ["deputy", "staff", "company_commander"].includes(role),
     canWrite = manager || role === "contributor";
@@ -156,9 +144,7 @@ export default function DocumentLibrary({
     setError("");
     try {
       const form = new FormData(event.currentTarget);
-      if (files.reduce((sum, file) => sum + file.size, 0) > MAX_DOCUMENT_BYTES)
-        throw new Error("ניתן להעלות עד 3 מ״ב בסך הכול בכל שמירה");
-      const attachments = await Promise.all(files.map(encodeFile));
+      const attachments=await prepareDocumentFiles(files,uploadCache.current,setUploadProgress);
       const body = {
         title: String(form.get("title")),
         body: String(form.get("body") || ""),
@@ -185,6 +171,7 @@ export default function DocumentLibrary({
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || "המסמך לא נשמר");
       requests.current.delete(key);
+      uploadCache.current.clear();
       window.dispatchEvent(new Event("samgad:saved"));
       setSelected(null);
       setCreating(false);
@@ -197,7 +184,7 @@ export default function DocumentLibrary({
     } catch (error) {
       setError(error instanceof Error ? error.message : "המסמך לא נשמר");
     } finally {
-      setBusy(false);
+      setBusy(false);setUploadProgress("");
     }
   }
   const modalOpen = creating || Boolean(selected);
@@ -406,30 +393,19 @@ export default function DocumentLibrary({
                 הוספת קבצים
                 <input
                   type="file"
+                  disabled={busy}
                   multiple
                   accept={Object.keys(documentExtensions)
                     .map((extension) => `.${extension}`)
                     .join(",")}
                   onChange={(event) => {
                     const selected = Array.from(event.target.files || []);
-                    if (
-                      selected.length > 5 ||
-                      selected.reduce((sum, file) => sum + file.size, 0) >
-                        MAX_DOCUMENT_BYTES
-                    ) {
-                      setError(
-                        "ניתן להוסיף עד 5 קבצים ובסך הכול עד 3 מ״ב בכל שמירה",
-                      );
-                      event.target.value = "";
-                      setFiles([]);
-                    } else {
-                      setError("");
-                      setFiles(selected);
-                    }
+                    try {validateDocumentFiles(selected);setError("");setFiles(selected);uploadCache.current.clear();}
+                    catch(error){setError(error instanceof Error?error.message:"הקבצים אינם תקינים");event.target.value="";setFiles([]);uploadCache.current.clear();}
                   }}
                 />
                 <small>
-                  PDF, מסמכי Office, טקסט ותמונות. עד 3 מ״ב בכל שמירה.
+                  PDF, מסמכי Office, טקסט ותמונות. עד 25 מ״ב לקובץ, עד 5 קבצים ועד 100 מ״ב בכל שמירה.
                 </small>
               </label>
               {files.map((file) => (
@@ -443,6 +419,7 @@ export default function DocumentLibrary({
                   {selected.attachments.map((file) => file.filename).join(", ")}
                 </p>
               ) : null}
+              {uploadProgress&&<p role="status" aria-live="polite">{uploadProgress}</p>}
               <div className="modal-actions">
                 <button className="button primary" disabled={busy}>
                   {busy ? "שומר…" : "שמירה בתיקייה"}

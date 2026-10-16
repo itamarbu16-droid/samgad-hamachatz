@@ -7,35 +7,23 @@ import { AppError, assertWrite, isManager, type Principal } from "./policy";
 import {
   documentFolders,
   documentExtensions,
-  MAX_DOCUMENT_BYTES,
+  MAX_DOCUMENT_BYTES, MAX_DOCUMENT_TOTAL_BYTES, INLINE_DOCUMENT_BYTES,
 } from "../lib/document-folders";
 
-const attachmentInput = z
+import {documentFilename,resolveDocumentUpload} from "./document-uploads";
+const inlineAttachmentInput = z
   .object({
-    filename: z
-      .string()
-      .min(1)
-      .max(200)
-      .refine(
-        (name) =>
-          [...name].every(
-            (character) =>
-              character.charCodeAt(0) >= 32 &&
-              character.charCodeAt(0) !== 127 &&
-              character !== "\\" &&
-              character !== "/",
-          ),
-        "שם הקובץ אינו תקין",
-      ),
+    filename: documentFilename,
     contentBase64: z
       .string()
       .min(4)
-      .max(Math.ceil(MAX_DOCUMENT_BYTES / 3) * 4)
+      .max(Math.ceil(INLINE_DOCUMENT_BYTES / 3) * 4)
       .regex(
-        /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
+        /^[A-Za-z0-9+/]*={0,2}$/,
       ),
   })
   .strict();
+const attachmentInput=z.union([inlineAttachmentInput,z.object({uploadId:z.string().uuid()}).strict()]);
 const dateInput = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -71,7 +59,7 @@ function scope(p: Principal) {
     p.role === "admin" ? sql`false` : undefined,
   );
 }
-function decodeFiles(attachments: z.infer<typeof attachmentInput>[]) {
+function decodeFiles(attachments: z.infer<typeof inlineAttachmentInput>[]) {
   const files = attachments.map((file) => {
     const extension = file.filename
       .split(".")
@@ -92,9 +80,21 @@ function decodeFiles(attachments: z.infer<typeof attachmentInput>[]) {
       throw new AppError(422, "הקובץ אינו תקין או גדול מהמותר");
     return { ...file, contentType, byteSize: bytes.length };
   });
-  if (files.reduce((sum, file) => sum + file.byteSize, 0) > MAX_DOCUMENT_BYTES)
-    throw new AppError(413, "אפשר להעלות עד 3 מ״ב בסך הכול בכל שמירה");
+  if (files.reduce((sum, file) => sum + file.byteSize, 0) > INLINE_DOCUMENT_BYTES)
+    throw new AppError(413, "יש להעלות קבצים גדולים בחלקים");
   return files;
+}
+async function resolveFiles(tx:Pick<Awaited<ReturnType<typeof getDb>>,'select'|'update'|'insert'|'delete'>,p:Principal,attachments:z.infer<typeof attachmentInput>[],entryId:string){
+ const inline=attachments.filter((f):f is z.infer<typeof inlineAttachmentInput>=>'filename' in f);
+ const decoded=decodeFiles(inline);let next=0;
+ const files=[];
+ for(const attachment of attachments)files.push('uploadId' in attachment?await resolveDocumentUpload(tx,p,attachment.uploadId,entryId):decoded[next++]);
+ if(files.reduce((n,f)=>n+f.byteSize,0)>MAX_DOCUMENT_TOTAL_BYTES)throw new AppError(413,'אפשר להעלות עד 100 מ״ב בכל שמירה');
+ return files;
+}
+async function clearUploads(tx:Pick<Awaited<ReturnType<typeof getDb>>,'delete'>,p:Principal,attachments:z.infer<typeof attachmentInput>[]){
+ const ids=attachments.flatMap(f=>'uploadId' in f?[f.uploadId]:[]);
+ if(ids.length)await tx.delete(s.documentUploads).where(and(inArray(s.documentUploads.id,ids),eq(s.documentUploads.creatorId,p.userId),eq(s.documentUploads.organizationId,p.organizationId)));
 }
 const attachmentMetadata = {
   id: s.documentAttachments.id,
@@ -160,7 +160,6 @@ export async function getDocument(p: Principal, id: string) {
 export async function createDocument(p: Principal, input: unknown) {
   assertWrite(p);
   const { clientRequestId, attachments, ...data } = createInput.parse(input);
-  const files = decodeFiles(attachments);
   const db = await getDb();
   return db.transaction(async (tx) => {
     const key = `${p.organizationId}:${p.userId}:document:${clientRequestId}`;
@@ -191,6 +190,7 @@ export async function createDocument(p: Principal, input: unknown) {
           ),
         );
       if (!visible) throw new AppError(404, "המסמך אינו זמין לך");
+      await clearUploads(tx,p,attachments);
       return result;
     }
     const [entry] = await tx
@@ -202,6 +202,7 @@ export async function createDocument(p: Principal, input: unknown) {
         creatorId: p.userId,
       })
       .returning({ id: s.documentEntries.id });
+    const files=await resolveFiles(tx,p,attachments,entry.id);
     if (files.length)
       await tx.insert(s.documentAttachments).values(
         files.map((file) => ({
@@ -210,6 +211,7 @@ export async function createDocument(p: Principal, input: unknown) {
           entryId: entry.id,
         })),
       );
+    await clearUploads(tx,p,attachments);
     await tx
       .update(s.mutationReceipts)
       .set({ result: entry })
@@ -227,7 +229,6 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
     })
     .strict()
     .parse(input);
-  const files = decodeFiles(data.attachments);
   const db = await getDb();
   return db.transaction(async (tx) => {
     const [before] = await tx
@@ -247,6 +248,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
       .select({ id: s.documentAttachments.id })
       .from(s.documentAttachments)
       .where(eq(s.documentAttachments.entryId, id));
+    const files=await resolveFiles(tx,p,data.attachments,id);
     if (!data.archived && !data.body && !files.length && !existingFiles.length)
       throw new AppError(422, "יש להשאיר טקסט או קובץ במסמך");
     const { version, attachments: _attachments, ...changes } = data;
@@ -269,6 +271,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
         .values(
           files.map((file) => ({ ...file, id: randomUUID(), entryId: id })),
         );
+    await clearUploads(tx,p,data.attachments);
     return entry;
   });
 }

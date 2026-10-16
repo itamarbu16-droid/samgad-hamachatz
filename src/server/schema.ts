@@ -108,3 +108,13 @@ export const workspaceSettings = pgTable('workspace_settings', {
 });
 
 export const workspaceAccessGrants=pgTable('workspace_access_grants', {userId:text('user_id').primaryKey().references(()=>user.id),organizationId:text('organization_id').notNull().references(()=>organizations.id),grantedBy:text('granted_by').notNull().references(()=>user.id),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()});
+
+export const documentUploads=pgTable('document_uploads',{
+ id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),creatorId:text('creator_id').notNull(),
+ filename:text('filename').notNull(),byteSize:integer('byte_size').notNull(),consumedBy:text('consumed_by'),
+ expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),touchedAt:timestamp('touched_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const documentUploadChunks=pgTable('document_upload_chunks',{
+ id:text('id').primaryKey(),uploadId:text('upload_id').notNull().references(()=>documentUploads.id,{onDelete:'cascade'}),
+ chunkIndex:integer('chunk_index').notNull(),contentBase64:text('content_base64').notNull(),
+});
