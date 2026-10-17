@@ -58,3 +58,22 @@ export async function grantAccess(p:Principal,input:unknown) {
  await db.insert(s.workspaceAccessGrants).values({userId:user.id,organizationId:p.organizationId,grantedBy:p.userId}).onConflictDoNothing();
  return {saved:true};
 }
+
+export async function deleteAccess(p:Principal,input:unknown) {
+ if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');
+ const {userId}=z.object({userId:z.string().min(1)}).strict().parse(input);
+ const db=await getDb();
+ return db.transaction(async tx=>{
+  const [settings]=await tx.select().from(s.workspaceSettings).where(eq(s.workspaceSettings.organizationId,p.organizationId));
+  if(settings?.ownerId!==p.userId)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');
+  if(userId===settings.ownerId)throw new AppError(403,'אי אפשר למחוק את הרשאת בעל המרחב');
+  const removed=await tx.delete(s.memberships).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.userId,userId))).returning();
+  if(!removed.length)throw new AppError(404,'ההרשאה לא נמצאה');
+  await tx.delete(s.workspaceAccessGrants).where(and(eq(s.workspaceAccessGrants.organizationId,p.organizationId),eq(s.workspaceAccessGrants.userId,userId)));
+  await tx.delete(s.session).where(eq(s.session.userId,userId));
+  await tx.delete(s.pushSubscriptions).where(and(eq(s.pushSubscriptions.organizationId,p.organizationId),eq(s.pushSubscriptions.userId,userId)));
+  await tx.delete(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,userId)));
+  await tx.insert(s.auditEvents).values({id:randomUUID(),organizationId:p.organizationId,entityType:'access',entityId:userId,actorId:p.userId,action:'access.deleted',summary:'נמחקה הרשאת כניסה למרחב'});
+  return {deleted:true};
+ });
+}
