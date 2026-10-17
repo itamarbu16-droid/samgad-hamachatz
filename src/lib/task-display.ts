@@ -22,6 +22,7 @@ export function matchesTaskFilter(task:FilterTask,filter:string,today:string,use
   case 'pending': case 'pending_review': return active && Boolean(task.pending);
   case 'completed': return task.done;
   case 'today': return active && task.dueDate===today;
+  case 'due_soon': return active && Boolean(task.dueDate && task.dueDate>=today && task.dueDate<=addDays(today,1));
   case 'tomorrow': return active && task.dueDate===addDays(today,1);
   case 'overdue': return active && Boolean(task.dueDate && task.dueDate<today);
   case 'urgent': return active && Boolean(task.urgent);
