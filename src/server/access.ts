@@ -70,6 +70,11 @@ export async function deleteAccess(p:Principal,input:unknown) {
   const removed=await tx.delete(s.memberships).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.userId,userId))).returning();
   if(!removed.length)throw new AppError(404,'ההרשאה לא נמצאה');
   await tx.delete(s.workspaceAccessGrants).where(and(eq(s.workspaceAccessGrants.organizationId,p.organizationId),eq(s.workspaceAccessGrants.userId,userId)));
+  const [removedUser]=await tx.select({email:s.user.email}).from(s.user).where(eq(s.user.id,userId));
+  if(removedUser){
+   const groups=await tx.select().from(s.rhythmGroups).where(eq(s.rhythmGroups.organizationId,p.organizationId));
+   for(const group of groups)await tx.update(s.rhythmGroups).set({emails:group.emails.filter(email=>email.toLowerCase()!==removedUser.email.toLowerCase())}).where(eq(s.rhythmGroups.id,group.id));
+  }
   await tx.delete(s.session).where(eq(s.session.userId,userId));
   await tx.delete(s.pushSubscriptions).where(and(eq(s.pushSubscriptions.organizationId,p.organizationId),eq(s.pushSubscriptions.userId,userId)));
   await tx.delete(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,userId)));
