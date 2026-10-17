@@ -5,7 +5,7 @@ export default function AccessSettings(){
  const [members,setMembers]=useState<Member[]>([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
  async function load(){const r=await fetch('/api/access',{cache:'no-store'});const j=await r.json();if(!r.ok)throw Error(j.error);setMembers(j.members);}
  useEffect(()=>{void load().catch(e=>setError(e.message));},[]);
- async function save(body:object){setBusy(true);setError('');setNotice('');try{const r=await fetch('/api/access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.error);await load();setNotice('רשימת ההרשאות עודכנה');return true;}catch(e){setError(e instanceof Error?e.message:'השמירה לא הצליחה');return false;}finally{setBusy(false);}}
+ async function save(body:object){setBusy(true);setError('');setNotice('');try{const r=await fetch('/api/access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.error);await load();window.dispatchEvent(new Event('samgad:saved'));setNotice('רשימת ההרשאות עודכנה');return true;}catch(e){setError(e instanceof Error?e.message:'השמירה לא הצליחה');return false;}finally{setBusy(false);}}
  async function remove(member:Member){
   if(!window.confirm(`למחוק את ההרשאה של ${member.name} (${member.email})?\nהגישה לאפליקציה תבוטל והחיבורים הקיימים ינותקו. המשימות וההיסטוריה יישמרו.`))return;
   setBusy(true);setError('');setNotice('');
@@ -13,6 +13,7 @@ export default function AccessSettings(){
    const r=await fetch('/api/access',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:member.id})});
    const j=await r.json();if(!r.ok)throw Error(j.error);
    setMembers(current=>current.filter(m=>m.id!==member.id));
+   window.dispatchEvent(new Event('samgad:saved'));
    setNotice('ההרשאה נמחקה והגישה לאפליקציה בוטלה');
   }catch(e){setError(e instanceof Error?e.message:'המחיקה לא הצליחה');}finally{setBusy(false);}
  }
