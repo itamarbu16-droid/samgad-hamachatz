@@ -7,7 +7,7 @@ import {principalFor,createTask,updateTask,getWorkspace} from '../src/server/ser
 import {createRhythmItem,getRhythm,undoRhythm} from '../src/server/rhythm';
 import {actOnTask} from '../src/server/task-actions';
 import {getPins} from '../src/server/task-pins';
-import {calendarSlots,scheduleCalendarTask,seal,unseal,startCalendarConnection,finishCalendarConnection} from '../src/server/google-calendar';
+import {workspaceSchedule,scheduleCalendars,selectScheduleCalendar,calendarSlots,scheduleCalendarTask,seal,unseal,startCalendarConnection,finishCalendarConnection} from '../src/server/google-calendar';
 import {compareTasks} from '../src/lib/task-display';
 import {addDays} from '../src/lib/rhythm';
 import {localDate,type Principal} from '../src/server/policy';
@@ -94,4 +94,31 @@ it('rechecks availability before creating events and recovers an event after a l
  await scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end});expect(inserts).toBe(2);
  expect((await (await getDb()).select().from(s.calendarBookings))).toHaveLength(2);
  vi.unstubAllGlobals();
+});
+
+it('reads a selected shared calendar and filters events on the server by role or attendee',async()=>{
+ const db=await getDb();
+ const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
+ await db.insert(s.calendarConnections).values({id,organizationId:owner.organizationId,userId:owner.userId,encryptedTokens:seal({access_token:'test',expiresAt:Date.now()+3600000,calendarId:'owner@example.com'})}).onConflictDoUpdate({target:s.calendarConnections.id,set:{encryptedTokens:seal({access_token:'test',expiresAt:Date.now()+3600000,calendarId:'owner@example.com'})}});
+ await db.insert(s.rhythmGroups).values({id:'agenda-role',organizationId:owner.organizationId,creatorId:owner.userId,name:'סמ״פ א׳',emails:['company.a@samgad.example']}).onConflictDoNothing();
+ const paths:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(input:string|URL)=>{
+  const url=String(input);paths.push(url);
+  if(url.includes('calendarList'))return Response.json({items:[{id:'shared@example.com',summary:'לו״ז גדודי',accessRole:'writer'}]});
+  return Response.json({items:[
+   {id:'role',summary:'ישיבת סמ״פ א׳',start:{date:'2026-10-20'},end:{date:'2026-10-21'}},
+   {id:'private',summary:'אירוע פרטי',start:{date:'2026-10-20'},end:{date:'2026-10-21'}},
+   {id:'invited',summary:'תכנון',attendees:[{email:'company.a@samgad.example'}],start:{date:'2026-10-20'},end:{date:'2026-10-21'}},
+   {id:'cancelled',status:'cancelled',summary:'סמ״פ א׳',start:{date:'2026-10-20'},end:{date:'2026-10-21'}}]});
+ }));
+ try{
+  expect((await scheduleCalendars(owner)).calendars[0].id).toBe('shared@example.com');
+  await expect(selectScheduleCalendar(deputy,{calendarId:'shared@example.com'})).rejects.toMatchObject({status:403});
+  await expect(selectScheduleCalendar(owner,{calendarId:'unknown'})).rejects.toMatchObject({status:403});
+  await selectScheduleCalendar(owner,{calendarId:'shared@example.com'});
+  expect((await workspaceSchedule(deputy)).events.map(event=>event.id)).toEqual(['role','invited']);
+  expect((await workspaceSchedule(other)).events).toEqual([]);
+  expect((await workspaceSchedule(owner)).events.map(event=>event.id)).toEqual(['role','private','invited']);
+  expect(paths.some(path=>path.includes('calendars/shared%40example.com/events'))).toBe(true);
+ }finally{vi.unstubAllGlobals();}
 });
