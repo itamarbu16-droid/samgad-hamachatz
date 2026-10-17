@@ -132,3 +132,14 @@ it('deletes access, disconnects existing sessions and preserves assigned tasks a
  expect((await getAccess(owner)).members.find(m=>m.email===email)?.id).toBe(member.id);
  expect((await workspaceRoute(request())).status).toBe(401);
 });
+
+it('keeps private tasks out of battalion metrics while retaining them in the owner workspace',async()=>{
+ const before=await getWorkspace(owner);
+ const personal=await createTask(owner,{title:'personal metric separation',ownerId:owner.userId,domainId:'safety'});
+ const afterPersonal=await getWorkspace(owner);
+ expect(afterPersonal.tasks.some(t=>t.id===personal.id)).toBe(true);
+ expect(afterPersonal.metrics).toEqual(before.metrics);
+ await createTask(owner,{title:'battalion metric separation',ownerId:company.userId,domainId:'safety',companyId:'company-a'});
+ const afterShared=await getWorkspace(owner);
+ expect(afterShared.metrics.open).toBe(before.metrics.open+1);
+});
