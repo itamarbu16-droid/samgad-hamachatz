@@ -114,12 +114,15 @@ it('deletes access, disconnects existing sessions and preserves assigned tasks a
  const cookie=response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');
  const request=()=>new Request('http://localhost:3000/api/workspace',{headers:{cookie}});
  expect((await workspaceRoute(request())).status).toBe(200);
+ await (await getDb()).insert(s.rhythmGroups).values({id:'deleted-member-group',organizationId:owner.organizationId,creatorId:owner.userId,name:'מחיקה מקבוצה',emails:[email]});
  const task=await createTask(owner,{title:'keep after deletion',ownerId:member.id,domainId:'safety'});
  await expect(deleteAccess(company,{userId:member.id})).rejects.toMatchObject({status:403});
  await expect(deleteAccess(owner,{userId:owner.userId})).rejects.toMatchObject({status:403});
  await expect(deleteAccess(owner,{userId:'unknown-member'})).rejects.toMatchObject({status:404});
  await expect(deleteAccess(owner,{userId:member.id})).resolves.toEqual({deleted:true});
  expect((await getAccess(owner)).members.some(m=>m.id===member.id)).toBe(false);
+ expect((await getWorkspace(owner)).users.some(m=>m.id===member.id)).toBe(false);
+ expect((await (await getDb()).select().from(s.rhythmGroups)).find(g=>g.id==='deleted-member-group')?.emails).toEqual([]);
  await expect(assertEmailAccess(email)).rejects.toMatchObject({status:403});
  await expect(principalFor(member.id,member.name)).rejects.toMatchObject({status:403});
  expect((await workspaceRoute(request())).status).toBe(401);
