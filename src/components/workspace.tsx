@@ -426,7 +426,7 @@ export default function Workspace() {
             <Layers3 size={24} />
           </span>
           <span>
-            {ownerInterface ? "סמג״ד המחץ" : "סגני המחץ"}<small>{ownerInterface ? "ממשק מנהל" : "מרחב בעלי התפקידים"}</small>
+            {ownerInterface ? "סמג״ד רומח" : "סגני רומח"}<small>{ownerInterface ? "ממשק מנהל" : "מרחב בעלי התפקידים"}</small>
           </span>
         </a>
         <div className="workspace-label">
