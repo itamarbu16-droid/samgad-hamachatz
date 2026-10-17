@@ -6,16 +6,16 @@
 @import "@fontsource/assistant/700.css";
 
 /* A short brand introduction. CSS also dismisses it if hydration is unavailable. */
-.battalion-opening{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:radial-gradient(ellipse at 50% 45%,#221207 0%,#080808 57%);overflow:hidden;animation:opening-dismiss .4s ease 2s both;cursor:pointer;pointer-events:auto}
+.battalion-opening{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:radial-gradient(ellipse at 50% 45%,#071322 0%,#080808 57%);overflow:hidden;animation:opening-dismiss .4s ease 2s both;cursor:pointer;pointer-events:auto}
 .opening-emblem{position:relative;width:min(76vw,340px);aspect-ratio:1;flex-shrink:0;isolation:isolate;animation:opening-settle 1.8s cubic-bezier(.2,.7,.2,1) both}
 .opening-outline,.opening-crest,.opening-glint{position:absolute;inset:0;width:100%;height:100%}
 .opening-outline{z-index:2;overflow:visible;animation:opening-outline-fade .45s ease .85s both}
-.opening-outline path{stroke:#f6a34d;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;filter:drop-shadow(0 0 4px #ed741e);animation:opening-trace .85s cubic-bezier(.45,0,.2,1) forwards}
-.opening-crest{background:url('/brand/75-crest.png') center/contain no-repeat;animation:opening-build 1.15s cubic-bezier(.2,.65,.2,1) .25s both}
-.opening-glint{z-index:3;background:linear-gradient(110deg,transparent 37%,#ffe9b93d 47%,#fff3d68c 50%,transparent 60%) -160% 0/250% 100% no-repeat;clip-path:polygon(23% 12%,78% 12%,78% 49%,73% 64%,65% 76%,50% 88%,35% 76%,27% 64%,23% 49%);mix-blend-mode:screen;animation:opening-shine .65s ease 1.05s both}
+.opening-outline path{stroke:#4d96f6;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;filter:drop-shadow(0 0 4px #1e78ed);animation:opening-trace .85s cubic-bezier(.45,0,.2,1) forwards}
+.opening-crest{background:url('/brand/75-crest.png?v=2') center/contain no-repeat;animation:opening-build 1.15s cubic-bezier(.2,.65,.2,1) .25s both}
+.opening-glint{z-index:3;background:linear-gradient(110deg,transparent 37%,#b9d7ff3d 47%,#d6e8ff8c 50%,transparent 60%) -160% 0/250% 100% no-repeat;clip-path:polygon(23% 12%,78% 12%,78% 49%,73% 64%,65% 76%,50% 88%,35% 76%,27% 64%,23% 49%);mix-blend-mode:screen;animation:opening-shine .65s ease 1.05s both}
 .opening-caption{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;animation:opening-caption .5s ease 1.2s both}
-.opening-caption strong{font-family:'Heebo',sans-serif;font-size:clamp(25px,7vw,34px);font-weight:500;letter-spacing:.025em;color:#f5eee5}
-.opening-caption span{font-family:'Assistant',sans-serif;font-size:25px;font-style:italic;font-weight:600;color:#ef832c}
+.opening-caption strong{font-family:'Heebo',sans-serif;font-size:clamp(25px,7vw,34px);font-weight:500;letter-spacing:.025em;color:#e5ecf5}
+.opening-caption span{font-family:'Assistant',sans-serif;font-size:25px;font-style:italic;font-weight:600;color:#2c80ef}
 @keyframes opening-trace{to{stroke-dashoffset:0}}
 @keyframes opening-outline-fade{to{opacity:0}}
 @keyframes opening-build{0%{opacity:0;clip-path:inset(0 0 100%)}35%{opacity:1}100%{opacity:1;clip-path:inset(0)}}
@@ -35,7 +35,7 @@
   --muted: #75858a;
   --border: #e5eae8;
   --red: #b94444;
-  --amber: #ae721c;
+  --amber: #1c5bae;
   --radius: 14px;
   --shadow: 0 3px 16px #16313d04;
 }
@@ -325,15 +325,15 @@ button svg {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #8b763f;
-  background: #f7f2e6;
+  color: #3f608b;
+  background: #e6edf7;
   padding: 4px 9px;
   border-radius: 5px;
 }
 .demo-label span {
   width: 5px;
   height: 5px;
-  background: #bca05e;
+  background: #5e87bc;
   border-radius: 50%;
 }
 .icon-button {
@@ -574,8 +574,8 @@ button svg {
   background: #58a6ad40;
 }
 .status-dot.blocked {
-  border-color: #d0a055;
-  background: #d0a05530;
+  border-color: #558ad0;
+  background: #558ad030;
 }
 .status-dot.completed {
   border-color: #4b9e78;
@@ -610,8 +610,8 @@ button svg {
 .badge.blocked,
 .badge.pending_review,
 .badge.clarification_requested {
-  background: #fbf3e4;
-  color: #ae7d26;
+  background: #e4eefb;
+  color: #2661ae;
 }
 .badge.completed,
 .badge.approved {
@@ -681,8 +681,8 @@ button svg {
   margin-bottom: 12px;
 }
 .tone-1 {
-  background: #f3efe7;
-  color: #aa8a54;
+  background: #e7ecf3;
+  color: #5479aa;
 }
 .tone-2 {
   background: #edf0f6;
@@ -796,7 +796,7 @@ button svg {
 }
 .task-tabs button span {
   margin-inline-start: 6px;
-  background: #f8eeeb;
+  background: #ebf1f8;
   color: #b06051;
   padding: 0 5px;
   border-radius: 4px;
@@ -1076,8 +1076,8 @@ textarea {
 .blocker {
   display: flex;
   gap: 8px;
-  background: #fbf2df;
-  color: #a37d32;
+  background: #dfebfb;
+  color: #3263a3;
   padding: 14px;
   border-radius: 8px;
   margin-bottom: 20px;
@@ -1742,7 +1742,7 @@ textarea {
 .rhythm-table .button { font-size: 13px; padding: 6px 9px; }
 .rhythm-check { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 4px 0; white-space: nowrap; font-size: 14px; }
 .rhythm-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--teal); flex: 0 0 18px; }
-.rhythm-urgent { background: #fff8f6; }
+.rhythm-urgent { background: #f6faff; }
 .rhythm-highlight { background: var(--teal-soft); }
 .rhythm-group-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
 .rhythm-group, .rhythm-state, .rhythm-archive { padding: 20px; }
@@ -1759,14 +1759,14 @@ textarea {
 .document-toolbar .search-field { flex: 1; min-width: 180px; width: auto; }
 .document-folder-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .document-folder-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px 12px; min-height: 190px; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
-.document-folder-card svg { color: #db832f; margin-bottom: 14px; }
+.document-folder-card svg { color: #2f7adb; margin-bottom: 14px; }
 .document-folder-card strong { font-size: 21px; }
 .document-folder-card span, .document-folder-card small { color: var(--muted); }
-.document-folder-card:hover { border-color: #db832f; background: var(--surface); }
+.document-folder-card:hover { border-color: #2f7adb; background: var(--surface); }
 .document-back { justify-self: start; }
 .document-entry-list { display: grid; gap: 12px; }
 .document-entry { width: 100%; display: flex; align-items: center; gap: 15px; text-align: start; padding: 20px; color: var(--text); }
-.document-entry > svg:first-child { color: #db832f; flex: 0 0 26px; }
+.document-entry > svg:first-child { color: #2f7adb; flex: 0 0 26px; }
 .document-entry > svg:last-child { margin-inline-start: auto; flex: 0 0 18px; }
 .document-entry div { min-width: 0; overflow-wrap: anywhere; }
 .document-entry p { margin: 5px 0; font-size: 14px; color: var(--muted); }
@@ -1826,7 +1826,7 @@ textarea {
 .role-chips input[type="checkbox"],.rhythm-flags input[type="checkbox"],.task-row input[type="checkbox"] { width:20px; height:20px; flex:0 0 20px; accent-color:var(--teal); }
 
 .offline-status { position:fixed; bottom:28px; left:180px; z-index:1000; max-width:min(480px,calc(100vw - 192px)); max-height:50vh; overflow:auto; background:#e8f5ef; color:#163e30; border:1px solid #a9cabb; border-radius:12px; padding:8px 12px; box-shadow:0 3px 15px #0001; font-size:13px; }
-.offline-pending { background:#fff5dc; color:#604900; border-color:#dfc47a; }
+.offline-pending { background:#dcebff; color:#002a60; border-color:#7aa6df; }
 .offline-status button { margin:6px 0 0 8px; padding:5px 9px; border:1px solid currentColor; border-radius:7px; background:transparent; color:inherit; cursor:pointer; }
 .offline-status p { margin:5px 0; }
 .offline-status pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; }
@@ -1835,11 +1835,11 @@ textarea {
 /* Completion takes precedence over every deadline state. */
 .task-row.task-done, .rhythm-table tr.task-done { background:#e5f5eb; color:#185d35; border-color:#7dbf94; }
 .task-row.task-overdue, .rhythm-table tr.task-overdue { background:#fff0ef; color:#9f252b; border-color:#e89a9c; }
-.task-row.task-due-soon, .rhythm-table tr.task-due-soon { background:#fff2df; color:#8a4b08; border-color:#e6b36a; }
+.task-row.task-due-soon, .rhythm-table tr.task-due-soon { background:#dfedff; color:#08408a; border-color:#6aa0e6; }
 .rhythm-table tr.task-done td, .rhythm-table tr.task-overdue td, .rhythm-table tr.task-due-soon td { background:transparent; }
 .task-row.task-done { border-inline-start:4px solid #2d9752; }
 .task-row.task-overdue { border-inline-start:4px solid #ce3c45; }
-.task-row.task-due-soon { border-inline-start:4px solid #dc8b27; }
+.task-row.task-due-soon { border-inline-start:4px solid #2775dc; }
 .frequency-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; }
 .guest-banner { padding:12px 16px; background:#eaf2f6; border-radius:10px; margin-bottom:14px; display:flex; flex-wrap:wrap; gap:14px; }
 .access-settings { padding:22px; }
@@ -1847,60 +1847,60 @@ textarea {
 .access-member { display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between; padding:15px 0; border-top:1px solid var(--border); }
 .access-member small { display:block; }
 .focus-task.task-overdue { border-inline-start:4px solid #ce3c45; background:#fff0ef; }
-.focus-task.task-due-soon { border-inline-start:4px solid #dc8b27; background:#fff2df; }
+.focus-task.task-due-soon { border-inline-start:4px solid #2775dc; background:#dfedff; }
 .focus-task.task-done { border-inline-start:4px solid #2d9752; background:#e5f5eb; }
 
 .access-member > div { min-width:0; overflow-wrap:anywhere; }
 .access-member select { max-width:100%; }
 .access-form label { min-width:0; }
-.login-app-name{font-family:'Heebo',sans-serif;font-size:25px;font-weight:500;margin:0 0 16px;color:#f5eee5}
-.command-access{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin:0 0 18px;padding:14px;border:1px solid #865229;border-radius:13px;background:linear-gradient(120deg,#2b1b10,#12100e)}
-.command-access>button{display:flex;align-items:center;gap:12px;flex:1;text-align:right;background:transparent;border:0;color:#f8e7d2;padding:0;min-height:45px}
-.command-access>button>svg:first-child{color:#fb973f;flex-shrink:0}.command-access>button>svg:last-child{margin-inline-start:auto}
-.command-access strong,.command-access small{display:block}.command-access strong{font-size:18px}.command-access small{color:#bdb1a4;font-size:13px}
-.command-access>a{color:#ffac66;font-size:14px;text-decoration:underline;text-underline-offset:4px}
-.deputies-greeting{margin:0 0 18px}.deputies-greeting>span{color:#e9a36b;font-size:13px}.deputies-greeting h2{font-size:24px;margin:4px 0}
+.login-app-name{font-family:'Heebo',sans-serif;font-size:25px;font-weight:500;margin:0 0 16px;color:#e5ecf5}
+.command-access{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin:0 0 18px;padding:14px;border:1px solid #295186;border-radius:13px;background:linear-gradient(120deg,#101c2b,#0e1012)}
+.command-access>button{display:flex;align-items:center;gap:12px;flex:1;text-align:right;background:transparent;border:0;color:#d2e2f8;padding:0;min-height:45px}
+.command-access>button>svg:first-child{color:#3f90fb;flex-shrink:0}.command-access>button>svg:last-child{margin-inline-start:auto}
+.command-access strong,.command-access small{display:block}.command-access strong{font-size:18px}.command-access small{color:#a4afbd;font-size:13px}
+.command-access>a{color:#66a8ff;font-size:14px;text-decoration:underline;text-underline-offset:4px}
+.deputies-greeting{margin:0 0 18px}.deputies-greeting>span{color:#6ba2e9;font-size:13px}.deputies-greeting h2{font-size:24px;margin:4px 0}
 .deputies-dashboard .command-identity{max-width:80px;overflow-wrap:anywhere}.deputies-dashboard .command-stats span{font-size:13px}
-.deputies-review-note{display:flex;align-items:flex-start;gap:9px;font-size:14px;color:#b4a89b;margin:18px 2px}.deputies-review-note svg{flex-shrink:0;color:#e99c5e}
+.deputies-review-note{display:flex;align-items:flex-start;gap:9px;font-size:14px;color:#9ba6b4;margin:18px 2px}.deputies-review-note svg{flex-shrink:0;color:#5e9ae9}
 
 /* Battalion theme: charcoal and copper. */
-:root {color-scheme:dark;--navy:#0b0b0a;--canvas:#080808;--surface:#111110;--teal:#f47724;--teal-soft:#2b1b10;--text:#f2efea;--muted:#aaa59e;--border:#34302a;--red:#f14a48;--amber:#ff9c28;--shadow:0 8px 28px #0004;}
+:root {color-scheme:dark;--navy:#0b0b0a;--canvas:#080808;--surface:#111110;--teal:#247ef4;--teal-soft:#101c2b;--text:#eaedf2;--muted:#9ea3aa;--border:#2a2e34;--red:#f14a48;--amber:#2885ff;--shadow:0 8px 28px #0004;}
 body {background:#080808;color:var(--text)}
-.battalion-app .sidebar {background:linear-gradient(160deg,#16110c,#080808 65%);border-inline-end:1px solid var(--border)}
+.battalion-app .sidebar {background:linear-gradient(160deg,#0c1016,#080808 65%);border-inline-end:1px solid var(--border)}
 .battalion-app .topbar {background:#0d0d0cef;border-bottom:1px solid var(--border)}
-.battalion-app .brand-mark,.battalion-app .workspace-avatar,.battalion-app .avatar{background:#221b15;color:#f7b87b;border:1px solid #6b4b30}
-.battalion-app .nav-item.active {background:#2a1a0e;color:#ff922e;box-shadow:inset -3px 0 #f47724}
-.battalion-app .nav-item,.battalion-app .nav-caption{color:#b7b0a7}
-.battalion-app .brand small,.battalion-app .workspace-label small{color:#a19a90}
+.battalion-app .brand-mark,.battalion-app .workspace-avatar,.battalion-app .avatar{background:#151b22;color:#7bb1f7;border:1px solid #304a6b}
+.battalion-app .nav-item.active {background:#0e1a2a;color:#2e89ff;box-shadow:inset -3px 0 #247ef4}
+.battalion-app .nav-item,.battalion-app .nav-caption{color:#a7aeb7}
+.battalion-app .brand small,.battalion-app .workspace-label small{color:#9097a1}
 .panel,.modal,.task-detail,.document-card,.decision-card,.domain-card,.focus-card,.rhythm-card{background:var(--surface);border-color:var(--border)}
-input,select,textarea {background:#191817!important;color:#f2efea!important;border-color:#49423a!important;color-scheme:dark}
-input::placeholder,textarea::placeholder{color:#979089}
-.button.primary{background:linear-gradient(110deg,#ff821d,#d34b11);border:1px solid #ff9c4e;color:#100b06;box-shadow:0 4px 20px #e9671817}
-.button.secondary,.icon-button{background:#171512;border-color:var(--border);color:var(--text)}
+input,select,textarea {background:#171819!important;color:#eaedf2!important;border-color:#3a4049!important;color-scheme:dark}
+input::placeholder,textarea::placeholder{color:#898f97}
+.button.primary{background:linear-gradient(110deg,#1d7fff,#1165d3);border:1px solid #4e9bff;color:#060a10;box-shadow:0 4px 20px #1873e917}
+.button.secondary,.icon-button{background:#121417;border-color:var(--border);color:var(--text)}
 .panel-heading,.panel-footer,.task-row,.rhythm-table th,.rhythm-table td,.document-row{border-color:var(--border)}
-.panel-footer,.filters,.rhythm-info,.rhythm-tabs,.quick-add,.search-results a,.decision-notes{background:#151310;color:#bdb7ae}
-.rhythm-table th{background:#1b1712;color:#c9b59e}.rhythm-table tr:hover td{background:#211b14}
-.badge,.badge.open,.badge.normal{background:#27221b;color:#d0c5b9}
-.task-done{background:#142312!important;border-color:#314d29!important}.task-overdue{background:#2c1514!important;border-color:#62302c!important}.task-due-soon{background:#2e2111!important;border-color:#684626!important}
-.battalion-app .main-content{max-width:1500px}.battalion-app .page-heading h1{color:#f2efea}
-.battalion-login{display:flex!important;min-height:100svh;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at 50% 75%,#29170c55,transparent 65%),#050505;padding:20px 22px 35px;gap:0;overflow:hidden}
-.login-art{width:min(100%,500px);aspect-ratio:709 / 1100;background:url('/brand/75-crest.png') center 35%/100% auto no-repeat;flex-shrink:0;max-height:78svh;mask-image:linear-gradient(transparent,#000 5%,#000 94%,transparent)}
-.login-entry{width:min(100%,440px);text-align:center;margin-top:8px}.login-entry>.button{width:100%;min-height:62px;font-size:23px;font-weight:700;justify-content:center;border-radius:17px;position:relative;box-shadow:0 0 28px #e8591833}.login-entry>.button svg{position:absolute;left:25px}.login-entry>a{display:inline-block;padding:18px;color:#a69b8e;font-size:14px}
+.panel-footer,.filters,.rhythm-info,.rhythm-tabs,.quick-add,.search-results a,.decision-notes{background:#101215;color:#aeb4bd}
+.rhythm-table th{background:#12161b;color:#9eb1c9}.rhythm-table tr:hover td{background:#141a21}
+.badge,.badge.open,.badge.normal{background:#1b2027;color:#b9c3d0}
+.task-done{background:#142312!important;border-color:#314d29!important}.task-overdue{background:#2c1514!important;border-color:#62302c!important}.task-due-soon{background:#111e2e!important;border-color:#264368!important}
+.battalion-app .main-content{max-width:1500px}.battalion-app .page-heading h1{color:#eaedf2}
+.battalion-login{display:flex!important;min-height:100svh;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(ellipse at 50% 75%,#0c192955,transparent 65%),#050505;padding:20px 22px 35px;gap:0;overflow:hidden}
+.login-art{width:min(100%,500px);aspect-ratio:709 / 1100;background:url('/brand/75-crest.png?v=2') center 35%/100% auto no-repeat;flex-shrink:0;max-height:78svh;mask-image:linear-gradient(transparent,#000 5%,#000 94%,transparent)}
+.login-entry{width:min(100%,440px);text-align:center;margin-top:8px}.login-entry>.button{width:100%;min-height:62px;font-size:23px;font-weight:700;justify-content:center;border-radius:17px;position:relative;box-shadow:0 0 28px #1872e833}.login-entry>.button svg{position:absolute;left:25px}.login-entry>a{display:inline-block;padding:18px;color:#8e98a6;font-size:14px}
 .login-dialog-backdrop{position:fixed;inset:0;background:#000b;backdrop-filter:blur(12px);z-index:200;display:grid;place-items:center;padding:20px;overflow:auto}
-.battalion-login .login-form{background:linear-gradient(145deg,#22190f,#0e0e0d);border:1px solid #715035;border-radius:24px;position:relative;width:min(100%,440px);padding:40px 26px;box-shadow:0 20px 100px #000;display:block;min-height:0}.login-close{position:absolute;top:10px;left:10px}.battalion-login .login-form>div{width:100%}.battalion-login .login-form h2{font-size:23px}.battalion-login .login-form .eyebrow{color:#fb8a36}.login-note{color:#a79b8c!important}
+.battalion-login .login-form{background:linear-gradient(145deg,#0f1722,#0e0e0d);border:1px solid #354f71;border-radius:24px;position:relative;width:min(100%,440px);padding:40px 26px;box-shadow:0 20px 100px #000;display:block;min-height:0}.login-close{position:absolute;top:10px;left:10px}.battalion-login .login-form>div{width:100%}.battalion-login .login-form h2{font-size:23px}.battalion-login .login-form .eyebrow{color:#368bfb}.login-note{color:#8c98a7!important}
 .command-home .page-heading,.command-home .global-task-bar,.command-home .topbar,.command-home .main-content>footer{display:none}
-.command-home .main-content{padding-top:0}.command-dashboard{max-width:930px;margin:auto;padding-bottom:20px}.command-hero{position:relative;min-height:310px;display:flex;align-items:flex-start;justify-content:center;padding-top:22px;isolation:isolate}.command-scene{position:absolute;bottom:0;left:-20px;right:-20px;height:145px;background:linear-gradient(#08080800,#080808 98%),url('/brand/75-crest.png') center 76%/100% auto;z-index:-1;opacity:.85;mask-image:linear-gradient(transparent,#000 20%,#000 85%,transparent)}
-.battalion-brand{text-align:center}.battalion-crest{width:125px;height:173px;background:url('/brand/75-crest.png') center 23%/205% auto no-repeat;mask-image:linear-gradient(transparent,#000 4%,#000 96%,transparent);margin:auto}.battalion-brand h1{font-size:25px;line-height:1.2;margin:9px 0 0;letter-spacing:0}.battalion-brand p{font-family:'Assistant',sans-serif;font-size:25px;color:#f47724;font-style:italic;font-weight:700;line-height:1.4;margin:0;transform:rotate(-6deg);text-decoration:underline;text-underline-offset:7px;text-decoration-thickness:2px}
-.command-identity{position:absolute;top:25px;right:0;display:flex;flex-direction:column;gap:8px;font-size:13px;text-align:center;align-items:center}.command-identity .avatar{width:43px;height:43px;border-radius:50%;font-size:18px;background:#171410;color:#eee;border:1px solid #756b5c}.command-bell{position:absolute;top:27px;left:0;border:0;background:transparent}.command-bell i{position:absolute;top:3px;right:4px;width:9px;height:9px;border-radius:50%;background:#f47724}
-.command-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:0 0 23px}.command-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:130px;padding:17px 6px;background:linear-gradient(135deg,#21180f88,#101010 70%);border:1px solid #3f3428;border-radius:13px;position:relative;box-shadow:inset 0 1px #c6954a08}.command-tile>svg{color:#f47724;margin-bottom:3px}.command-tile strong{font-size:19px;display:flex;align-items:center;gap:7px}.command-tile strong svg{color:#9e9a92}.command-tile>span{font-size:15px;color:#b0aaa1}.command-tile:hover{border-color:#c87535;background:#21190f}.tile-count{position:absolute;top:9px;left:9px;background:#bd2b2b;color:white;border-radius:50%;min-width:23px;height:23px;font-size:13px;display:grid;place-items:center}
-.command-snapshot h2,.command-panel h2{display:flex;align-items:center;gap:4px;font-size:19px;margin:0;font-weight:700}.command-snapshot h2{margin-bottom:9px}.command-snapshot h2 svg{color:#d3b38c}.command-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.command-stats button{background:linear-gradient(145deg,#171513,#0e0e0e);border:1px solid #3b352e;border-radius:10px;display:flex;align-items:center;flex-direction:column;padding:9px 0;min-height:74px}.command-stats strong{font-size:28px;line-height:1.15}.command-stats span{font-size:15px;font-weight:600}.command-stats .red{color:#f34743}.command-stats .orange{color:#ff9c28}.command-stats .green{color:#75c947}.command-stats .total{color:#b8b4ae}.snapshot-note{display:block;color:#898279;font-size:11px;margin:5px 0 12px}
-.command-panel{margin:12px 0;background:linear-gradient(130deg,#151310,#0b0b0b);border:1px solid #29251f;border-radius:19px;padding:12px 11px}.command-panel-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px}.command-panel-heading h2 svg{color:#ef8c43}.command-panel-heading>button{background:none;border:0;padding:4px;color:#f29338;text-decoration:underline;font-size:14px}.command-task{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid #302a23;background:transparent!important;min-height:64px}.command-task:last-child{border:0}.command-task>div{flex:1;min-width:0}.command-task strong{display:block;font-size:17px;font-weight:600;overflow-wrap:anywhere}.command-task span{display:block;color:#a39b90;font-size:14px}.command-task time{direction:ltr;font-size:12px;color:#aca59a;flex-shrink:0}.command-task>i{width:13px;height:13px;background:#8b8882;border-radius:50%;flex-shrink:0;margin:0 4px}.command-task.task-done>i{background:#78ce46}.command-task.task-overdue>i{background:#e73936}.command-task.task-due-soon>i{background:#ff951e}.command-update{display:flex;align-items:center;gap:13px;background:#151310;border:0;border-radius:11px;width:100%;padding:12px;text-align:right;border-bottom:1px solid #2d2821}.command-update>svg:first-child{order:2;margin-right:auto;color:#e8e1d7}.command-update span{flex:1}.command-update strong{font-size:16px;display:block;font-weight:500}.command-update time{color:#aaa096;font-size:13px}.command-update>svg:last-child{color:#948575}.more-navigation .nav-item{color:#ded5c9}.more-navigation{display:grid;gap:6px}
+.command-home .main-content{padding-top:0}.command-dashboard{max-width:930px;margin:auto;padding-bottom:20px}.command-hero{position:relative;min-height:310px;display:flex;align-items:flex-start;justify-content:center;padding-top:22px;isolation:isolate}.command-scene{position:absolute;bottom:0;left:-20px;right:-20px;height:145px;background:linear-gradient(#08080800,#080808 98%),url('/brand/75-crest.png?v=2') center 76%/100% auto;z-index:-1;opacity:.85;mask-image:linear-gradient(transparent,#000 20%,#000 85%,transparent)}
+.battalion-brand{text-align:center}.battalion-crest{width:125px;height:173px;background:url('/brand/75-crest.png?v=2') center 23%/205% auto no-repeat;mask-image:linear-gradient(transparent,#000 4%,#000 96%,transparent);margin:auto}.battalion-brand h1{font-size:25px;line-height:1.2;margin:9px 0 0;letter-spacing:0}.battalion-brand p{font-family:'Assistant',sans-serif;font-size:25px;color:#247ef4;font-style:italic;font-weight:700;line-height:1.4;margin:0;transform:rotate(-6deg);text-decoration:underline;text-underline-offset:7px;text-decoration-thickness:2px}
+.command-identity{position:absolute;top:25px;right:0;display:flex;flex-direction:column;gap:8px;font-size:13px;text-align:center;align-items:center}.command-identity .avatar{width:43px;height:43px;border-radius:50%;font-size:18px;background:#101317;color:#eee;border:1px solid #5c6775}.command-bell{position:absolute;top:27px;left:0;border:0;background:transparent}.command-bell i{position:absolute;top:3px;right:4px;width:9px;height:9px;border-radius:50%;background:#247ef4}
+.command-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:0 0 23px}.command-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:130px;padding:17px 6px;background:linear-gradient(135deg,#0f172188,#101010 70%);border:1px solid #28323f;border-radius:13px;position:relative;box-shadow:inset 0 1px #4a80c608}.command-tile>svg{color:#247ef4;margin-bottom:3px}.command-tile strong{font-size:19px;display:flex;align-items:center;gap:7px}.command-tile strong svg{color:#92979e}.command-tile>span{font-size:15px;color:#a1a8b0}.command-tile:hover{border-color:#3575c8;background:#0f1721}.tile-count{position:absolute;top:9px;left:9px;background:#bd2b2b;color:white;border-radius:50%;min-width:23px;height:23px;font-size:13px;display:grid;place-items:center}
+.command-snapshot h2,.command-panel h2{display:flex;align-items:center;gap:4px;font-size:19px;margin:0;font-weight:700}.command-snapshot h2{margin-bottom:9px}.command-snapshot h2 svg{color:#8cabd3}.command-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.command-stats button{background:linear-gradient(145deg,#131517,#0e0e0e);border:1px solid #2e343b;border-radius:10px;display:flex;align-items:center;flex-direction:column;padding:9px 0;min-height:74px}.command-stats strong{font-size:28px;line-height:1.15}.command-stats span{font-size:15px;font-weight:600}.command-stats .red{color:#f34743}.command-stats .orange{color:#2885ff}.command-stats .green{color:#75c947}.command-stats .total{color:#aeb2b8}.snapshot-note{display:block;color:#798089;font-size:11px;margin:5px 0 12px}
+.command-panel{margin:12px 0;background:linear-gradient(130deg,#101215,#0b0b0b);border:1px solid #1f2329;border-radius:19px;padding:12px 11px}.command-panel-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 9px}.command-panel-heading h2 svg{color:#438eef}.command-panel-heading>button{background:none;border:0;padding:4px;color:#3889f2;text-decoration:underline;font-size:14px}.command-task{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid #232930;background:transparent!important;min-height:64px}.command-task:last-child{border:0}.command-task>div{flex:1;min-width:0}.command-task strong{display:block;font-size:17px;font-weight:600;overflow-wrap:anywhere}.command-task span{display:block;color:#9098a3;font-size:14px}.command-task time{direction:ltr;font-size:12px;color:#9aa2ac;flex-shrink:0}.command-task>i{width:13px;height:13px;background:#82868b;border-radius:50%;flex-shrink:0;margin:0 4px}.command-task.task-done>i{background:#78ce46}.command-task.task-overdue>i{background:#e73936}.command-task.task-due-soon>i{background:#1e7fff}.command-update{display:flex;align-items:center;gap:13px;background:#101215;border:0;border-radius:11px;width:100%;padding:12px;text-align:right;border-bottom:1px solid #21262d}.command-update>svg:first-child{order:2;margin-right:auto;color:#d7dee8}.command-update span{flex:1}.command-update strong{font-size:16px;display:block;font-weight:500}.command-update time{color:#969faa;font-size:13px}.command-update>svg:last-child{color:#758294}.more-navigation .nav-item{color:#c9d2de}.more-navigation{display:grid;gap:6px}
 @media(min-width:761px){.command-hero{min-height:340px}.command-scene{background-size:720px auto;height:190px}.command-tiles{gap:16px}.command-tile{min-height:145px}.command-panel{padding:18px 22px}.command-home .capture-button{bottom:25px}}
-@media(max-width:760px){.command-home .main-content{padding:0 17px 100px}.command-hero{min-height:278px;padding-top:16px}.battalion-crest{width:108px;height:149px}.battalion-brand h1{font-size:24px}.battalion-brand p{font-size:24px}.command-tiles{gap:9px;margin-bottom:19px}.command-tile{min-height:123px;padding:15px 4px}.command-tile strong{font-size:17px}.command-tile>span{font-size:13px}.command-tile>svg{width:29px}.command-panel h2,.command-snapshot h2{font-size:18px}.command-task strong{font-size:16px}.command-task{gap:8px}.command-stats strong{font-size:27px}.battalion-app .mobile-nav{height:calc(76px + env(safe-area-inset-bottom));padding:8px 6px calc(7px + env(safe-area-inset-bottom));background:#090909f5;border-top:1px solid #3c2a1a;backdrop-filter:blur(15px);justify-content:space-around}.battalion-app .mobile-nav button{color:#99958d;font-size:12px;gap:5px;background:transparent;border:0;min-width:0}.battalion-app .mobile-nav button span{font-size:12px}.battalion-app .mobile-nav button.active{color:#ff8528}.battalion-app .mobile-nav button.active svg{background:radial-gradient(#f3782533,transparent);box-shadow:0 0 22px #fc7c2330;border-radius:50%;outline:1px solid #f38431;outline-offset:9px;fill:#ee791c33}.battalion-app .mobile-nav button.active span{margin-top:3px}.battalion-app .capture-button{bottom:calc(96px + env(safe-area-inset-bottom));width:46px;height:46px;min-width:46px;padding:10px;border-radius:50%;box-shadow:0 3px 20px #000b}.battalion-app .capture-button span{display:none}.battalion-login{padding:10px 20px 18px}.login-art{width:min(100%,460px);max-height:79svh}.login-entry{margin-top:0}.login-entry>.button{min-height:58px;font-size:22px}.login-entry>a{padding:15px}}
+@media(max-width:760px){.command-home .main-content{padding:0 17px 100px}.command-hero{min-height:278px;padding-top:16px}.battalion-crest{width:108px;height:149px}.battalion-brand h1{font-size:24px}.battalion-brand p{font-size:24px}.command-tiles{gap:9px;margin-bottom:19px}.command-tile{min-height:123px;padding:15px 4px}.command-tile strong{font-size:17px}.command-tile>span{font-size:13px}.command-tile>svg{width:29px}.command-panel h2,.command-snapshot h2{font-size:18px}.command-task strong{font-size:16px}.command-task{gap:8px}.command-stats strong{font-size:27px}.battalion-app .mobile-nav{height:calc(76px + env(safe-area-inset-bottom));padding:8px 6px calc(7px + env(safe-area-inset-bottom));background:#090909f5;border-top:1px solid #1a293c;backdrop-filter:blur(15px);justify-content:space-around}.battalion-app .mobile-nav button{color:#8d9299;font-size:12px;gap:5px;background:transparent;border:0;min-width:0}.battalion-app .mobile-nav button span{font-size:12px}.battalion-app .mobile-nav button.active{color:#2885ff}.battalion-app .mobile-nav button.active svg{background:radial-gradient(#257ef333,transparent);box-shadow:0 0 22px #2381fc30;border-radius:50%;outline:1px solid #3185f3;outline-offset:9px;fill:#1c77ee33}.battalion-app .mobile-nav button.active span{margin-top:3px}.battalion-app .capture-button{bottom:calc(96px + env(safe-area-inset-bottom));width:46px;height:46px;min-width:46px;padding:10px;border-radius:50%;box-shadow:0 3px 20px #000b}.battalion-app .capture-button span{display:none}.battalion-login{padding:10px 20px 18px}.login-art{width:min(100%,460px);max-height:79svh}.login-entry{margin-top:0}.login-entry>.button{min-height:58px;font-size:22px}.login-entry>a{padding:15px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
-.offline-status{background:#192016;color:#b2c9a8;border-color:#3b4c30;box-shadow:0 3px 15px #0005}.offline-pending{background:#30230e;color:#efc16a;border-color:#795326}
+.offline-status{background:#192016;color:#b2c9a8;border-color:#3b4c30;box-shadow:0 3px 15px #0005}.offline-pending{background:#0e1d30;color:#6aa4ef;border-color:#264a79}
 body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-status:not(.offline-pending){display:none}
-.battalion-login .modal{max-width:440px;background:linear-gradient(145deg,#22190f,#0e0e0d);border:1px solid #715035}.battalion-login .login-form{background:none;border:0;box-shadow:none;padding:10px 8px;width:100%}
+.battalion-login .modal{max-width:440px;background:linear-gradient(145deg,#0f1722,#0e0e0d);border:1px solid #354f71}.battalion-login .login-form{background:none;border:0;box-shadow:none;padding:10px 8px;width:100%}
 .command-scene{left:0;right:0;background-position:center 85%}
 @media(max-width:760px){.offline-status:not(.offline-pending){bottom:79px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 30px);width:max-content;font-size:10px;padding:3px 8px;border-radius:6px;pointer-events:none;opacity:.8}.command-update{min-width:0}.command-update span{min-width:0;overflow-wrap:anywhere}}
 .command-scene{left:50%;right:auto;transform:translateX(-50%);width:100%;max-width:720px;height:auto;aspect-ratio:709/230;background-size:100% auto;background-position:center 77%;background-repeat:no-repeat}
@@ -1908,7 +1908,7 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 /* QA: retain readable status text in the charcoal theme and keep actions in reach. */
 .rhythm-table tr.task-done,.task-row.task-done{color:#d5edcf}
 .rhythm-table tr.task-overdue,.task-row.task-overdue{color:#ffd3ce}
-.rhythm-table tr.task-due-soon,.task-row.task-due-soon{color:#ffe1b7}
+.rhythm-table tr.task-due-soon,.task-row.task-due-soon{color:#b7d6ff}
 .icon-button{min-width:44px;min-height:44px}
 .command-panel-heading>button{min-height:44px;min-width:44px;padding:8px}
 .command-task time,.snapshot-note{font-size:13px}
@@ -1937,23 +1937,23 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 
 /* Keep ordinary task rows and interaction states on the same dark surface. */
 .battalion-app .task-row{background:var(--surface);color:var(--text)}
-.battalion-app .task-row:hover{background:#1c1813}
+.battalion-app .task-row:hover{background:#13171c}
 .battalion-app .task-row.task-done{background:#142312;color:#d5edcf}
 .battalion-app .task-row.task-overdue{background:#2c1514;color:#ffd3ce}
-.battalion-app .task-row.task-due-soon{background:#2e2111;color:#ffe1b7}
+.battalion-app .task-row.task-due-soon{background:#111e2e;color:#b7d6ff}
 .battalion-app .task-main strong{color:inherit}
-.battalion-app .task-row .row-meta,.battalion-app .task-row .date{color:#bdb5aa}
+.battalion-app .task-row .row-meta,.battalion-app .task-row .date{color:#aab2bd}
 .battalion-app .task-row .date.late{color:#ffb5ad}
-.button.secondary:hover{background:#29231c;color:#f2efea;border-color:#77512e}
-.button.primary:hover{background:linear-gradient(110deg,#ff963c,#e75a1a);color:#100b06}
+.button.secondary:hover{background:#1c2229;color:#eaedf2;border-color:#2e4e77}
+.button.primary:hover{background:linear-gradient(110deg,#3c90ff,#1a73e7);color:#060a10}
 .battalion-app .decision-preview,.quick-notice{background:var(--surface);color:var(--text);border-color:var(--border)}
-.battalion-app .decision-preview:hover{background:#1c1813}
+.battalion-app .decision-preview:hover{background:#13171c}
 .badge.in_progress,.badge.pending,.badge.high{background:#172d36;color:#a2d9ed}
-.badge.blocked,.badge.pending_review,.badge.clarification_requested{background:#3a2a12;color:#ffcf83}
+.badge.blocked,.badge.pending_review,.badge.clarification_requested{background:#12233a;color:#83b9ff}
 .badge.completed,.badge.approved{background:#17331f;color:#b0e9be}
 
 /* Sliding task cards: screen directions intentionally stay physical in RTL. */
-.swipe-task-shell{position:relative;isolation:isolate;overflow:hidden;border-radius:14px;margin:0 14px 12px;scroll-margin-block:110px;background:#25211b}
+.swipe-task-shell{position:relative;isolation:isolate;overflow:hidden;border-radius:14px;margin:0 14px 12px;scroll-margin-block:110px;background:#1b1f25}
 .swipe-task-front{position:relative;z-index:1;touch-action:pan-y pinch-zoom;transform:translate3d(var(--swipe-offset,0px),0,0);transition:transform 190ms cubic-bezier(.22,.75,.25,1);backface-visibility:hidden}
 .is-dragging .swipe-task-front{transition:none;user-select:none;-webkit-user-select:none;cursor:grabbing;will-change:transform}
 .task-underlay{position:absolute;top:0;bottom:0;display:flex;direction:ltr;visibility:hidden}
@@ -1961,7 +1961,7 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 .is-revealing-right>.task-underlay-right,.is-revealing-left>.task-underlay-left{visibility:visible}
 .task-underlay>button{width:76px;min-width:76px;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;border:0;border-radius:0;padding:10px 3px;direction:rtl;font-size:13px;font-weight:700;line-height:1.35;cursor:pointer}
 .swipe-delete{background:#aa2b30!important;color:#fff!important}
-.swipe-pin{background:#ee8c32!important;color:#211204!important}
+.swipe-pin{background:#3283ee!important;color:#041121!important}
 .swipe-extend{background:#245e9b!important;color:#fff!important}
 .swipe-calendar{background:#206d4d!important;color:#fff!important}
 .task-action-control{position:relative;min-width:44px}
@@ -1971,37 +1971,37 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 .task-extra-actions{border-top:1px solid var(--border);padding-top:14px}
 .task-extra-actions .completion-controls{display:flex;flex-wrap:wrap;gap:10px}
 .task-action-error{color:#ffbdb3;overflow-wrap:anywhere;font-size:15px;margin:8px 0}
-.task-pin-label{display:inline-flex;gap:4px;color:#ffc687;font-size:14px;font-weight:600}
-.task-swipe-help{font-size:14px;color:#c5bdb2;line-height:1.7;margin:10px 0}
+.task-pin-label{display:inline-flex;gap:4px;color:#87bbff;font-size:14px;font-weight:600}
+.task-swipe-help{font-size:14px;color:#b2bac5;line-height:1.7;margin:10px 0}
 .task-list-hint{padding:0 18px;margin:0 0 12px}
-.task-action-notice{z-index:300;bottom:calc(100px + env(safe-area-inset-bottom));background:#1f2118;border-color:#83925d;color:#f2efea}
+.task-action-notice{z-index:300;bottom:calc(100px + env(safe-area-inset-bottom));background:#1f2118;border-color:#83925d;color:#eaedf2}
 .dialog-actions,.deadline-shortcuts{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
 .button.danger{background:#9f3127;border-color:#e38274;color:#fff}
-.calendar-connection{padding:24px;max-width:750px;line-height:1.8}.calendar-connection>svg{color:#ffab63}
-.calendar-setup-note{background:#2b2115;border:1px solid #79603a;padding:16px;border-radius:12px}
+.calendar-connection{padding:24px;max-width:750px;line-height:1.8}.calendar-connection>svg{color:#63a7ff}
+.calendar-setup-note{background:#151f2b;border:1px solid #3a5579;padding:16px;border-radius:12px}
 .calendar-window{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}
 .calendar-window label{min-width:0}.calendar-window input,.calendar-window select{width:100%;min-height:44px}
 .calendar-slots{display:grid;gap:10px;margin-top:18px}.calendar-slots>label{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px;border:1px solid var(--border);border-radius:10px}
-.calendar-slots input[type=radio]{width:20px;height:20px;accent-color:#f47724}
-.calendar-slots small,.calendar-reconnect{display:block;color:#bab1a5;font-size:14px;margin-top:12px}
+.calendar-slots input[type=radio]{width:20px;height:20px;accent-color:#247ef4}
+.calendar-slots small,.calendar-reconnect{display:block;color:#a5aeba;font-size:14px;margin-top:12px}
 
 @media(max-width:700px){.calendar-window{grid-template-columns:minmax(0,1fr)}}
 .calendar-fields{border:0;padding:0;margin:0;min-width:0}
 
 
 /* One hierarchy across manager, deputies and personal tasks. */
-.battalion-app .swipe-task-front.task-row,.rhythm-task-card{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto 44px;gap:12px;align-items:center;min-width:0;padding:18px 16px;border:1px solid #484138;border-inline-start:4px solid #5c5346;border-radius:14px;background:#191816!important;color:#f4f1ec}
-.battalion-app .swipe-task-front.task-done,.rhythm-task-card.task-done{background:#171d17!important;border-inline-start-color:#63bd7b!important;color:#f4f1ec}
-.battalion-app .swipe-task-front.task-overdue,.rhythm-task-card.task-overdue{background:#201918!important;border-inline-start-color:#ff7771!important;color:#f4f1ec}
-.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#211d17!important;border-inline-start-color:#ffb34f!important;color:#f4f1ec}
+.battalion-app .swipe-task-front.task-row,.rhythm-task-card{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto 44px;gap:12px;align-items:center;min-width:0;padding:18px 16px;border:1px solid #383f48;border-inline-start:4px solid #46505c;border-radius:14px;background:#161719!important;color:#eceff4}
+.battalion-app .swipe-task-front.task-done,.rhythm-task-card.task-done{background:#171d17!important;border-inline-start-color:#63bd7b!important;color:#eceff4}
+.battalion-app .swipe-task-front.task-overdue,.rhythm-task-card.task-overdue{background:#201918!important;border-inline-start-color:#ff7771!important;color:#eceff4}
+.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#171b21!important;border-inline-start-color:#4f9bff!important;color:#eceff4}
 .task-row>.status-dot{display:none}
 .task-row>.task-main{grid-column:2;text-align:start;padding:0;min-height:44px;align-self:center}
 .task-row>input{grid-column:1;grid-row:1;align-self:center;justify-self:center}
 .task-row>.task-row-end{grid-column:3;grid-row:1;align-items:flex-start}
 .task-row>.button{grid-column:4;grid-row:1;min-height:44px;min-width:72px}
 .task-row>.task-action-control{grid-column:5;grid-row:1}
-.battalion-app .task-main strong,.rhythm-task-content>strong{font-size:17px;line-height:1.55;font-weight:650;color:#f4f1ec}
-.battalion-app .task-row .row-meta,.battalion-app .task-row .date,.rhythm-task-card small,.rhythm-task-deadline{color:#c9c2b8;font-size:14px;line-height:1.6}
+.battalion-app .task-main strong,.rhythm-task-content>strong{font-size:17px;line-height:1.55;font-weight:650;color:#eceff4}
+.battalion-app .task-row .row-meta,.battalion-app .task-row .date,.rhythm-task-card small,.rhythm-task-deadline{color:#b8bfc9;font-size:14px;line-height:1.6}
 .task-row .row-meta{display:block}.task-row .date{white-space:normal}
 .rhythm-task-card .late,.battalion-app .task-row .date.late{color:#ffb5ad}
 .task-row .badge,.rhythm-task-card .badge{font-size:12px;padding:4px 8px}
@@ -2015,22 +2015,22 @@ body:has(.battalion-login)>.offline-status,body:has(.battalion-login) .offline-s
 .rhythm-task-completion .completion-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:3px 0 8px;line-height:1.5;font-size:14px}
 .rhythm-task-completion .completion-controls>span{flex:1;min-width:70px}.rhythm-task-completion .button{min-height:44px;font-size:14px}
 .rhythm-task-card input[type=checkbox]{width:20px;height:20px;accent-color:var(--teal)}
-.task-filterbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:16px 18px;margin-bottom:6px;min-width:0;background:#151310;border-radius:12px}
-.task-filter-search{flex:1 1 220px;min-width:0}.task-filter-search label{margin:0;color:#c9c2b8;font-size:14px}
+.task-filterbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:16px 18px;margin-bottom:6px;min-width:0;background:#101215;border-radius:12px}
+.task-filter-search{flex:1 1 220px;min-width:0}.task-filter-search label{margin:0;color:#b8bfc9;font-size:14px}
 .task-filter-search .search-field{margin:0;padding:0 12px}.task-filter-search input{width:100%;min-height:46px;font-size:16px}
-.task-filter-details{display:block;flex:0 0 auto}.task-filter-details[open]{flex-basis:100%;order:3}.task-filter-details[open]>summary{width:max-content}.task-filter-details>summary{display:flex;list-style:none;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:10px 12px;border:1px solid #5d5143;border-radius:10px;background:#211b15;cursor:pointer;font-size:14px;font-weight:600}
+.task-filter-details{display:block;flex:0 0 auto}.task-filter-details[open]{flex-basis:100%;order:3}.task-filter-details[open]>summary{width:max-content}.task-filter-details>summary{display:flex;list-style:none;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:10px 12px;border:1px solid #434e5d;border-radius:10px;background:#151a21;cursor:pointer;font-size:14px;font-weight:600}
 .task-filter-details>summary::-webkit-details-marker{display:none}
 .task-filter-details[open]>summary>svg:last-child{transform:rotate(180deg)}
 .task-filter-fields{display:flex;flex-wrap:wrap;gap:12px;flex-basis:100%;width:100%;padding-top:8px;order:3}
-.task-filter-fields>label{flex:1 1 180px;margin:0;font-size:14px;color:#c9c2b8;min-width:0}
+.task-filter-fields>label{flex:1 1 180px;margin:0;font-size:14px;color:#b8bfc9;min-width:0}
 .task-filter-fields select,.task-filter-fields input{width:100%;min-height:46px;font-size:16px}
-.task-result-count{font-size:14px;color:#c9c2b8;white-space:nowrap}
-.filter-active-dot{width:8px;height:8px;border-radius:50%;background:#ffac62}
+.task-result-count{font-size:14px;color:#b8bfc9;white-space:nowrap}
+.filter-active-dot{width:8px;height:8px;border-radius:50%;background:#62a6ff}
 .rhythm-create-action{margin:10px 0}.rhythm-create-action:empty{display:none}
 .task-tabs button{min-height:44px;font-size:14px}.task-tabs{scrollbar-width:thin}
-button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #ffc477!important;outline-offset:3px}
+button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #77b2ff!important;outline-offset:3px}
 .task-underlay button:focus-visible{outline-offset:-4px}
-@media(max-width:1000px){.rhythm-task-card{grid-template-columns:32px minmax(0,1fr) 44px}.rhythm-task-content{grid-column:2;grid-row:1}.rhythm-task-selection{grid-row:1}.rhythm-task-management{grid-column:3;grid-row:1}.rhythm-task-deadline{grid-column:2;grid-row:2;padding:0}.rhythm-task-completion{grid-column:2/-1;grid-row:3;border-top:1px solid #413a31;padding-top:10px}}
+@media(max-width:1000px){.rhythm-task-card{grid-template-columns:32px minmax(0,1fr) 44px}.rhythm-task-content{grid-column:2;grid-row:1}.rhythm-task-selection{grid-row:1}.rhythm-task-management{grid-column:3;grid-row:1}.rhythm-task-deadline{grid-column:2;grid-row:2;padding:0}.rhythm-task-completion{grid-column:2/-1;grid-row:3;border-top:1px solid #313841;padding-top:10px}}
 @media(max-width:700px){
  .battalion-app .swipe-task-front.task-row{grid-template-columns:28px minmax(0,1fr) 44px;gap:8px;padding:14px 12px;align-items:start}
  .task-row>.task-main{grid-column:2;grid-row:1}.task-row>.task-row-end{grid-column:2/-1;grid-row:2;flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
@@ -2048,23 +2048,23 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,s
 .swipe-task-front{touch-action:auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .battalion-app .swipe-task-front.task-done,.rhythm-task-card.task-done{background:#101a12!important;border-inline-start-color:#347a46!important}
 .battalion-app .swipe-task-front.task-overdue,.rhythm-task-card.task-overdue{background:#211110!important;border-inline-start-color:#a33e39!important}
-.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#211b0d!important;border-inline-start-color:#aa7726!important}
+.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#0d1621!important;border-inline-start-color:#265faa!important}
 
 /* Shared dark surfaces, including nested forms and native iOS controls. */
 .edit-details,.comment,.attention-intro,.metric,.decision-notes,.guest-banner {
   background:var(--surface);color:var(--text);border-color:var(--border);
 }
 .button:not(.primary):not(.danger):not(.swipe-action):hover {
-  background:#29231c;color:var(--text);border-color:#77512e;
+  background:#1c2229;color:var(--text);border-color:#2e4e77;
 }
-.button:disabled {opacity:1;background:#26231f;color:#b7afa4;border-color:#50483d;cursor:wait;}
+.button:disabled {opacity:1;background:#1f2226;color:#a4acb7;border-color:#3d4550;cursor:wait;}
 .detail-facts,.comment time,.panel-footer,.document-folder-card small {color:var(--muted);}
-.domain-card:hover,.document-folder-card:hover,.metric:hover {background:#211b14;}
+.domain-card:hover,.document-folder-card:hover,.metric:hover {background:#141a21;}
 .badge.urgent,.badge.rejected {background:#3b1d1a;color:#ffc1b7;}
-.blocker,.demo-label {background:#30230e;color:#efc16a;}
+.blocker,.demo-label {background:#0e1d30;color:#6aa4ef;}
 .error-banner {background:#361b19;color:#ffc1b7;border-color:#8a4940;}
 .focus-task.task-overdue {background:#2c1514;color:#ffd3ce;}
-.focus-task.task-due-soon {background:#2e2111;color:#ffe1b7;}
+.focus-task.task-due-soon {background:#111e2e;color:#b7d6ff;}
 .focus-task.task-done {background:#142312;color:#d5edcf;}
 .form-grid>* {min-width:0;}
 input[type=date],input[type=datetime-local] {max-width:100%;min-inline-size:0;}
@@ -2078,18 +2078,42 @@ input::-webkit-date-and-time-value {text-align:start;}
  .access-member select {flex:1 1 100%;}
  .access-member .button {min-height:44px;}
 }
-.description,.decision-people,.domain-card>span:last-child {color:#c9c2b8;}
-.domain-icon,.activity-icon {background:#27221b;color:#d9b78e;}
-.tone-1 {background:#302618;color:#edc78e;}
+.description,.decision-people,.domain-card>span:last-child {color:#b8bfc9;}
+.domain-icon,.activity-icon {background:#1b2027;color:#8eaed9;}
+.tone-1 {background:#182230;color:#8eb7ed;}
 .tone-2 {background:#202837;color:#b9cbee;}
 .tone-3 {background:#20301e;color:#bdd8ad;}
-.panel-heading h2 span,.task-tabs button span {background:#30241b;color:#f0c29e;}
+.panel-heading h2 span,.task-tabs button span {background:#1b2430;color:#9ec2f0;}
 .rhythm-urgent {background:#2c1514;color:#ffd3ce;}
 
 /* Romach 75: preserve the original layout, with its own complete emblem. */
-.login-art{width:min(78vw,380px);aspect-ratio:1;background:url('/brand/75-crest.png') center/contain no-repeat;max-height:56svh;mask-image:none}
-.battalion-crest{width:150px;height:150px;background:url('/brand/75-crest.png') center/contain no-repeat;mask-image:none}
+.login-art{width:min(78vw,380px);aspect-ratio:1;background:url('/brand/75-crest.png?v=2') center/contain no-repeat;max-height:56svh;mask-image:none}
+.battalion-crest{width:150px;height:150px;background:url('/brand/75-crest.png?v=2') center/contain no-repeat;mask-image:none}
 .command-scene{background:radial-gradient(ellipse at center bottom,#1d4c9840,transparent 70%);mask-image:none}
 .battalion-brand p{font-size:clamp(17px,4.6vw,23px);transform:none;text-decoration:none;max-width:340px;margin:7px auto 0}
-.login-motto{font-size:clamp(19px,5vw,25px);font-weight:600;text-align:center;color:#f47724;margin:0 0 22px;line-height:1.5}
+.login-motto{font-size:clamp(19px,5vw,25px);font-weight:600;text-align:center;color:#247ef4;margin:0 0 22px;line-height:1.5}
 @media(max-width:760px){.battalion-crest{width:125px;height:125px}.command-hero{min-height:260px}.login-art{width:min(78vw,340px);max-height:52svh}.login-motto{margin-bottom:18px}}
+
+/* Romach: sapphire, silver and black throughout every interface. */
+:root{--navy:#050a12;--canvas:#05070c;--surface:#0c121d;--teal:#438fff;--teal-soft:#102344;--text:#eef4ff;--muted:#a1afc4;--border:#243650;--red:#f14a48;--amber:#ff9c28}
+body{background:#05070c}
+.battalion-app .sidebar{background:linear-gradient(160deg,#101b2d,#05070c 65%)}
+.battalion-app .topbar{background:#070d17ef}
+.battalion-login{background:radial-gradient(ellipse at 50% 43%,#12356a44,transparent 63%),#04060a}
+.button.primary{background:linear-gradient(110deg,#215fbb,#163a7b);border:1px solid #80baff;color:#f6faff;box-shadow:0 4px 24px #367dff28}
+.button.primary:hover{background:linear-gradient(110deg,#2c70cf,#2056a6)}
+.login-motto,.battalion-brand p,.opening-caption span{color:#8bbcff}
+.command-access{background:linear-gradient(120deg,#13294b,#090f1b);border-color:#315587}
+.command-scene{background:radial-gradient(ellipse at center bottom,#204d924d,transparent 70%)}
+.battalion-crest,.login-art{filter:drop-shadow(0 0 18px #377dda25)}
+.battalion-app .mobile-nav{border-top-color:#213857}
+.battalion-app .mobile-nav button.active{color:#83b8ff}
+.battalion-app .mobile-nav button.active svg{background:radial-gradient(#438fff33,transparent);box-shadow:0 0 22px #438fff30;outline-color:#438fff;fill:#438fff33}
+.battalion-opening{background:radial-gradient(ellipse at 50% 45%,#102447 0%,#05070c 57%)}
+.opening-outline path{stroke:#7cb6ff;filter:drop-shadow(0 0 4px #3b82f6)}
+.opening-glint{background-image:linear-gradient(110deg,transparent 37%,#b9d8ff3d 47%,#eef6ff8c 50%,transparent 60%)}
+/* Preserve task-state indicators independently of the application brand. */
+.command-stats .orange{color:#ff9c28}.command-stats .red{color:#f34743}.command-stats .green{color:#75c947}
+.battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#211b0d!important;border-inline-start-color:#aa7726!important}
+.focus-task.task-due-soon{background:#2e2111;color:#ffe1b7}
+.command-task.task-due-soon>i{background:#ff951e}
