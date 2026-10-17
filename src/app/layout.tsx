@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   applicationName: 'סמג״ד רומח',
   description: 'גדוד 75 רומח — משימות, אחריות, לו״ז וסיכומי ישיבות במקום אחד.',
   appleWebApp: { capable: true, title: 'סמג״ד רומח', statusBarStyle: 'default' },
-  icons: { apple: '/brand/75-crest.png', icon: '/brand/75-crest.png' },
+  icons: { apple: '/brand/75-crest.png?v=2', icon: '/brand/75-crest.png?v=2' },
   robots: { index: false, follow: false },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
