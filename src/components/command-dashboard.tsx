@@ -1,0 +1,31 @@
+"use client";
+import {Bell, CalendarDays, ClipboardCheck, UsersRound, Folder, FileText, UserRound, LockKeyhole, ChevronLeft, ShieldCheck} from 'lucide-react';
+import {currentMonth,useRhythm} from './use-rhythm';
+import {taskTone} from '@/lib/task-display';
+import {isPersonalItem} from '@/lib/unit-roles';
+import {isPersonalTask} from '@/lib/task-snapshot';
+import {addDays} from '@/lib/rhythm';
+type Props={pinnedTaskKeys?:string[];user:{id:string;name:string;permissions?:{manageAccess:boolean}},tasks:{id:string;title:string;status:string;dueDate:string|null;ownerId:string;creatorId:string}[],users:{id:string;name:string}[],today:string,activity:{id:string;summary:string;createdAt:string}[],go:(view:string,filter?:string,domain?:string,task?:string)=>void};
+export function BattalionBrand(){return <div className="battalion-brand"><div className="battalion-crest" role="img" aria-label="סמל גדוד 605"/><h1>גדוד 605</h1><p>ברמה אחרת</p></div>}
+export default function CommandDashboard({pinnedTaskKeys=[],user,tasks,users,today,activity,go}:Props){
+ const {data,error,load}=useRhythm(currentMonth());
+ const rows=[...tasks.filter(t=>t.status!=='cancelled'&&!isPersonalTask(t,user.id)).map(t=>({id:t.id,title:t.title,pinned:pinnedTaskKeys.includes('task:'+t.id),done:t.status==='completed',due:t.dueDate,owner:users.find(u=>u.id===t.ownerId)?.name||'',href:`/?view=tasks&task=${encodeURIComponent(t.id)}`})),...(data?.occurrences.flatMap(o=>{const i=data.items.find(i=>i.id===o.itemId);return !i||i.archived||i.category==='point'||isPersonalItem(i,user.id)?[]:[{id:o.id,title:i.title,pinned:pinnedTaskKeys.includes('rhythm:'+i.id),done:o.done,due:i.hasDeadline?o.dueDate:null,owner:i.assigneeIds.map(id=>data.people.find(p=>p.id===id)?.name).filter(Boolean).join(', '),href:`/?view=${i.assigneeIds.length===1&&i.assigneeIds[0]===user.id&&i.creatorId===user.id?'personal':'tasks'}&occurrence=${encodeURIComponent(o.id)}${i.frequency!=='once'?'&tab=rhythm&month='+o.dueDate.slice(0,7):''}`}];})||[])];
+ function openTasks(filter='all') {
+  go('tasks',filter);
+  const url=new URL(location.href);url.searchParams.set('tab','all');
+  history.replaceState({},'',url);window.dispatchEvent(new PopStateEvent('popstate'));
+ }
+ const late=rows.filter(t=>!t.done&&t.due&&t.due<today).length;
+ const tomorrow=rows.filter(t=>!t.done&&t.due&&t.due>=today&&t.due<=addDays(today,1)).length;
+ const done=rows.filter(t=>t.done).length;
+ const upcoming=rows.filter(t=>!t.done).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999')).slice(0,4);
+ const tiles=[{title:'אחריות',sub:'בעלי תפקידים',icon:UsersRound,view:'domains'}, {title:'שעל״ח',sub:'לוח משימות',icon:CalendarDays,view:user.permissions?.manageAccess?'personal':'tasks',tab:'rhythm'}, {title:'משימות',sub:'מעקב ובקרה',icon:ClipboardCheck,view:'tasks',count:late},...(user.permissions?.manageAccess?[{title:'אישי',sub:'המשימות שלי',icon:UserRound,view:'personal',private:true}]:[]),{title:'ספרייה',sub:'פקודות, נהלים',icon:Folder,view:'library'},{title:'סיכומי ישיבות',sub:'תיעוד וביקורות',icon:FileText,view:'records'}];
+ return <div className="command-dashboard">
+  <header className="command-hero"><div className="command-scene"/><div className="command-identity"><span className="avatar">{user.name.split(' ').map(s=>s[0]).slice(0,2).join('')}</span><span>מנהל המערכת</span></div><button className="command-bell icon-button" aria-label="עדכונים אחרונים" onClick={()=>go('activity')}><Bell size={24}/>{activity.length>0&&<i/>}</button><BattalionBrand/></header>
+  {user.permissions?.manageAccess && <div className="command-access"><button onClick={()=>go('access')}><ShieldCheck size={25}/><span><strong>ניהול גישה לפי מייל</strong><small>הוספת בעלי תפקידים וחסימת כניסה</small></span><ChevronLeft size={21}/></button><a href="/deputies/login">קישור סגני המחץ</a></div>}
+  <div className="command-tiles">{tiles.map(t=><button className="command-tile" key={t.title} onClick={()=>{if(t.tab){history.pushState({},'',`/?view=${t.view}&tab=${t.tab}`);window.dispatchEvent(new PopStateEvent('popstate'));}else go(t.view);}}><t.icon size={31} strokeWidth={1.6}/>{Boolean(t.count)&&<b className="tile-count">{t.count}</b>}<strong>{t.title}{t.private&&<LockKeyhole size={15}/>}</strong><span>{t.sub}</span></button>)}</div>
+  <section className="command-snapshot"><h2><ChevronLeft size={21}/>תמונת מצב גדודית</h2><div className="command-stats">{[{n:rows.length,label:'סה״כ',tone:'total',filter:'all'},{n:done,label:'בוצעו',tone:'green',filter:'completed'},{n:tomorrow,label:'דחוף',tone:'orange',filter:'due_soon'},{n:late,label:'באיחור',tone:'red',filter:'overdue'}].map(s=><button key={s.label} className={s.tone} onClick={()=>openTasks(s.filter)}><strong>{s.n}</strong><span>{s.label}</span></button>)}</div><small className="snapshot-note">משימות גדודיות ושעל״ח לחודש הנוכחי · ללא משימות אישיות</small>{!data&&!error&&<p role="status">טוענים משימות נוספות…</p>}{error&&<p role="alert">מוצג מידע חלקי. {error} <button className="button secondary" onClick={()=>void load()}>נסה שוב</button></p>}</section>
+  <section className="command-panel"><div className="command-panel-heading"><h2><ChevronLeft size={21}/>משימות קרובות</h2><button onClick={()=>go('tasks')}>הצג הכל</button></div>{upcoming.length?upcoming.map(t=><a className={`command-task ${taskTone(t.done,t.due,today)}`} href={t.href} key={t.id}><div><strong>{t.pinned?"📌 ":""}{t.title}</strong><span>{t.owner} · {t.done?"בוצע":t.due&&t.due<today?"באיחור":t.due===today?"להיום":t.due===addDays(today,1)?"דחוף":"לביצוע"}</span></div><time>{t.due?new Date(t.due+'T12:00:00').toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}):'ללא מועד'}</time><i/></a>):<p className="empty">אין משימות להצגה</p>}</section>
+  <section className="command-panel"><div className="command-panel-heading"><h2><ChevronLeft size={21}/>עדכונים מהגדוד</h2><button onClick={()=>go('activity')}>הצג הכל</button></div>{activity.length?activity.slice(0,2).map(a=><button className="command-update" key={a.id} onClick={()=>go('activity')}><FileText size={26}/><span><strong>{a.summary}</strong><time>{new Date(a.createdAt).toLocaleDateString('he-IL')}</time></span><ChevronLeft size={20}/></button>):<p className="empty">עדכונים יופיעו לאחר הפעולה הראשונה</p>}</section>
+ </div>
+}
