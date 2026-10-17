@@ -1,3 +1,4 @@
+import {mentionsRole} from '../lib/schedule';
 import {createHash,createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -14,7 +15,7 @@ export const calendarConfigured=()=>Boolean(process.env.GOOGLE_CALENDAR_CLIENT_I
 function key(){if(!process.env.BETTER_AUTH_SECRET)throw Error('Missing auth secret');return createHash('sha256').update('calendar-v1:'+process.env.BETTER_AUTH_SECRET).digest();}
 export function seal(value:unknown){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key(),iv);const data=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64url');}
 export function unseal<T>(value:string):T{const bytes=Buffer.from(value,'base64url'),decipher=createDecipheriv('aes-256-gcm',key(),bytes.subarray(0,12));decipher.setAuthTag(bytes.subarray(12,28));return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)),decipher.final()]).toString('utf8'));}
-type Tokens={access_token:string;refresh_token?:string;expiresAt:number;calendarId?:string};
+type Tokens={access_token:string;refresh_token?:string;expiresAt:number;calendarId?:string;scheduleCalendarId?:string};
 async function saveTokens(p:Principal,tokens:Tokens){await (await getDb()).insert(s.calendarConnections).values({id:connectionId(p),organizationId:p.organizationId,userId:p.userId,encryptedTokens:seal(tokens)}).onConflictDoUpdate({target:s.calendarConnections.id,set:{encryptedTokens:seal(tokens)}});}
 async function saved(p:Principal){const [row]=await (await getDb()).select().from(s.calendarConnections).where(and(eq(s.calendarConnections.id,connectionId(p)),eq(s.calendarConnections.userId,p.userId),eq(s.calendarConnections.organizationId,p.organizationId)));return row;}
 export async function calendarStatus(p:Principal){return {configured:calendarConfigured(),connected:Boolean(await saved(p))};}
@@ -119,3 +120,54 @@ export async function scheduleCalendarTask(p:Principal,input:unknown){
  });
 }
 export async function disconnectCalendar(p:Principal){await (await getDb()).delete(s.calendarConnections).where(and(eq(s.calendarConnections.id,connectionId(p)),eq(s.calendarConnections.userId,p.userId),eq(s.calendarConnections.organizationId,p.organizationId)));return {connected:false};}
+
+/** Read the workspace owner's calendar; filter before returning any event data. */
+export async function workspaceSchedule(p:Principal){
+ const db=await getDb();
+ const [settings]=await db.select().from(s.workspaceSettings).where(eq(s.workspaceSettings.organizationId,p.organizationId));
+ if(!settings)return {connected:false,events:[]};
+ const [owner]=await db.select({id:s.user.id,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.userId,settings.ownerId),eq(s.memberships.active,true)));
+ if(!owner)return {connected:false,events:[]};
+ const source:Principal={...p,userId:owner.id,name:owner.name};
+ if(!await saved(source))return {connected:false,events:[]};
+ const [viewer]=await db.select({email:s.user.email,name:s.user.name}).from(s.user).where(eq(s.user.id,p.userId));
+ const groups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,owner.id)));
+ const roles=groups.filter(group=>group.emails.some(email=>email.toLowerCase()===viewer?.email.toLowerCase())).map(group=>group.name.replace(/\s*\(קבוצה\)\s*$/,''));
+ const connection=await saved(source);
+ const tokens=unseal<Tokens>(connection!.encryptedTokens);
+ const selectedCalendar=tokens.scheduleCalendarId||'primary';
+ const timeMin=new Date().toISOString(),timeMax=new Date(Date.now()+90*86400000).toISOString();
+ const events:Array<{id:string;title:string;start:string;end:string;allDay:boolean;location:string}>=[];
+ let page='';
+ do{
+  const query=new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250',timeZone:'Asia/Jerusalem',...(page?{pageToken:page}:{})});
+  const result=await google(source,'calendars/'+encodeURIComponent(selectedCalendar)+'/events?'+query);
+  for(const event of result.items||[]){
+   if(event.status==='cancelled'||!event.start||!event.end)continue;
+   const text=`${event.summary||''}\n${event.description||''}`;
+   const invited=event.attendees?.some((attendee:{email?:string;responseStatus?:string})=>attendee.email?.toLowerCase()===viewer?.email.toLowerCase()&&attendee.responseStatus!=='declined');
+   if(p.userId!==owner.id&&!invited&&!roles.some(role=>mentionsRole(text,role)))continue;
+   events.push({id:event.id,title:event.summary||'ללא כותרת',start:event.start.dateTime||event.start.date,end:event.end.dateTime||event.end.date,allDay:Boolean(event.start.date),location:event.location||''});
+  }
+  page=result.nextPageToken||'';
+ }while(page);
+ return {connected:true,events,through:timeMax};
+}
+
+export async function scheduleCalendars(p:Principal){
+ if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לבחור את יומן הלו״ז');
+ const row=await saved(p);if(!row)return {calendars:[],selected:''};
+ const tokens=unseal<Tokens>(row.encryptedTokens),calendars:Array<{id:string;name:string}>=[];let page='';
+ do{const result=await google(p,'users/me/calendarList?maxResults=250'+(page?'&pageToken='+encodeURIComponent(page):''));
+ for(const calendar of result.items||[])if(!calendar.deleted&&['owner','writer','reader'].includes(calendar.accessRole))calendars.push({id:calendar.id,name:calendar.summary||calendar.id});
+ page=result.nextPageToken||'';}while(page);
+ return {calendars,selected:tokens.scheduleCalendarId||tokens.calendarId||''};
+}
+export async function selectScheduleCalendar(p:Principal,input:unknown){
+ const {calendarId}=z.object({calendarId:z.string().min(1).max(1024)}).strict().parse(input);
+ const available=await scheduleCalendars(p);
+ if(!available.calendars.some(calendar=>calendar.id===calendarId))throw new AppError(403,'היומן אינו זמין לקריאה בחשבון שלך');
+ const row=await saved(p);if(!row)throw new AppError(409,'יש לחבר תחילה את היומן');
+ await saveTokens(p,{...unseal<Tokens>(row.encryptedTokens),scheduleCalendarId:calendarId});
+ return {saved:true};
+}
