@@ -34,8 +34,8 @@ export default function BattalionOpening() {
         <div className="opening-glint" />
       </div>
       <div className="opening-caption">
-        <strong>{deputies ? "סגני המחץ" : "סמג״ד המחץ"}</strong>
-        <span>ברמה אחרת</span>
+        <strong>{deputies ? "סגני רומח" : "סמג״ד רומח"}</strong>
+        <span>כרומח חד אל תוך אדמת אויב</span>
       </div>
     </div>
   );
