@@ -43,7 +43,7 @@ export default function DeputiesDashboard({ user, tasks, today, go,pinnedTaskKey
       <div className="command-scene" />
       <div className="command-identity"><span className="avatar">{user.name.slice(0, 1)}</span><span>{user.name}</span></div>
       <button className="command-bell icon-button" aria-label="עדכונים אחרונים" onClick={() => go('activity')}><Bell size={24} /></button>
-      <div className="battalion-brand"><div className="battalion-crest" role="img" aria-label="סמל גדוד 605" /><h1>סגני המחץ</h1><p>ברמה אחרת</p></div>
+      <div className="battalion-brand"><div className="battalion-crest" role="img" aria-label="סמל גדוד 75" /><h1>סגני רומח</h1><p>כרומח חד אל תוך אדמת אויב</p></div>
     </header>
     <div className="deputies-greeting"><span>מרחב בעלי התפקידים</span><h2>שלום, {user.name}</h2></div>
     <div className="command-tiles">{tiles.map(tile => <button className="command-tile" key={tile.view} onClick={() => go(tile.view)}><tile.icon size={30} strokeWidth={1.6} /><strong>{tile.title}</strong><span>{tile.sub}</span></button>)}</div>
