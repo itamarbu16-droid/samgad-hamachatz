@@ -36,9 +36,10 @@ export default function LoginScreen({deputies=false}:{deputies?:boolean}) {
   }
   return (
     <main className="login-screen battalion-login">
-      <div className="login-art" role="img" aria-label="סמל גדוד 605 — ברמה אחרת" />
+      <div className="login-art" role="img" aria-label="סמל גדוד 75 — כרומח חד אל תוך אדמת אויב" />
+      <p className="login-motto">כרומח חד אל תוך אדמת אויב</p>
       <div className="login-entry" hidden={showForm}>
-        <h1 className="login-app-name">{deputies ? "סגני המחץ" : "סמג״ד המחץ"}</h1>
+        <h1 className="login-app-name">{deputies ? "סגני רומח" : "סמג״ד רומח"}</h1>
         <button className="button primary" onClick={() => setShowForm(true)}>כניסה למערכת <ArrowLeft size={25}/></button>
         <p className="login-note">כניסה למיילים שאושרו על ידי מנהל המערכת בלבד</p>
       </div>
