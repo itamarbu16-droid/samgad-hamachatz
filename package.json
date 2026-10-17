@@ -1,5 +1,5 @@
 {
-  "name": "samgad-hamachatz",
+  "name": "samgad-romach-75",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "db:setup": "tsx --env-file=.env.local scripts/setup.ts",
     "lint": "eslint .",
-    "db:preview-rhythm": "node --import tsx scripts/migrate-rhythm-preview.ts"
+    "db:preview-rhythm": "node --import tsx scripts/migrate-rhythm-preview.ts",
+    "db:bootstrap": "node --import tsx scripts/bootstrap-romach.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.9",
