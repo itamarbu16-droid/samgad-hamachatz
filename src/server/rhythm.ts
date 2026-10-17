@@ -457,7 +457,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
     month,
     today,
     items,
-    groups,
+    groups: groups.map(group=>({...group,emails:group.emails.filter(email=>members.some(member=>member.email.toLowerCase()===email.toLowerCase()))})),
     people: members.filter(
       (member) =>
         visibleIds.has(member.id) ||
