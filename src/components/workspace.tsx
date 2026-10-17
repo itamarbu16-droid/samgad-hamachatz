@@ -9,7 +9,7 @@ import DeputiesDashboard from "./deputies-dashboard";
 import AccessSettings from "./access-settings";
 import {TaskActions,TaskActionNotice,SwipeTaskRow} from "./task-actions";
 import {TaskFilters} from "./task-filters";
-import {CalendarConnection} from "./task-calendar";
+import {Schedule} from "./schedule";
 import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import {DeadlineRequests} from "./deadline-requests";
 import {PushSettings} from "./push-settings";
@@ -131,7 +131,7 @@ const nav = [
   ["decisions", "ממתין להחלטה", CircleHelp],
   ["domains", "אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
-  ["calendar", "היומן שלי", CalendarDays],
+  ["calendar", "לו״ז", CalendarDays],
 ] as const;
 const date = (s: string | null) =>
   s
@@ -584,7 +584,7 @@ export default function Workspace() {
           )}
           {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
-          {view === "calendar" && <CalendarConnection/>}
+          {view === "calendar" && <Schedule owner={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
