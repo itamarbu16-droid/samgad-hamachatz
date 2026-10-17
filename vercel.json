@@ -5,5 +5,6 @@
       "schedule": "0 5 * * *"
     }
   ],
-  "buildCommand": "npm run db:preview-rhythm && npm run build"
+  "buildCommand": "npm run db:bootstrap && npm run build",
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"feature/romach-75\" ]; then exit 1; else exit 0; fi"
 }
