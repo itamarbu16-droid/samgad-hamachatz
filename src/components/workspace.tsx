@@ -3,6 +3,7 @@ import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
 import DocumentLibrary from "./document-library";
+import {isPersonalTask} from "@/lib/task-snapshot";
 import CommandDashboard from "./command-dashboard";
 import DeputiesDashboard from "./deputies-dashboard";
 import AccessSettings from "./access-settings";
@@ -321,14 +322,15 @@ export default function Workspace() {
   const ownerInterface=Boolean(data.user.permissions?.manageAccess);
   const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
-  const open = data.tasks.filter(
+  const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.id):!ownerInterface||!isPersonalTask(t,data.user.id));
+  const open = scopedTasks.filter(
     (t) => !["completed", "cancelled"].includes(t.status),
   );
-  const late = data.tasks.filter(overdue);
+  const late = scopedTasks.filter(overdue);
   const pending = data.decisions.filter((d) =>
     ["pending", "clarification_requested"].includes(d.status),
   );
-  const filtered = data.tasks.filter(
+  const filtered = scopedTasks.filter(
     (t) =>
       (!query ||
         `${t.title} ${t.description} ${person(t.ownerId)}`.includes(query)) &&
@@ -576,6 +578,7 @@ export default function Workspace() {
               key={data.user.id}
               userId={data.user.id}
               role={data.user.role}
+              legacyTasks={data.tasks.filter(t=>isPersonalTask(t,data.user.id))}
               scope="personal"
             />
           )}
@@ -607,14 +610,14 @@ export default function Workspace() {
               role={data.user.role}
             />
           )}
-          {view === "tasks" && (
+          {(view === "tasks" || view==="personal" && filtered.length>0) && (
             <section className="panel tasks-panel">
               <div className="task-tabs">
                 {[
                   ["all", "כל המשימות"],
                   ["mine", "המשימות שלי"],
                   ["actionable", "לביצוע"],
-                  ["tomorrow", "דחוף"],
+                  ["due_soon", "דחוף"],
                   ["overdue", "באיחור"],
                   ["pending_review", "לבדיקה"],
                   ["completed", "ארכיון משימות שבוצעו"],
@@ -622,7 +625,7 @@ export default function Workspace() {
                   <button
                     key={id}
                     className={filter === id ? "active" : ""}
-                    onClick={() => go("tasks", id, domain, "", query)}
+                    onClick={() => go(view, id, domain, "", query)}
                   >
                     {label}
                     {id === "overdue" && late.length > 0 && (
@@ -631,7 +634,7 @@ export default function Workspace() {
                   </button>
                 ))}
               </div>
-              <TaskFilters archived={filter==="completed"} onArchive={()=>go("tasks",filter==="completed"?"all":"completed")} count={filtered.length} active={Boolean(domain)||sort!=="deadline_desc"} search={<label className="search-field">
+              <TaskFilters archived={filter==="completed"} onArchive={()=>go(view,filter==="completed"?"all":"completed")} count={filtered.length} active={Boolean(domain)||sort!=="deadline_desc"} search={<label className="search-field">
                   <Search size={17} />
                   <input
                     aria-label="חיפוש משימות"
@@ -652,7 +655,7 @@ export default function Workspace() {
                     aria-label="תחום אחריות"
                     value={domain}
                     onChange={(e) =>
-                      go("tasks", filter, e.target.value, "", query)
+                      go(view, filter, e.target.value, "", query)
                     }
                   >
                     <option value="">כל תחומי האחריות</option>
@@ -756,7 +759,7 @@ export default function Workspace() {
           {view === "domains" && (
             <div className="all-domains">
               {data.domains.map((d, i) => {
-                const ts = data.tasks.filter((t) => t.domainId === d.id);
+                const ts = scopedTasks.filter((t) => t.domainId === d.id);
                 return (
                   <button
                     key={d.id}
