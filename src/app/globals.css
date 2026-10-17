@@ -371,6 +371,8 @@ button svg {
   margin: 0;
 }
 .button {
+  background: var(--surface);
+  color: var(--text);
   border: 1px solid transparent;
   border-radius: 8px;
   min-height: 42px;
@@ -393,17 +395,17 @@ button svg {
   background: #126b79;
 }
 .button.secondary {
-  background: white;
+  background: var(--surface);
   border-color: #dce4e2;
   color: #526770;
 }
 .button.secondary:hover {
-  background: #f6f8f7;
+  background: var(--surface);
 }
 .attention-strip {
   display: grid;
   grid-template-columns: 1.18fr 1fr 1fr 1fr;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -415,7 +417,7 @@ button svg {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  background: #fafbf9;
+  background: var(--surface);
 }
 .attention-intro h2 {
   font-size: 18px;
@@ -435,13 +437,13 @@ button svg {
   text-align: start;
   border: 0;
   border-inline-start: 1px solid var(--border);
-  background: white;
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   transition: background 0.15s;
 }
 .metric:hover {
-  background: #fafcfb;
+  background: var(--surface);
 }
 .metric-top {
   display: flex;
@@ -486,7 +488,7 @@ button svg {
   gap: 25px;
 }
 .panel {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -537,11 +539,11 @@ button svg {
   border: 0;
   border-top: 1px solid #edf0ee;
   padding: 18px 23px;
-  background: #fff;
+  background: var(--surface);
   min-height: 90px;
 }
 .task-row:hover {
-  background: #fafcfb;
+  background: var(--surface);
 }
 .task-main {
   flex: 1;
@@ -632,7 +634,7 @@ button svg {
   display: flex;
   align-items: center;
   gap: 7px;
-  background: #fbfcfa;
+  background: var(--surface);
   border-top: 1px solid var(--border);
   padding: 11px 23px;
   font-size: 11px;
@@ -657,7 +659,7 @@ button svg {
 .domain-card {
   border: 1px solid #e9eeeb;
   border-radius: 9px;
-  background: white;
+  background: var(--surface);
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
@@ -666,7 +668,7 @@ button svg {
 }
 .domain-card:hover {
   border-color: #9fc6c5;
-  background: #fcfdfb;
+  background: var(--surface);
 }
 .domain-icon {
   width: 32px;
@@ -702,13 +704,13 @@ button svg {
   display: block;
   width: 100%;
   text-align: start;
-  background: white;
+  background: var(--surface);
   border: 0;
   border-top: 1px solid #edf0ee;
   padding: 19px 23px;
 }
 .decision-preview:hover {
-  background: #fafcfb;
+  background: var(--surface);
 }
 .decision-preview .eyebrow {
   font-size: 11px;
@@ -893,7 +895,7 @@ button svg {
   align-items: center;
 }
 .decision-notes {
-  background: #f5f8f5;
+  background: var(--surface);
   padding: 14px;
   border-radius: 8px;
   font-size: 14px;
@@ -970,7 +972,7 @@ textarea {
   display: block;
   min-width: 0;
   width: 100%;
-  background: white;
+  background: var(--surface);
   border: 1px solid #dce4e2;
   border-radius: 7px;
   min-height: 42px;
@@ -1014,7 +1016,7 @@ textarea {
   width: 530px;
   max-width: 100%;
   max-height: 90dvh;
-  background: white;
+  background: var(--surface);
   border-radius: 16px;
   box-shadow: 0 22px 80px #0b273533;
   display: flex;
@@ -1081,7 +1083,7 @@ textarea {
   margin-bottom: 20px;
 }
 .edit-details {
-  background: #fafbf9;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 16px;
@@ -1099,7 +1101,7 @@ textarea {
   margin-block: 28px;
 }
 .comment {
-  background: #f7f9f7;
+  background: var(--surface);
   border-radius: 8px;
   padding: 13px 15px;
   margin-block: 12px;
@@ -1182,7 +1184,7 @@ textarea {
   min-height: 100dvh;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  background: white;
+  background: var(--surface);
 }
 .login-story {
   background: var(--navy);
@@ -1760,7 +1762,7 @@ textarea {
 .document-folder-card svg { color: #db832f; margin-bottom: 14px; }
 .document-folder-card strong { font-size: 21px; }
 .document-folder-card span, .document-folder-card small { color: var(--muted); }
-.document-folder-card:hover { border-color: #db832f; background: #fffaf3; }
+.document-folder-card:hover { border-color: #db832f; background: var(--surface); }
 .document-back { justify-self: start; }
 .document-entry-list { display: grid; gap: 12px; }
 .document-entry { width: 100%; display: flex; align-items: center; gap: 15px; text-align: start; padding: 20px; color: var(--text); }
@@ -1797,7 +1799,7 @@ textarea {
 .bulk-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; background:var(--teal-soft); border-radius:12px; padding:14px; position:sticky; top:12px; z-index:3; }
 .bulk-toolbar select { width:auto; max-width:220px; }
 .task-open { border:0; background:transparent; padding:0; text-align:start; color:inherit; }
-.quick-notice { position:fixed; bottom:100px; left:24px; z-index:60; padding:12px 18px; background:#fff; box-shadow:0 4px 20px #183c3220; border:1px solid #d6e5dc; border-radius:12px; max-width:calc(100vw - 48px); }
+.quick-notice { position:fixed; bottom:100px; left:24px; z-index:60; padding:12px 18px; background: var(--surface); box-shadow:0 4px 20px #183c3220; border:1px solid #d6e5dc; border-radius:12px; max-width:calc(100vw - 48px); }
 .quick-notice button,.rhythm-notice button { margin-inline-start:12px; color:var(--teal); text-decoration:underline; border:0; background:transparent; }
 .search-results { display:grid; gap:10px; margin-top:20px; }
 .search-results a { padding:16px; display:grid; gap:4px; text-decoration:none; color:inherit; }
@@ -1862,7 +1864,7 @@ textarea {
 .deputies-review-note{display:flex;align-items:flex-start;gap:9px;font-size:14px;color:#b4a89b;margin:18px 2px}.deputies-review-note svg{flex-shrink:0;color:#e99c5e}
 
 /* 605 — charcoal, copper and the battalion's original artwork. */
-:root {--navy:#0b0b0a;--canvas:#080808;--surface:#111110;--teal:#f47724;--teal-soft:#2b1b10;--text:#f2efea;--muted:#aaa59e;--border:#34302a;--red:#f14a48;--amber:#ff9c28;--shadow:0 8px 28px #0004;}
+:root {color-scheme:dark;--navy:#0b0b0a;--canvas:#080808;--surface:#111110;--teal:#f47724;--teal-soft:#2b1b10;--text:#f2efea;--muted:#aaa59e;--border:#34302a;--red:#f14a48;--amber:#ff9c28;--shadow:0 8px 28px #0004;}
 body {background:#080808;color:var(--text)}
 .battalion-app .sidebar {background:linear-gradient(160deg,#16110c,#080808 65%);border-inline-end:1px solid var(--border)}
 .battalion-app .topbar {background:#0d0d0cef;border-bottom:1px solid var(--border)}
@@ -2047,3 +2049,39 @@ button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,s
 .battalion-app .swipe-task-front.task-done,.rhythm-task-card.task-done{background:#101a12!important;border-inline-start-color:#347a46!important}
 .battalion-app .swipe-task-front.task-overdue,.rhythm-task-card.task-overdue{background:#211110!important;border-inline-start-color:#a33e39!important}
 .battalion-app .swipe-task-front.task-due-soon,.rhythm-task-card.task-due-soon{background:#211b0d!important;border-inline-start-color:#aa7726!important}
+
+/* Shared dark surfaces, including nested forms and native iOS controls. */
+.edit-details,.comment,.attention-intro,.metric,.decision-notes,.guest-banner {
+  background:var(--surface);color:var(--text);border-color:var(--border);
+}
+.button:not(.primary):not(.danger):not(.swipe-action):hover {
+  background:#29231c;color:var(--text);border-color:#77512e;
+}
+.button:disabled {opacity:1;background:#26231f;color:#b7afa4;border-color:#50483d;cursor:wait;}
+.detail-facts,.comment time,.panel-footer,.document-folder-card small {color:var(--muted);}
+.domain-card:hover,.document-folder-card:hover,.metric:hover {background:#211b14;}
+.badge.urgent,.badge.rejected {background:#3b1d1a;color:#ffc1b7;}
+.blocker,.demo-label {background:#30230e;color:#efc16a;}
+.error-banner {background:#361b19;color:#ffc1b7;border-color:#8a4940;}
+.focus-task.task-overdue {background:#2c1514;color:#ffd3ce;}
+.focus-task.task-due-soon {background:#2e2111;color:#ffe1b7;}
+.focus-task.task-done {background:#142312;color:#d5edcf;}
+.form-grid>* {min-width:0;}
+input[type=date],input[type=datetime-local] {max-width:100%;min-inline-size:0;}
+input::-webkit-date-and-time-value {text-align:start;}
+.access-member .button {background:#321a17;color:#ffc1b7;border-color:#885047;}
+.access-member .button:hover {background:#4a2520;}
+@media(max-width:760px){
+ .edit-details {padding:14px;}
+ .edit-details .form-grid {grid-template-columns:minmax(0,1fr);}
+ .access-member>div {flex-basis:100%;}
+ .access-member select {flex:1 1 100%;}
+ .access-member .button {min-height:44px;}
+}
+.description,.decision-people,.domain-card>span:last-child {color:#c9c2b8;}
+.domain-icon,.activity-icon {background:#27221b;color:#d9b78e;}
+.tone-1 {background:#302618;color:#edc78e;}
+.tone-2 {background:#202837;color:#b9cbee;}
+.tone-3 {background:#20301e;color:#bdd8ad;}
+.panel-heading h2 span,.task-tabs button span {background:#30241b;color:#f0c29e;}
+.rhythm-urgent {background:#2c1514;color:#ffd3ce;}
