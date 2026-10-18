@@ -609,7 +609,7 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
     if (!canEditAll(p) && !before.assigneeIds.includes(p.userId)) throw new AppError(403,"אפשר לערוך רק משימה שהוקצתה לך");
     if (!canEditAll(p) && recipientIds && JSON.stringify(recipientIds)!==JSON.stringify(before.assigneeIds)) throw new AppError(403,"שינוי אחראים דורש הרשאת עריכה כללית");
     if(data.archived!==undefined&&!canEditAll(p)&&before.creatorId!==p.userId)throw new AppError(403,"רק יוצר המשימה או מנהל רשאי למחוק אותה");
-    if(!p.manageAccess&&((data.startDate!==undefined&&data.startDate!==before.startDate)||(data.hasDeadline!==undefined&&data.hasDeadline!==before.hasDeadline)))throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
+    if(!canEditAll(p)&&((data.startDate!==undefined&&data.startDate!==before.startDate)||(data.hasDeadline!==undefined&&data.hasDeadline!==before.hasDeadline)))throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
     if (before.version !== version) throw new AppError(409,"המשימה השתנתה. יש לרענן");
     const assigneeIds = recipientIds === undefined || JSON.stringify(recipientIds)===JSON.stringify(before.assigneeIds) ? before.assigneeIds :
       (await resolveRecipientIds(tx,p,recipientIds));

@@ -54,7 +54,9 @@ it('grants and revokes global editing by email without granting access administr
  const task=await createTask(owner,{title:'edit everyone grant',ownerId:company.userId,domainId:'safety',companyId:'company-a'});
  await grantAccess(owner,{email:'contributor@samgad.example',level:'all'});let editor=await principalFor(other.userId,other.name);
  expect(editor.editAll).toBe(true);expect(editor.manageAccess).not.toBe(true);
- await expect(updateTask(editor,task.id,{version:1,title:'global edit saved'})).resolves.toMatchObject({version:2});
+ const workspace=await getWorkspace(editor);
+ expect(workspace.user).toMatchObject({role:'deputy',permissions:{editAll:true,manageAccess:false}});
+ await expect(updateTask(editor,task.id,{version:1,title:'global edit saved',dueDate:today})).resolves.toMatchObject({version:2,dueDate:today});
  await expect(grantAccess(editor,{email:'viewer@samgad.example',level:'all'})).rejects.toMatchObject({status:403});
  await grantAccess(owner,{email:'contributor@samgad.example',level:'own'});editor=await principalFor(other.userId,other.name);
  await expect(updateTask(editor,task.id,{version:2,title:'unauthorized after revoke'})).rejects.toMatchObject({status:404});

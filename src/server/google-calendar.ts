@@ -6,7 +6,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {getDb} from './db';
 import * as s from './schema';
-import {AppError,localDate,type Principal} from './policy';
+import {AppError,canEditAll,localDate,type Principal} from './policy';
 import {appUrl} from './app-url';
 import {actionRef,getActionTask} from './task-actions';
 import {findFreeSlots,zonedTime,type TimeRange} from '../lib/calendar-slots';
@@ -67,7 +67,7 @@ export async function finishCalendarConnection(p:Principal,request:Request){
  if(!calendarId)throw new AppError(422,'לא נמצא יומן ראשי בחשבון Google');
  let previous:Tokens|undefined;const row=await saved(p);if(row){try{previous=unseal<Tokens>(row.encryptedTokens);}catch{ /* Reconnection replaces invalid prior credentials. */ }}
  await saveTokens(p,{...tokens,calendarId,scheduleCalendarId:previous?.calendarId===calendarId?previous?.scheduleCalendarId:undefined,refresh_token:tokens.refresh_token||(previous?.calendarId===calendarId?previous?.refresh_token:undefined),expiresAt:Date.now()+tokens.expires_in*1000});
- return new Response(null,{status:302,headers:{Location:appUrl()+(p.manageAccess?'/':'/deputies')+'?view=calendar&connected=1','Cache-Control':'no-store','Set-Cookie':'samgad-calendar-state=; HttpOnly; SameSite=Lax; Path=/api/calendar; Max-Age=0'}});
+ return new Response(null,{status:302,headers:{Location:appUrl()+(canEditAll(p)?'/':'/deputies')+'?view=calendar&connected=1','Cache-Control':'no-store','Set-Cookie':'samgad-calendar-state=; HttpOnly; SameSite=Lax; Path=/api/calendar; Max-Age=0'}});
 }
 /** Resolve the same selected calendar used by the workspace agenda. Never write to primary implicitly. */
 async function bookingCalendar(p:Principal,providedToken?:string){
@@ -172,7 +172,7 @@ export async function workspaceSchedule(p:Principal){
    const matches=(role:string)=>mentionsRole(text,role)||Object.entries(roleCollections).some(([collection,children])=>children.includes(role)&&mentionsRole(text,collection));
    const invitedEmails=(event.attendees||[]).filter((a:{responseStatus?:string})=>a.responseStatus!=='declined').map((a:{email?:string})=>a.email?.toLowerCase());
    const invited=invitedEmails.includes(viewer?.email.toLowerCase());
-   if(p.userId!==owner.id&&!invited&&!roles.some(matches))continue;
+   if(!canEditAll(p)&&p.userId!==owner.id&&!invited&&!roles.some(matches))continue;
    const groupIds=groups.filter(group=>matches(roleName(group.name))||group.emails.some(email=>invitedEmails.includes(email))).map(group=>group.id);
    events.push({id:event.id,title:event.summary||'ללא כותרת',start:event.start.dateTime||event.start.date,end:event.end.dateTime||event.end.date,allDay:Boolean(event.start.date),location:event.location||'',...(p.userId===owner.id?{groupIds}:{})});
   }

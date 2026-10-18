@@ -28,7 +28,7 @@ export default function LoginScreen({deputies=false}:{deputies?:boolean}) {
       const workspace = await fetch('/api/workspace', { cache: 'no-store' });
       const identity = await workspace.json();
       if (!workspace.ok) throw Error(identity.error || 'אין הרשאת כניסה למרחב');
-      window.location.href = identity.user.permissions?.manageAccess ? '/' : '/deputies';
+      window.location.href = (identity.user.permissions?.manageAccess || identity.user.permissions?.editAll) ? '/' : '/deputies';
     } catch (e) {
       setError(e instanceof Error ? e.message : "הכניסה לא הצליחה");
       setBusy(false);

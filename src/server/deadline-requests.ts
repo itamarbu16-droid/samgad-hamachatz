@@ -7,7 +7,7 @@ import {AppError,assertWrite,canEditAll,type Principal} from './policy';
 import {actionRef,getActionTask} from './task-actions';
 import {queueTaskNotification} from './notifications';
 export async function listDeadlineRequests(p:Principal){
- const db=await getDb();return db.select({...getTableColumns(s.deadlineRequests),requesterName:s.user.name}).from(s.deadlineRequests).innerJoin(s.user,eq(s.user.id,s.deadlineRequests.requesterId)).where(and(eq(s.deadlineRequests.organizationId,p.organizationId),p.manageAccess?undefined:eq(s.deadlineRequests.requesterId,p.userId))).orderBy(desc(s.deadlineRequests.createdAt)).limit(100);
+ const db=await getDb();return db.select({...getTableColumns(s.deadlineRequests),requesterName:s.user.name}).from(s.deadlineRequests).innerJoin(s.user,eq(s.user.id,s.deadlineRequests.requesterId)).where(and(eq(s.deadlineRequests.organizationId,p.organizationId),canEditAll(p)?undefined:eq(s.deadlineRequests.requesterId,p.userId))).orderBy(desc(s.deadlineRequests.createdAt)).limit(100);
 }
 export async function requestDeadline(p:Principal,input:unknown){
  assertWrite(p);
@@ -24,7 +24,7 @@ export async function requestDeadline(p:Principal,input:unknown){
  });
 }
 export async function resolveDeadline(p:Principal,input:unknown){
- if(!p.manageAccess)throw new AppError(403,'רק מנהל המערכת רשאי לאשר הארכת תג״ב');
+ if(!canEditAll(p))throw new AppError(403,'רק מנהל המערכת רשאי לאשר הארכת תג״ב');
  const data=z.object({id:z.string(),approve:z.boolean()}).strict().parse(input),db=await getDb();
  // Serialize decisions and commit deadline changes together with the resolution.
  return db.transaction(async tx=>{

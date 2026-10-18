@@ -115,7 +115,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     const before = await findTask(tx,p,id);
     if (before.version !== version) throw new AppError(409, 'המשימה השתנתה מאז שנפתחה. יש לרענן ולנסות שוב');
     assertOwnTask(p,before);
-    if(!p.manageAccess&&data.dueDate!==undefined&&data.dueDate!==before.dueDate)throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
+    if(!canEditAll(p)&&data.dueDate!==undefined&&data.dueDate!==before.dueDate)throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
     if (!canEditAll(p) && Object.keys(data).some(k => ['ownerId','companyId','domainId','requiresReview'].includes(k))) throw new AppError(403,'שינוי הקצאה דורש הרשאת עריכה כללית');
     if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId && !canEditAll(p)) data.status = 'pending_review';
     const next = { ...before, ...data };

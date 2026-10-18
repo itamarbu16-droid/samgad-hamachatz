@@ -203,7 +203,7 @@ export default function Workspace() {
     if (q) p.set("q", q);
     if(sort!=="deadline_desc")p.set("sort",sort);
     if(v==="tasks" && location.search.includes("tab=all"))p.set("tab","all");
-    history.pushState({}, "", `${data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
+    history.pushState({}, "", `${(data?.user.permissions?.manageAccess || data?.user.permissions?.editAll) ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
   async function load() {
@@ -215,7 +215,7 @@ export default function Workspace() {
       }
       const j = await r.json();
       if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
-      const base = j.user.permissions?.manageAccess ? '/' : '/deputies';
+      const base = (j.user.permissions?.manageAccess || j.user.permissions?.editAll) ? '/' : '/deputies';
       const params = new URLSearchParams(location.search);
       if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
         params.delete('view');
@@ -319,7 +319,7 @@ export default function Workspace() {
   );
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
-  const ownerInterface=Boolean(data.user.permissions?.manageAccess);
+  const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
   const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
   const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.id):!ownerInterface||!isPersonalTask(t,data.user.id));
@@ -584,7 +584,7 @@ export default function Workspace() {
           )}
           {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
-          {view === "calendar" && <Schedule owner={ownerInterface}/>}
+          {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
