@@ -2085,3 +2085,13 @@ input::-webkit-date-and-time-value {text-align:start;}
 .tone-3 {background:#20301e;color:#bdd8ad;}
 .panel-heading h2 span,.task-tabs button span {background:#30241b;color:#f0c29e;}
 .rhythm-urgent {background:#2c1514;color:#ffd3ce;}
+
+.tracking-workspace { min-width: 0; }
+.tracking-editor { margin-top: 18px; padding: 16px; min-width: 0; }
+.tracking-scroll { overflow-x: auto; max-width: 100%; margin: 16px 0; }
+.tracking-scroll table { border-collapse: collapse; width: 100%; text-align: right; }
+.tracking-scroll th,.tracking-scroll td { padding: 8px; border-bottom: 1px solid var(--border, #444); min-width: 155px; }
+.tracking-scroll input,.tracking-scroll select { width: 100%; min-width: 135px; }
+.tracking-scroll th select { margin-top: 6px; }
+.tracking-workspace .document-toolbar { flex-wrap: wrap; gap: 10px; }
+.tracking-workspace input[type=file] { max-width: 180px; }

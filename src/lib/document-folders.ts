@@ -1,4 +1,5 @@
 export const documentFolders = [
+  { id: "trackers", name: "מעקבים", parent: null, section: "library" },
   { id: "orders", name: "פקודות", parent: null, section: "library" },
   { id: "checks", name: "בד״חים", parent: null, section: "library" },
   { id: "formats", name: "פורמטים", parent: null, section: "library" },

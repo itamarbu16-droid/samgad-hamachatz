@@ -1,4 +1,5 @@
 "use client";
+import TrackingTables from "./tracking-tables";
 import { apiFetch } from "@/lib/offline";
 import {
   useCallback,
@@ -81,7 +82,7 @@ export default function DocumentLibrary({
   const included = new Set<string>(catalog.map((item) => item.id));
   const visibleEntries = entries.filter(
     (entry) =>
-      included.has(entry.folderId) &&
+      included.has(entry.folderId) && entry.folderId !== "trackers" &&
       (query
         ? `${entry.title} ${entry.preview} ${entry.attachments.map((file) => file.filename).join(" ")}`.includes(
             query,
@@ -189,6 +190,7 @@ export default function DocumentLibrary({
   }
   const modalOpen = creating || Boolean(selected);
   const editForm = creating || editing;
+  if (section === "library" && folder === "trackers") return <TrackingTables userId={userId} role={role} back={() => {openFolder(null);void load();}} />;
   return (
     <div className="document-workspace">
       <div className="document-breadcrumbs">
