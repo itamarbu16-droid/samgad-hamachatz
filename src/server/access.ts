@@ -90,3 +90,13 @@ export async function deleteAccess(p:Principal,input:unknown) {
 export function authorizedMember(organizationId:string) {
  return sql`EXISTS (SELECT 1 FROM workspace_settings ws WHERE ws.organization_id = ${organizationId} AND (ws.owner_id = ${s.memberships.userId} OR EXISTS (SELECT 1 FROM workspace_access_grants ag WHERE ag.organization_id = ws.organization_id AND ag.granted_by = ws.owner_id AND ag.user_id = ${s.memberships.userId})))`;
 }
+
+/** Rename a workspace member without changing their identity or access level. */
+export async function renameAccessMember(p:Principal,input:unknown){
+ if(!p.manageAccess)throw new AppError(403,'שינוי שם דורש הרשאת מנהל');
+ const {userId,name}=z.object({userId:z.string().min(1),name:z.string().trim().min(2).max(100)}).strict().parse(input);
+ const db=await getDb();
+ const [member]=await db.update(s.user).set({name,updatedAt:new Date()}).where(and(eq(s.user.id,userId),sql`EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = ${s.user.id} AND m.organization_id = ${p.organizationId})`)).returning({id:s.user.id,name:s.user.name});
+ if(!member)throw new AppError(404,'מורשה הגישה לא נמצא במרחב הזה');
+ return {member};
+}

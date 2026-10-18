@@ -4,7 +4,7 @@ import {eq} from 'drizzle-orm';
 import {getDb,closeDb} from '../src/server/db';
 import {seedDemo} from '../src/server/seed';
 import {principalFor,getWorkspace} from '../src/server/service';
-import {grantAccess,getAccess,deleteAccess} from '../src/server/access';
+import {grantAccess,getAccess,deleteAccess,renameAccessMember} from '../src/server/access';
 import {createRhythmItem,getRhythm,saveRhythmGroup,deleteRhythmGroup,editRhythmItem} from '../src/server/rhythm';
 import {createDocumentFolder,createDocument,getDocuments,updateDocument} from '../src/server/documents';
 import {searchWorkspace} from '../src/server/search';
@@ -68,4 +68,20 @@ it('edits and deletes shared groups without recreating default roles or removing
  const collection=(await getRhythm(editor)).groups.find(g=>g.name==='מטה 2')!;
  await saveRhythmGroup(editor,{name:'מטה 2',emails:['company.a@samgad.example'],version:collection.version},collection.id);
  expect((await getRhythm(owner)).groups.find(g=>g.id===collection.id)?.emails).toEqual(['company.a@samgad.example']);
+});
+
+it('renames a member by stable identity without modifying email, permissions or task assignments',async()=>{
+ const db=await getDb();const [before]=await db.select().from(s.user).where(eq(s.user.id,member.userId));
+ const [membershipBefore]=await db.select().from(s.memberships).where(eq(s.memberships.userId,member.userId));
+ const task=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'assignment retained after rename',recipientIds:[member.userId]});
+ await expect(renameAccessMember(editor,{userId:member.userId,name:'  שם מתוקן  '})).resolves.toMatchObject({member:{id:member.userId,name:'שם מתוקן'}});
+ const [after]=await db.select().from(s.user).where(eq(s.user.id,member.userId));expect(after.email).toBe(before.email);expect(after.id).toBe(before.id);
+ expect((await db.select().from(s.memberships).where(eq(s.memberships.userId,member.userId)))[0]).toEqual(membershipBefore);
+ expect((await getAccess(owner)).members.find(m=>m.id===member.userId)?.name).toBe('שם מתוקן');
+ expect((await getWorkspace(owner)).users.find(u=>u.id===member.userId)?.name).toBe('שם מתוקן');
+ expect((await getRhythm(owner)).items.find(i=>i.id===task.id)?.assigneeIds).toEqual([member.userId]);
+ await expect(renameAccessMember(member,{userId:owner.userId,name:'forbidden'})).rejects.toMatchObject({status:403});
+ await expect(renameAccessMember({...editor,organizationId:'another-workspace'},{userId:member.userId,name:'forbidden'})).rejects.toMatchObject({status:404});
+ await expect(renameAccessMember(owner,{userId:member.userId,name:'valid',email:'changed@example.com'})).rejects.toThrow();
+ await expect(renameAccessMember(owner,{userId:member.userId,name:' '})).rejects.toThrow();
 });
