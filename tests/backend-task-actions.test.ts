@@ -1,3 +1,4 @@
+import {grantAccess} from "../src/server/access";
 import {beforeAll,afterAll,it,expect,vi} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import {eq} from 'drizzle-orm';
@@ -97,6 +98,7 @@ it('rechecks availability before creating events and recovers an event after a l
 });
 
 it('reads a selected shared calendar and filters events on the server by role or attendee',async()=>{
+ await grantAccess(owner,{email:'company.a@samgad.example',level:'own'});
  const db=await getDb();
  const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
  await db.insert(s.calendarConnections).values({id,organizationId:owner.organizationId,userId:owner.userId,encryptedTokens:seal({access_token:'test',expiresAt:Date.now()+3600000,calendarId:'owner@example.com'})}).onConflictDoUpdate({target:s.calendarConnections.id,set:{encryptedTokens:seal({access_token:'test',expiresAt:Date.now()+3600000,calendarId:'owner@example.com'})}});

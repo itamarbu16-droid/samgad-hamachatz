@@ -1,3 +1,4 @@
+import {grantAccess} from "../src/server/access";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -41,6 +42,7 @@ beforeAll(async () => {
     return principalFor(user.id, user.name);
   };
   deputy = await p("demo@samgad.example");
+  for(const user of users.filter(u=>u.email!=="demo@samgad.example")) await grantAccess(deputy,{email:user.email,level:user.email==="viewer@samgad.example"?"view":"own"});
   contributor = await p("contributor@samgad.example");
   viewer = await p("viewer@samgad.example");
 }, 60000);
@@ -176,7 +178,7 @@ describe("library and summary documents", () => {
   });
 });
 describe("canonical role groups and category split", () => {
-  it("initializes the nine roles idempotently, uses position labels and resolves the deputies group", async () => {
+  it("initializes the requested roles idempotently, uses position labels and resolves the deputies group", async () => {
     await getRhythm(deputy);
     const data = await getRhythm(deputy);
     expect(data.groups.map((group) => group.name)).toEqual(
@@ -184,7 +186,7 @@ describe("canonical role groups and category split", () => {
     );
     expect(
       data.groups.filter((group) => group.id.startsWith("role:")),
-    ).toHaveLength(9);
+    ).toHaveLength(unitRoles.length);
     expect(data.people.map((person) => person.name)).not.toEqual(
       expect.arrayContaining(["נועה כהן", "איתי לוי"]),
     );
@@ -196,7 +198,7 @@ describe("canonical role groups and category split", () => {
       startDate: localDate(),
       groupIds: [group.id],
     });
-    expect(assigned.assigneeIds).toHaveLength(6);
+    expect(assigned.assigneeIds).toHaveLength(5);
     expect(isPersonalItem(assigned, deputy.userId)).toBe(false);
     const personal = await createRhythmItem(deputy, {
       clientRequestId: randomUUID(),

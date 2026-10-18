@@ -1,10 +1,12 @@
+import {authorizedMember} from "./access";
+import {expandRoleGroups,roleCollections,roleName} from "../lib/unit-roles";
 import {mentionsRole} from '../lib/schedule';
 import {createHash,createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {getDb} from './db';
 import * as s from './schema';
-import {AppError,type Principal} from './policy';
+import {AppError,localDate,type Principal} from './policy';
 import {appUrl} from './app-url';
 import {actionRef,getActionTask} from './task-actions';
 import {findFreeSlots,zonedTime,type TimeRange} from '../lib/calendar-slots';
@@ -131,13 +133,16 @@ export async function workspaceSchedule(p:Principal){
  const source:Principal={...p,userId:owner.id,name:owner.name};
  if(!await saved(source))return {connected:false,events:[]};
  const [viewer]=await db.select({email:s.user.email,name:s.user.name}).from(s.user).where(eq(s.user.id,p.userId));
- const groups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,owner.id)));
+ const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,owner.id)));
+ const members=await db.select({email:s.user.email}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
+ const groups=expandRoleGroups(rawGroups,members.map(member=>member.email));
  const roles=groups.filter(group=>group.emails.some(email=>email.toLowerCase()===viewer?.email.toLowerCase())).map(group=>group.name.replace(/\s*\(קבוצה\)\s*$/,''));
  const connection=await saved(source);
  const tokens=unseal<Tokens>(connection!.encryptedTokens);
  const selectedCalendar=tokens.scheduleCalendarId||'primary';
- const timeMin=new Date().toISOString(),timeMax=new Date(Date.now()+90*86400000).toISOString();
- const events:Array<{id:string;title:string;start:string;end:string;allDay:boolean;location:string}>=[];
+ const today=localDate(); const weekStart=addDays(today,-new Date(today+'T12:00:00Z').getUTCDay());
+ const timeMin=new Date(zonedTime(weekStart,'00:00')).toISOString(),timeMax=new Date(Date.now()+90*86400000).toISOString();
+ const events:Array<{id:string;title:string;start:string;end:string;allDay:boolean;location:string;groupIds?:string[]}>=[];
  let page='';
  do{
   const query=new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250',timeZone:'Asia/Jerusalem',...(page?{pageToken:page}:{})});
@@ -145,9 +150,12 @@ export async function workspaceSchedule(p:Principal){
   for(const event of result.items||[]){
    if(event.status==='cancelled'||!event.start||!event.end)continue;
    const text=`${event.summary||''}\n${event.description||''}`;
-   const invited=event.attendees?.some((attendee:{email?:string;responseStatus?:string})=>attendee.email?.toLowerCase()===viewer?.email.toLowerCase()&&attendee.responseStatus!=='declined');
-   if(p.userId!==owner.id&&!invited&&!roles.some(role=>mentionsRole(text,role)))continue;
-   events.push({id:event.id,title:event.summary||'ללא כותרת',start:event.start.dateTime||event.start.date,end:event.end.dateTime||event.end.date,allDay:Boolean(event.start.date),location:event.location||''});
+   const matches=(role:string)=>mentionsRole(text,role)||Object.entries(roleCollections).some(([collection,children])=>children.includes(role)&&mentionsRole(text,collection));
+   const invitedEmails=(event.attendees||[]).filter((a:{responseStatus?:string})=>a.responseStatus!=='declined').map((a:{email?:string})=>a.email?.toLowerCase());
+   const invited=invitedEmails.includes(viewer?.email.toLowerCase());
+   if(p.userId!==owner.id&&!invited&&!roles.some(matches))continue;
+   const groupIds=groups.filter(group=>matches(roleName(group.name))||group.emails.some(email=>invitedEmails.includes(email))).map(group=>group.id);
+   events.push({id:event.id,title:event.summary||'ללא כותרת',start:event.start.dateTime||event.start.date,end:event.end.dateTime||event.end.date,allDay:Boolean(event.start.date),location:event.location||'',...(p.userId===owner.id?{groupIds}:{})});
   }
   page=result.nextPageToken||'';
  }while(page);

@@ -82,3 +82,8 @@ export async function deleteAccess(p:Principal,input:unknown) {
   return {deleted:true};
  });
 }
+
+/** Only the workspace owner and accounts explicitly granted access by that owner. */
+export function authorizedMember(organizationId:string) {
+ return sql`EXISTS (SELECT 1 FROM workspace_settings ws WHERE ws.organization_id = ${organizationId} AND (ws.owner_id = ${s.memberships.userId} OR EXISTS (SELECT 1 FROM workspace_access_grants ag WHERE ag.organization_id = ws.organization_id AND ag.granted_by = ws.owner_id AND ag.user_id = ${s.memberships.userId})))`;
+}

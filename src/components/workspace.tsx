@@ -239,7 +239,7 @@ export default function Workspace() {
     }
   }
   const taskActions=useTaskMutations(load);
-  useEffect(() => { const refresh = () => void load(); window.addEventListener("samgad:saved", refresh); return () => window.removeEventListener("samgad:saved", refresh); }, []);
+  useEffect(() => { const refresh = () => void load(); const visibleRefresh=()=>{if(document.visibilityState==="visible")refresh();}; const timer=setInterval(visibleRefresh,60000); window.addEventListener("samgad:saved", refresh); document.addEventListener("visibilitychange",visibleRefresh); return () => {clearInterval(timer);window.removeEventListener("samgad:saved", refresh);document.removeEventListener("visibilitychange",visibleRefresh);}; }, []);
   useEffect(() => {
     void load();
   }, []);

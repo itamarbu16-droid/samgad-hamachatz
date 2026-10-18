@@ -1,5 +1,7 @@
 "use client";
 
+import {roleCollections,roleName} from "@/lib/unit-roles";
+import {WeeklySchedule} from "./weekly-schedule";
 import { useState, useEffect } from "react";
 import { Plus, CheckCheck, CalendarDays, Users, NotebookPen } from "lucide-react";
 import { isPersonalItem } from "@/lib/unit-roles";
@@ -180,8 +182,9 @@ export default function PersonalRhythm({
     {(error || actions.error) && <p role="alert" className="error-banner">{actions.error || error}</p>}
     {actions.notice && <p role="status" className="rhythm-notice">{actions.notice} {actions.undo.length > 0 && <button disabled={actions.busy} onClick={() => void actions.cancel()}>ביטול פעולה</button>}</p>}
     {tab === "groups" ? <>
+      <WeeklySchedule groups={data.groups}/>
       <button className="button primary" onClick={() => setModal("group")}><Plus size={16} /> הוספת קבוצה</button>
-      <div className="rhythm-group-grid">{data.groups.map(group => <section className="panel" key={group.id}><h3>{group.name}</h3><form onSubmit={async event => {
+      <div className="rhythm-group-grid">{data.groups.map(group => <section className="panel" key={group.id}><h3>{group.name}</h3>{roleCollections[roleName(group.name)]?<p>מתעדכן אוטומטית מבעלי התפקידים: {roleCollections[roleName(group.name)].join(" · ")}.<br/>{group.emails.length} משתמשים מורשים משויכים.</p>:<form onSubmit={async event => {
             event.preventDefault();
             const f = new FormData(event.currentTarget);
             await actions.run([{
@@ -193,7 +196,7 @@ export default function PersonalRhythm({
                 version: group.version
               }
             }]);
-          }}><label>שם<input name="name" required defaultValue={group.name} /></label><fieldset className="role-chips"><legend>חברי הקבוצה</legend>{data.people.map(p => <label key={p.id}><input name="members" value={p.email} type="checkbox" defaultChecked={group.emails.includes(p.email)} /> {p.name}</label>)}</fieldset><button className="button secondary" disabled={actions.busy}>שמירה</button></form></section>)}</div>
+          }}><label>שם<input name="name" required defaultValue={group.name} /></label><fieldset className="role-chips"><legend>חברי הקבוצה</legend>{data.people.map(p => <label key={p.id}><input name="members" value={p.email} type="checkbox" defaultChecked={group.emails.includes(p.email)} /> {p.name}</label>)}</fieldset><button className="button secondary" disabled={actions.busy}>שמירה</button></form>}</section>)}</div>
     </> : <>
       <TaskFilters archived={filter==="completed"} onArchive={()=>updateView({filter:filter==="completed"?"all":"completed"})} count={visible.length} active={filter!=="all"||sort!=="deadline_desc"} search={<label>חיפוש<input value={query} onChange={e => updateView({q:e.target.value})} placeholder="חיפוש משימה או בעל תפקיד…" /></label>}>
         <label>סינון<select value={filter} onChange={e => updateView({filter:e.target.value==="pending"?"pending_review":e.target.value==="open"?"active":e.target.value})} aria-label="סינון">{Object.entries({

@@ -5,7 +5,7 @@ import { randomUUID,createHash } from 'node:crypto';
 import { getDb, isDemo, type Database } from './db';
 import * as s from './schema';
 import { AppError, assertTransition, assertWrite, assertOwnTask, canEditAll, canRead, isManager, calculateMetrics, localDate, type Principal } from './policy';
-import { initializeWorkspace,ensureResponsibilityDomains } from './access';
+import { initializeWorkspace,ensureResponsibilityDomains,authorizedMember } from './access';
 import {getPins} from './task-pins';
 import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
@@ -90,7 +90,7 @@ export async function getWorkspace(p: Principal) {
   const activity = entityFilters.length ? await db.select({ id: s.auditEvents.id, entityType: s.auditEvents.entityType, entityId: s.auditEvents.entityId, action: s.auditEvents.action, summary: s.auditEvents.summary, actorName: s.user.name, createdAt: s.auditEvents.createdAt }).from(s.auditEvents).innerJoin(s.user, eq(s.auditEvents.actorId, s.user.id)).where(and(eq(s.auditEvents.organizationId, p.organizationId), or(...entityFilters))).orderBy(desc(s.auditEvents.createdAt)).limit(100) : [];
   const domainRows = await db.select({ id: s.domains.id, name: s.domains.name, color: s.domains.color }).from(s.domains).where(and(eq(s.domains.organizationId, p.organizationId), p.domainId ? eq(s.domains.id, p.domainId) : undefined));
   const companyRows = await db.select({ id: s.companies.id, name: s.companies.name }).from(s.companies).where(and(eq(s.companies.organizationId, p.organizationId), p.companyId ? eq(s.companies.id, p.companyId) : undefined));
-  const userRows = await db.select({ id: s.user.id, name: s.user.name, role: s.memberships.role, companyId: s.memberships.companyId, domainId: s.memberships.domainId }).from(s.memberships).innerJoin(s.user, eq(s.memberships.userId, s.user.id)).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.active, true)));
+  const userRows = await db.select({ id: s.user.id, name: s.user.name, role: s.memberships.role, companyId: s.memberships.companyId, domainId: s.memberships.domainId }).from(s.memberships).innerJoin(s.user, eq(s.memberships.userId, s.user.id)).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.active, true), authorizedMember(p.organizationId)));
   const visibleUserIds = new Set([p.userId, ...taskRows.flatMap(t => [t.ownerId,t.creatorId]), ...decisionRows.flatMap(d => [d.deciderId,d.requesterId])]);
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
   const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));

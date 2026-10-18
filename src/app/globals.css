@@ -2095,3 +2095,5 @@ input::-webkit-date-and-time-value {text-align:start;}
 .tracking-scroll th select { margin-top: 6px; }
 .tracking-workspace .document-toolbar { flex-wrap: wrap; gap: 10px; }
 .tracking-workspace input[type=file] { max-width: 180px; }
+
+.weekly-role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px}.weekly-role-grid>article{border:1px solid var(--border,#695337);border-radius:14px;padding:14px}.weekly-day{padding:10px 0;border-top:1px solid var(--border,#695337)}.weekly-day>strong,.weekly-day>small{display:block}.weekly-day p{margin:6px 0}.weekly-day small{opacity:.65}

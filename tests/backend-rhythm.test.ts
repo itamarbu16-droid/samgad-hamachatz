@@ -1,3 +1,4 @@
+import {grantAccess} from "../src/server/access";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, and } from "drizzle-orm";
@@ -53,6 +54,7 @@ beforeAll(async () => {
     return principalFor(user.id, user.name);
   };
   deputy = await p("demo@samgad.example");
+  for(const user of users.filter(u=>u.email!=="demo@samgad.example")) await grantAccess(deputy,{email:user.email,level:user.email==="viewer@samgad.example"?"view":"own"});
   companyA = await p("company.a@samgad.example");
   companyB = await p("company.b@samgad.example");
   contributor = await p("contributor@samgad.example");
