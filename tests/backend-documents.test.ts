@@ -210,7 +210,7 @@ describe("canonical role groups and category split", () => {
   });
   it("does not silently turn an unconfigured role into a private assignment", async () => {
     const data = await getRhythm(deputy);
-    const group = data.groups.find((group) => group.name === "סמ״פ ג׳")!;
+    const group = data.groups.find((group) => group.name === "סמ״פ ה׳")!;
     await (await getDb())
       .update(s.rhythmGroups)
       .set({ emails: [] })

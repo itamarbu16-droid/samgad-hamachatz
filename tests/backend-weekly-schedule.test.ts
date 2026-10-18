@@ -1,4 +1,5 @@
 import {beforeAll,afterAll,it,expect,vi} from 'vitest';
+import {eq} from 'drizzle-orm';
 import {getDb,closeDb} from '../src/server/db';
 import {seedDemo} from '../src/server/seed';
 import {principalFor,getWorkspace} from '../src/server/service';
@@ -23,6 +24,9 @@ it('keeps pickers synchronized with explicit grants and derives collection membe
  await grantAccess(owner,{email:'company.b@samgad.example',level:'own'});
  const data=await getRhythm(owner);
  expect(data.people.map(u=>u.id).sort()).toEqual([owner.userId,a.userId,b.userId].sort());
+ const slot=data.groups.find(g=>g.name==='סמ״פ א׳')!;
+ await (await getDb()).update(s.rhythmGroups).set({emails:[]}).where(eq(s.rhythmGroups.id,slot.id));
+ expect((await getRhythm(owner)).groups.find(g=>g.id===slot.id)?.emails).toEqual(['company.a@samgad.example']);
  const group=data.groups.find(g=>g.name==='סמ״פים (קבוצה)')!;
  expect(group.emails.sort()).toEqual(['company.a@samgad.example','company.b@samgad.example']);
  const item=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'collective task',groupIds:[group.id]});

@@ -134,8 +134,8 @@ export async function workspaceSchedule(p:Principal){
  if(!await saved(source))return {connected:false,events:[]};
  const [viewer]=await db.select({email:s.user.email,name:s.user.name}).from(s.user).where(eq(s.user.id,p.userId));
  const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,owner.id)));
- const members=await db.select({email:s.user.email}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
- const groups=expandRoleGroups(rawGroups,members.map(member=>member.email));
+ const members=await db.select({email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
+ const groups=expandRoleGroups(rawGroups,members);
  const roles=groups.filter(group=>group.emails.some(email=>email.toLowerCase()===viewer?.email.toLowerCase())).map(group=>group.name.replace(/\s*\(קבוצה\)\s*$/,''));
  const connection=await saved(source);
  const tokens=unseal<Tokens>(connection!.encryptedTokens);

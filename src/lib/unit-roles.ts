@@ -1,3 +1,4 @@
+import {mentionsRole} from "./schedule";
 export const unitRoles = [
   { id: 'company-a', title: 'סמ״פ א׳', emails: ['company.a@samgad.example'] },
   { id: 'company-b', title: 'סמ״פ ב׳', emails: ['company.b@samgad.example'] },
@@ -20,12 +21,18 @@ export const roleCollections: Record<string, readonly string[]> = {
 };
 export const roleName = (name: string) => name.replace(/\s*\(קבוצה\)\s*$/, '').trim();
 /** Group membership follows the individual role slots, rather than a stale copied roster. */
-export function expandRoleGroups<T extends {name:string;emails:string[]}>(groups:T[], allowedEmails:string[]) {
-  const allowed = new Set(allowedEmails.map(email=>email.toLowerCase()));
-  return groups.map(group => {
+export function expandRoleGroups<T extends {name:string;emails:string[]}>(groups:T[], members:Array<string|{email:string;name:string}>) {
+  const allowed = new Set(members.map(member=>(typeof member==='string'?member:member.email).toLowerCase()));
+  const individual = groups.map(group=>{
+    const explicit=group.emails.map(email=>email.toLowerCase()).filter(email=>allowed.has(email));
+    const canonical=unitRoles.some(role=>roleName(role.title)===roleName(group.name));
+    const inferred=canonical?members.flatMap(member=>typeof member!=='string'&&mentionsRole(member.name,roleName(group.name))?[member.email.toLowerCase()]:[]):[];
+    return {...group,emails:explicit.length?explicit:inferred};
+  });
+  return individual.map(group => {
     const roles = roleCollections[roleName(group.name)];
-    const emails = roles ? groups.filter(other=>roles.includes(roleName(other.name))).flatMap(other=>other.emails) : group.emails;
-    return {...group, emails:[...new Set(emails.map(email=>email.toLowerCase()).filter(email=>allowed.has(email)))]};
+    const emails = roles ? individual.filter(other=>roles.includes(roleName(other.name))).flatMap(other=>other.emails) : group.emails;
+    return {...group, emails:[...new Set(emails.filter(email=>allowed.has(email)))]};
   });
 }
 export function isPersonalItem(

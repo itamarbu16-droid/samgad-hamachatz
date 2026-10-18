@@ -1,5 +1,5 @@
 import {authorizedMember} from "./access";
-import {expandRoleGroups} from "../lib/unit-roles";
+import {expandRoleGroups,roleName} from "../lib/unit-roles";
 import {purgeCompletedTasks} from "./task-archive";
 import {queueTaskNotification} from "./notifications";
 import {getPins} from './task-pins';
@@ -310,8 +310,8 @@ export async function createRhythmItem(p: Principal, input: unknown) {
               )
           : [];
         const allGroups = await tx.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,p.userId)));
-        const allowed = await tx.select({email:s.user.email}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
-        const expanded = expandRoleGroups(allGroups,allowed.map(person=>person.email));
+        const allowed = await tx.select({email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
+        const expanded = expandRoleGroups(allGroups,allowed);
         groups = groups.map(group=>expanded.find(candidate=>candidate.id===group.id)!);
         if (groups.length !== new Set(groupIds).size)
           throw new AppError(404, "אחת הקבוצות אינה זמינה לך");
@@ -464,7 +464,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
     month,
     today,
     items,
-    groups: expandRoleGroups(groups.filter(group=>!(group.id.startsWith("role:")&&group.id.endsWith(":hurricane"))), members.map(member=>member.email)),
+    groups: expandRoleGroups(groups.filter(group=>!(group.id.startsWith("role:")&&group.id.endsWith(":hurricane"))), members).filter((group,index,all)=>all.findIndex(other=>roleName(other.name)===roleName(group.name))===index),
     people: members.filter(
       (member) =>
         visibleIds.has(member.id) ||
