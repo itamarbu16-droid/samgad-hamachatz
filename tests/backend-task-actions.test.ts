@@ -8,7 +8,7 @@ import {principalFor,createTask,updateTask,getWorkspace} from '../src/server/ser
 import {createRhythmItem,getRhythm,undoRhythm} from '../src/server/rhythm';
 import {actOnTask} from '../src/server/task-actions';
 import {getPins} from '../src/server/task-pins';
-import {workspaceSchedule,scheduleCalendars,selectScheduleCalendar,calendarSlots,scheduleCalendarTask,seal,unseal,startCalendarConnection,finishCalendarConnection} from '../src/server/google-calendar';
+import {workspaceSchedule,scheduleCalendars,selectScheduleCalendar,calendarStatus,calendarSlots,scheduleCalendarTask,seal,unseal,startCalendarConnection,finishCalendarConnection} from '../src/server/google-calendar';
 import {compareTasks} from '../src/lib/task-display';
 import {addDays} from '../src/lib/rhythm';
 import {localDate,type Principal} from '../src/server/policy';
@@ -59,7 +59,7 @@ it('extends only the selected recurrence, preserves identity through repeated re
 });
 async function connect(calendarId='owner@example.test'){
  const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
- const encryptedTokens=seal({access_token:'isolated-access',refresh_token:'isolated-refresh',calendarId,expiresAt:Date.now()+3600000});
+ const encryptedTokens=seal({access_token:'isolated-access',refresh_token:'isolated-refresh',calendarId,scheduleCalendarId:calendarId,expiresAt:Date.now()+3600000});
  await (await getDb()).insert(s.calendarConnections).values({id,organizationId:owner.organizationId,userId:owner.userId,encryptedTokens}).onConflictDoUpdate({target:s.calendarConnections.id,set:{encryptedTokens}});
 }
 it('encrypts tokens and binds OAuth state to account, organization and nonce',async()=>{
@@ -69,9 +69,9 @@ it('encrypts tokens and binds OAuth state to account, organization and nonce',as
  await expect(finishCalendarConnection(deputy,new Request('http://localhost:3000/api/calendar/callback?state='+location.searchParams.get('state')+'&code=test',{headers:{cookie}}))).rejects.toMatchObject({status:403});
  await expect(finishCalendarConnection(owner,new Request('http://localhost:3000/api/calendar/callback?state=wrong&code=test',{headers:{cookie}}))).rejects.toMatchObject({status:403});
 });
-it('fails closed if any calendar availability check fails',async()=>{
+it('fails closed if the selected calendar availability check fails',async()=>{
  const task=await assigned();await connect();
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.includes('calendarList')?Response.json({items:[{id:'one'},{id:'two'}]}):Response.json({calendars:{one:{busy:[]},two:{errors:[{reason:'internalError'}]}}})));
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.includes('calendarList')?Response.json({items:[{id:'one'},{id:'two'}]}):Response.json({calendars:{'owner@example.test':{errors:[{reason:'internalError'}]}}})));
  await expect(calendarSlots(owner,{kind:'task',id:task.id,from:addDays(today,1),through:addDays(today,2),minutes:30})).rejects.toMatchObject({status:503});vi.unstubAllGlobals();
 });
 it('rechecks availability before creating events and recovers an event after a lost database response',async()=>{
@@ -79,20 +79,20 @@ it('rechecks availability before creating events and recovers an event after a l
  const start=new Date(Date.now()+86400000).toISOString(),end=new Date(Date.parse(start)+1800000).toISOString();
  vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
   if(url.includes('calendarList'))return Response.json({items:[{id:'one'}]});
-  if(url.includes('/freeBusy'))return Response.json({calendars:{one:{busy:busy?[{start,end}]:[]}}});
-  if(init?.method==='POST'&&url.endsWith('/events')){inserts++;const body=JSON.parse(String(init.body));created={id:body.id,start:{dateTime:start},end:{dateTime:end},htmlLink:'https://calendar.google.com/event?test'};return Response.json(created);}
+  if(url.includes('/freeBusy'))return Response.json({calendars:{'owner@example.test':{busy:busy?[{start,end}]:[]},'different-google-account@example.test':{busy:[]}}});
+  if(init?.method==='POST'&&url.includes('/events?')){inserts++;const body=JSON.parse(String(init.body));created={id:body.id,start:{dateTime:start},end:{dateTime:end},htmlLink:'https://calendar.google.com/event?test'};return Response.json(created);}
   if(url.includes('/events/'))return created?Response.json(created):new Response('{}',{status:404});
   throw Error('Unexpected test request');
  }));
- await expect(scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end})).rejects.toMatchObject({status:409});expect(inserts).toBe(0);
- busy=false;const first=await scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end});expect(first.start).toBe(start);expect(inserts).toBe(1);
+ await expect(scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end,confirmed:true})).rejects.toMatchObject({status:409});expect(inserts).toBe(0);
+ busy=false;const first=await scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end,confirmed:true});expect(first.start).toBe(start);expect(inserts).toBe(1);
  // Simulate a transaction result lost after Google accepted the event.
  await (await getDb()).delete(s.calendarBookings);busy=true;
- const recovered=await scheduleCalendarTask(owner,{kind:'task',id:task.id,start:new Date(Date.parse(start)+3600000).toISOString(),end:new Date(Date.parse(end)+3600000).toISOString()});
+ const recovered=await scheduleCalendarTask(owner,{kind:'task',id:task.id,confirmed:true,start:new Date(Date.parse(start)+3600000).toISOString(),end:new Date(Date.parse(end)+3600000).toISOString()});
  expect(recovered.start).toBe(start);expect(inserts).toBe(1);
  // A different connected Google account must not reuse the former account's booking.
  await connect('different-google-account@example.test');created=null;busy=false;
- await scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end});expect(inserts).toBe(2);
+ await scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end,confirmed:true});expect(inserts).toBe(2);
  expect((await (await getDb()).select().from(s.calendarBookings))).toHaveLength(2);
  vi.unstubAllGlobals();
 });
@@ -123,4 +123,37 @@ it('reads a selected shared calendar and filters events on the server by role or
   expect((await workspaceSchedule(owner)).events.map(event=>event.id)).toEqual(['role','private','invited']);
   expect(paths.some(path=>path.includes('calendars/shared%40example.com/events'))).toBe(true);
  }finally{vi.unstubAllGlobals();}
+});
+
+it('checks only the selected shared calendar and requires confirmation before sending authorized invitations',async()=>{
+ const task=await assigned();await connect('shared@group.calendar.google.com');
+ await grantAccess(owner,{email:'company.b@samgad.example',level:'own'});
+ const db=await getDb();const [member]=await db.select().from(s.user).where(eq(s.user.email,'company.b@samgad.example'));
+ const status=await calendarStatus(owner);expect(status.invitees.some(m=>m.id===member.id)).toBe(true);
+ expect(status.invitees.some(m=>m.id===other.userId)).toBe(false);
+ const start=new Date(Date.now()+2*86400000).toISOString(),end=new Date(Date.parse(start)+1800000).toISOString();
+ const fetchMock=vi.fn(async(url:string,init?:RequestInit)=>{
+  expect(url).not.toContain('/primary/');expect(url).not.toContain('calendarList');
+  if(url.includes('/freeBusy')){expect(JSON.parse(String(init?.body)).items).toEqual([{id:'shared@group.calendar.google.com'}]);return Response.json({calendars:{'shared@group.calendar.google.com':{busy:[]},unrelated:{errors:[{reason:'notFound'}]}}});}
+  expect(url).toContain('calendars/shared%40group.calendar.google.com/events');
+  if(init?.method==='POST'){
+   expect(url).toContain('sendUpdates=all');const body=JSON.parse(String(init.body));expect(body.attendees).toEqual([{email:'company.b@samgad.example'}]);
+   return Response.json({id:body.id,start:body.start,end:body.end,htmlLink:'https://calendar.google.com/event?invitation'});
+  }
+  return new Response('{}',{status:404});
+ });vi.stubGlobal('fetch',fetchMock);
+ try{
+  await expect(scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end})).rejects.toThrow();expect(fetchMock).not.toHaveBeenCalled();
+  await expect(scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end,confirmed:true,inviteeIds:[other.userId]})).rejects.toMatchObject({status:403});expect(fetchMock).not.toHaveBeenCalled();
+  expect((await calendarSlots(owner,{kind:'task',id:task.id,from:addDays(today,1),through:addDays(today,2),minutes:30})).slots.length).toBeGreaterThan(0);
+  await scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end,confirmed:true,inviteeIds:[member.id,member.id]});
+  await grantAccess(owner,{email:member.email,level:'revoke'});
+  await expect(scheduleCalendarTask(owner,{kind:'task',id:task.id,start,end,confirmed:true,inviteeIds:[member.id]})).rejects.toMatchObject({status:403});
+ }finally{vi.unstubAllGlobals();}
+});
+it('does not silently use the primary calendar when no battalion calendar is selected',async()=>{
+ const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
+ await (await getDb()).update(s.calendarConnections).set({encryptedTokens:seal({access_token:'test',expiresAt:Date.now()+3600000,calendarId:'personal'})}).where(eq(s.calendarConnections.id,id));
+ const task=await assigned();const fetchMock=vi.fn(async()=>Response.json({items:[{id:'personal',summary:'Personal',accessRole:'owner'}]}));vi.stubGlobal('fetch',fetchMock);
+ try{await expect(calendarSlots(owner,{kind:'task',id:task.id,from:addDays(today,1),through:addDays(today,2),minutes:30})).rejects.toMatchObject({status:409});expect(fetchMock).toHaveBeenCalledTimes(1);}finally{vi.unstubAllGlobals();}
 });

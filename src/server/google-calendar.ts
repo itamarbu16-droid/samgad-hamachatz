@@ -20,7 +20,13 @@ export function unseal<T>(value:string):T{const bytes=Buffer.from(value,'base64u
 type Tokens={access_token:string;refresh_token?:string;expiresAt:number;calendarId?:string;scheduleCalendarId?:string};
 async function saveTokens(p:Principal,tokens:Tokens){await (await getDb()).insert(s.calendarConnections).values({id:connectionId(p),organizationId:p.organizationId,userId:p.userId,encryptedTokens:seal(tokens)}).onConflictDoUpdate({target:s.calendarConnections.id,set:{encryptedTokens:seal(tokens)}});}
 async function saved(p:Principal){const [row]=await (await getDb()).select().from(s.calendarConnections).where(and(eq(s.calendarConnections.id,connectionId(p)),eq(s.calendarConnections.userId,p.userId),eq(s.calendarConnections.organizationId,p.organizationId)));return row;}
-export async function calendarStatus(p:Principal){return {configured:calendarConfigured(),connected:Boolean(await saved(p))};}
+export async function calendarStatus(p:Principal){
+ const db=await getDb();
+ const members=await db.select({id:s.user.id,email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
+ const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,p.userId)));
+ const groups=expandRoleGroups(rawGroups,members);
+ return {configured:calendarConfigured(),connected:Boolean(await saved(p)),invitees:members.filter(m=>m.id!==p.userId).map(m=>({...m,roles:groups.filter(g=>g.emails.some(email=>email.toLowerCase()===m.email.toLowerCase())).map(g=>g.name)}))};
+}
 async function tokenRequest(body:Record<string,string>){
  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body),signal:AbortSignal.timeout(15000)});
  if(!response.ok)throw new AppError(409,'לא ניתן לאשר את החיבור ליומן. יש לחבר את Google Calendar מחדש');
@@ -60,17 +66,28 @@ export async function finishCalendarConnection(p:Principal,request:Request){
  const calendars=await calendarsResponse.json();const calendarId=calendars.items?.find((c:{primary?:boolean})=>c.primary)?.id;
  if(!calendarId)throw new AppError(422,'לא נמצא יומן ראשי בחשבון Google');
  let previous:Tokens|undefined;const row=await saved(p);if(row){try{previous=unseal<Tokens>(row.encryptedTokens);}catch{ /* Reconnection replaces invalid prior credentials. */ }}
- await saveTokens(p,{...tokens,calendarId,refresh_token:tokens.refresh_token||(previous?.calendarId===calendarId?previous?.refresh_token:undefined),expiresAt:Date.now()+tokens.expires_in*1000});
+ await saveTokens(p,{...tokens,calendarId,scheduleCalendarId:previous?.calendarId===calendarId?previous?.scheduleCalendarId:undefined,refresh_token:tokens.refresh_token||(previous?.calendarId===calendarId?previous?.refresh_token:undefined),expiresAt:Date.now()+tokens.expires_in*1000});
  return new Response(null,{status:302,headers:{Location:appUrl()+(p.manageAccess?'/':'/deputies')+'?view=calendar&connected=1','Cache-Control':'no-store','Set-Cookie':'samgad-calendar-state=; HttpOnly; SameSite=Lax; Path=/api/calendar; Max-Age=0'}});
 }
-async function busyTimes(p:Principal,start:string,end:string,providedToken?:string):Promise<TimeRange[]>{
- const ids:string[]=[];let page='';
- do{const result=await google(p,'users/me/calendarList?maxResults=250&showHidden=true'+(page?'&pageToken='+encodeURIComponent(page):''),undefined,undefined,providedToken);for(const c of result.items||[])if(!c.deleted)ids.push(c.id);page=result.nextPageToken||'';if(ids.length>50)throw new AppError(422,'החיבור כולל יותר מ-50 יומנים ולא ניתן לבדוק את כולם בבטחה');}while(page);
- if(!ids.length)throw new AppError(503,'לא נמצאו יומנים שניתן לבדוק');
- const result=await google(p,'freeBusy',{timeMin:start,timeMax:end,timeZone:'Asia/Jerusalem',items:ids.map(id=>({id}))},undefined,providedToken);
- const ranges:TimeRange[]=[];
- for(const id of ids){const calendar=result.calendars?.[id];if(!calendar||calendar.errors?.length||!Array.isArray(calendar.busy))throw new AppError(503,'לא ניתן לבדוק זמינות בכל היומנים. לא נוסף אירוע');if(calendar.busy.some((range:TimeRange)=>!Number.isFinite(Date.parse(range.start))||!Number.isFinite(Date.parse(range.end))||Date.parse(range.end)<Date.parse(range.start)))throw new AppError(503,'היומן החזיר זמינות שאינה תקינה. לא נוסף אירוע');ranges.push(...calendar.busy);}
- return ranges;
+/** Resolve the same selected calendar used by the workspace agenda. Never write to primary implicitly. */
+async function bookingCalendar(p:Principal,providedToken?:string){
+ const row=await saved(p);if(!row)throw new AppError(409,'יש לחבר תחילה את היומן');
+ const tokens=unseal<Tokens>(row.encryptedTokens);
+ if(tokens.scheduleCalendarId)return tokens.scheduleCalendarId;
+ let page='';const matches:string[]=[];
+ do{const result=await google(p,'users/me/calendarList?maxResults=250'+(page?'&pageToken='+encodeURIComponent(page):''),undefined,undefined,providedToken);
+ for(const calendar of result.items||[])if(!calendar.deleted&&['owner','writer'].includes(calendar.accessRole)&&/לו.?ז\s*סמג/.test(calendar.summary||''))matches.push(calendar.id);
+ page=result.nextPageToken||'';}while(page);
+ if(matches.length!==1)throw new AppError(409,'יש לבחור את לו״ז סמג״ד בהגדרות היומן לפני הוספת אירוע');
+ await saveTokens(p,{...tokens,scheduleCalendarId:matches[0]});return matches[0];
+}
+async function busyTimes(p:Principal,start:string,end:string,providedToken?:string,calendarId?:string):Promise<TimeRange[]>{
+ const id=calendarId||await bookingCalendar(p,providedToken);
+ const result=await google(p,'freeBusy',{timeMin:start,timeMax:end,timeZone:'Asia/Jerusalem',items:[{id}]},undefined,providedToken);
+ const calendar=result.calendars?.[id];
+ if(!calendar||calendar.errors?.length||!Array.isArray(calendar.busy))throw new AppError(503,'לא ניתן לבדוק זמינות בלו״ז סמג״ד. יש לבדוק את ההרשאה ליומן');
+ if(calendar.busy.some((range:TimeRange)=>!Number.isFinite(Date.parse(range.start))||!Number.isFinite(Date.parse(range.end))||Date.parse(range.end)<Date.parse(range.start)))throw new AppError(503,'היומן החזיר זמינות שאינה תקינה. לא נוסף אירוע');
+ return calendar.busy;
 }
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>!Number.isNaN(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v);
 const clock=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
@@ -83,21 +100,23 @@ export async function calendarSlots(p:Principal,input:unknown){
  return {slots:findFreeSlots({...data,busy})};
 }
 export async function scheduleCalendarTask(p:Principal,input:unknown){
- const data=actionRef.extend({start:z.string().datetime(),end:z.string().datetime()}).strict().parse(input);
+ const data=actionRef.extend({start:z.string().datetime(),end:z.string().datetime(),confirmed:z.literal(true),inviteeIds:z.array(z.string().min(1)).max(100).default([])}).strict().parse(input);
  const task=await getActionTask(p,{kind:data.kind,id:data.id,occurrenceId:data.occurrenceId});
  const start=Date.parse(data.start),end=Date.parse(data.end);
  if(start<Date.now()||end<=start||end-start>480*60_000||start>Date.now()+366*86400000)throw new AppError(422,'יש לבחור זמן עתידי ומשך של עד שמונה שעות');
- const connection=await saved(p);if(!connection)throw new AppError(409,'יש לחבר תחילה את היומן');
- const tokens=unseal<Tokens>(connection.encryptedTokens);
- if(!tokens.calendarId)throw new AppError(409,'יש לחבר מחדש את היומן');
- const bookingKey=createHash('sha256').update(tokens.calendarId+':'+task.bookingKey).digest('hex');
+ const selectedCalendar=await bookingCalendar(p);
+ const allowed=(await calendarStatus(p)).invitees;
+ const inviteeIds=[...new Set(data.inviteeIds)];
+ const invitees=inviteeIds.map(id=>{const member=allowed.find(m=>m.id===id);if(!member)throw new AppError(403,'אחד המוזמנים אינו מורשה עוד. יש לבחור מוזמנים מחדש');return {email:member.email};});
+ const calendarPath='calendars/'+encodeURIComponent(selectedCalendar)+'/events';
+ const bookingKey=createHash('sha256').update(selectedCalendar+':'+task.bookingKey).digest('hex');
  const id=createHash('sha256').update(`${p.organizationId}:${p.userId}:${bookingKey}`).digest('hex');
  const token=await accessToken(p);
  return (await getDb()).transaction(async tx=>{
   if(process.env.DATABASE_URL)await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${connectionId(p)}))`);
   const [existing]=await tx.select().from(s.calendarBookings).where(eq(s.calendarBookings.id,id));
   const readEvent=async(eventId:string)=>{
-   const response=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+eventId,{headers:{Authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(15000)});
+   const response=await fetch('https://www.googleapis.com/calendar/v3/'+calendarPath+'/'+eventId,{headers:{Authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(15000)});
    if(response.status===404)return null;
    if(response.status===410)return {status:'cancelled'};
    if(!response.ok)throw new AppError(503,'לא ניתן לבדוק אירוע קיים. לא נוסף אירוע');
@@ -109,9 +128,9 @@ export async function scheduleCalendarTask(p:Principal,input:unknown){
    if(event?.status==='cancelled')throw new AppError(409,'אירוע קודם בזמן הזה נמחק. יש לבחור זמן אחר');
   }
   if(!event){
-   const busy=await busyTimes(p,data.start,data.end,token);
+   const busy=await busyTimes(p,data.start,data.end,token,selectedCalendar);
    if(busy.some(b=>Date.parse(b.start)<end&&Date.parse(b.end)>start))throw new AppError(409,'הזמן נתפס בינתיים. יש לחפש זמן פנוי חדש');
-   try{event=await google(p,'calendars/primary/events',{id:eventId,summary:task.title,description:task.description,start:{dateTime:data.start,timeZone:'Asia/Jerusalem'},end:{dateTime:data.end,timeZone:'Asia/Jerusalem'},transparency:'opaque'},'POST',token);}
+   try{event=await google(p,calendarPath+'?sendUpdates=all',{attendees:invitees,id:eventId,summary:task.title,description:task.description,start:{dateTime:data.start,timeZone:'Asia/Jerusalem'},end:{dateTime:data.end,timeZone:'Asia/Jerusalem'},transparency:'opaque'},'POST',token);}
    catch(error){event=await readEvent(eventId);if(!event||event.status==='cancelled')throw error;}
   }
   const actualStart=event.start?.dateTime,actualEnd=event.end?.dateTime;
