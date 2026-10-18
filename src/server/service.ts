@@ -40,7 +40,7 @@ export async function principalFor(userId: string, name: string): Promise<Princi
   return initializeWorkspace({ userId, name, organizationId: member[0].organizationId, role: member[0].role, editAll:member[0].editAll, companyId:member[0].editAll?null:member[0].companyId, domainId:member[0].editAll?null:member[0].domainId });
 }
 function taskScope(p: Principal): SQL | undefined {
-  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId})`];
+  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId} OR ${s.tasks.creatorId} = ${canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.tasks.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.tasks.domainId, p.domainId));
@@ -48,7 +48,7 @@ function taskScope(p: Principal): SQL | undefined {
   return and(...filters);
 }
 function decisionScope(p: Principal): SQL | undefined {
-  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId})`];
+  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId} AND private_task.creator_id<>${canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.decisions.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.decisions.domainId, p.domainId));
@@ -95,7 +95,7 @@ export async function getWorkspace(p: Principal) {
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
   const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));
   const normalizedTasks=taskRows.map(t=>({...t,domainId:['safety','people'].includes(t.domainId)?`${p.organizationId}:deputies`:t.domainId}));
-  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
+  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, workspaceOwnerId:p.workspaceOwnerId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
 }
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();

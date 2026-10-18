@@ -59,9 +59,12 @@ export const auditEvents = pgTable('audit_events', {
   actorId: text('actor_id').notNull().references(() => user.id), action: text('action').notNull(), summary: text('summary').notNull(), details: jsonb('details').notNull().default({}), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('audit_org_created').on(t.organizationId, t.createdAt)]);
 
+export const customDocumentFolders=pgTable("custom_document_folders",{id:text("id").primaryKey(),organizationId:text("organization_id").notNull(),name:text("name").notNull(),parent:text("parent"),section:text("section").notNull(),clientRequestId:text("client_request_id").notNull()});
+
 export const rhythmGroups = pgTable('rhythm_groups', {
   id: text('id').primaryKey(), organizationId: text('organization_id').notNull().references(() => organizations.id),
   creatorId: text('creator_id').notNull().references(() => user.id), name: text('name').notNull(),
+  archived:boolean('archived').notNull().default(false),customized:boolean('customized').notNull().default(false),
   emails: jsonb('emails').$type<string[]>().notNull(), version: integer('version').notNull().default(1),
 });
 export const rhythmItems = pgTable('rhythm_items', {

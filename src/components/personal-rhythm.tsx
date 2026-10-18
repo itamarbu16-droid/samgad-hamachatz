@@ -1,6 +1,6 @@
 "use client";
 
-import {roleCollections,roleName} from "@/lib/unit-roles";
+
 import {WeeklySchedule} from "./weekly-schedule";
 import { useState, useEffect } from "react";
 import { Plus, CheckCheck, CalendarDays, Users, NotebookPen } from "lucide-react";
@@ -184,7 +184,7 @@ export default function PersonalRhythm({
     {tab === "groups" ? <>
       <WeeklySchedule groups={data.groups}/>
       <button className="button primary" onClick={() => setModal("group")}><Plus size={16} /> הוספת קבוצה</button>
-      <div className="rhythm-group-grid">{data.groups.map(group => <section className="panel" key={group.id}><h3>{group.name}</h3>{roleCollections[roleName(group.name)]?<p>מתעדכן אוטומטית מבעלי התפקידים: {roleCollections[roleName(group.name)].join(" · ")}.<br/>{group.emails.length} משתמשים מורשים משויכים.</p>:<form onSubmit={async event => {
+      <div className="rhythm-group-grid">{data.groups.map(group => <section className="panel" key={`${group.id}:${group.version}`}><h3>{group.name}</h3><form onSubmit={async event => {
             event.preventDefault();
             const f = new FormData(event.currentTarget);
             await actions.run([{
@@ -196,7 +196,7 @@ export default function PersonalRhythm({
                 version: group.version
               }
             }]);
-          }}><label>שם<input name="name" required defaultValue={group.name} /></label><fieldset className="role-chips"><legend>חברי הקבוצה</legend>{data.people.map(p => <label key={p.id}><input name="members" value={p.email} type="checkbox" defaultChecked={group.emails.includes(p.email)} /> {p.name}</label>)}</fieldset><button className="button secondary" disabled={actions.busy}>שמירה</button></form>}</section>)}</div>
+          }}><label>שם<input name="name" required defaultValue={group.name} /></label><fieldset className="role-chips"><legend>חברי הקבוצה</legend>{data.people.map(p => <label key={p.id}><input name="members" value={p.email} type="checkbox" defaultChecked={group.emails.includes(p.email)} /> {p.name}</label>)}</fieldset><button className="button secondary" disabled={actions.busy}>שמירה</button></form><button className="button secondary" disabled={actions.busy} onClick={async()=>{if(window.confirm(`למחוק את הקבוצה ${group.name}? המשימות הקיימות יישמרו.`))await actions.run([{url:`/api/rhythm/groups/${group.id}`,method:'DELETE',body:{version:group.version}}]);}}>מחיקת קבוצה</button></section>)}</div>
     </> : <>
       <TaskFilters archived={filter==="completed"} onArchive={()=>updateView({filter:filter==="completed"?"all":"completed"})} count={visible.length} active={filter!=="all"||sort!=="deadline_desc"} search={<label>חיפוש<input value={query} onChange={e => updateView({q:e.target.value})} placeholder="חיפוש משימה או בעל תפקיד…" /></label>}>
         <label>סינון<select value={filter} onChange={e => updateView({filter:e.target.value==="pending"?"pending_review":e.target.value==="open"?"active":e.target.value})} aria-label="סינון">{Object.entries({
@@ -230,7 +230,7 @@ export default function PersonalRhythm({
               occurrence
             }) => <SwipeTaskRow canExtendDirectly={role==="deputy"} task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} title={item.title} pinned={Boolean(data.pinnedTaskKeys?.includes("rhythm:"+item.id))} canEdit={canWrite&&(manager||item.assigneeIds.includes(userId))} canDelete={canWrite&&(manager||item.creatorId===userId)} id={`occurrence-${occurrence.id}`} key={occurrence.id} className={`rhythm-task-card ${taskTone(occurrence.done,item.hasDeadline?occurrence.dueDate:null,data.today)}`}>
           <div className="rhythm-task-selection">{canWrite && (manager || item.assigneeIds.includes(userId)) && <label className="task-select-touch"><input type="checkbox" aria-label={`בחירת ${item.title}`} checked={selection.includes(occurrence.id)} onChange={e => setSelection(ids => e.target.checked ? [...ids, occurrence.id] : ids.filter(id => id !== occurrence.id))} /></label>}</div>
-          <div className="rhythm-task-content"><strong>{data.pinnedTaskKeys?.includes("rhythm:"+item.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{item.title}</strong>{item.description && <small>{item.description}</small>}<small>{isPersonalItem(item, userId) ? "פרטי" : `הוקצה על ידי ${person(item.creatorId)}`}{item.frequency !== "once" ? ` · ${frequencies[item.frequency]}` : ""}</small>{item.important && <span className="badge high">חשוב</span>}{occurrence.urgent && <span className="badge urgent">דחוף</span>}</div>
+          <div className="rhythm-task-content"><strong>{data.pinnedTaskKeys?.includes("rhythm:"+item.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{item.title}</strong>{item.description && <small>{item.description}</small>}<small>{isPersonalItem(item, userId) ? "אישי — משותף למנהלים" : `הוקצה על ידי ${person(item.creatorId)}`}{item.frequency !== "once" ? ` · ${frequencies[item.frequency]}` : ""}</small>{item.important && <span className="badge high">חשוב</span>}{occurrence.urgent && <span className="badge urgent">דחוף</span>}</div>
           <div className="rhythm-task-deadline"><span className="deadline-label">תג״ב: </span>{item.hasDeadline && item.category !== "point" ? new Date(occurrence.dueDate + "T12:00:00Z").toLocaleDateString("he-IL") : "ללא מועד"}{item.hasDeadline && occurrence.dueDate < data.today && !occurrence.done && <small className="late">באיחור</small>}</div>
           <div className="rhythm-task-completion">{item.assigneeIds.map(id => {
                   const approved = Boolean(occurrence.completions[id]) || item.completionMode === "shared" && Boolean(occurrence.completedAt);
@@ -269,7 +269,7 @@ export default function PersonalRhythm({
         const ok = await actions.run([{
           url: editing ? `/api/rhythm/items/${editing.id}` : "/api/rhythm/items",
           method: editing ? "PATCH" : "POST",
-          body
+          body:editing?body:{...body,personal:scope==="personal"}
         }]);
         if (ok) {
           setModal("");

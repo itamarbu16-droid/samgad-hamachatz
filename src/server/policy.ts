@@ -2,7 +2,7 @@ export const taskStatuses = ['open', 'in_progress', 'blocked', 'pending_review',
 export type TaskStatus = typeof taskStatuses[number];
 export const priorities = ['low', 'normal', 'high', 'urgent'] as const;
 export type Role = 'deputy' | 'staff' | 'company_commander' | 'contributor' | 'viewer' | 'admin';
-export type Principal = { userId: string; organizationId: string; role: string; companyId: string | null; domainId: string | null; name: string; editAll?: boolean; manageAccess?: boolean; guest?: boolean };
+export type Principal = { userId: string; organizationId: string; role: string; companyId: string | null; domainId: string | null; name: string; workspaceOwnerId?: string; editAll?: boolean; manageAccess?: boolean; guest?: boolean };
 export type ScopedRecord = { organizationId: string; companyId: string | null; domainId: string; ownerId?: string; requesterId?: string; deciderId?: string };
 export class AppError extends Error { constructor(public status: number, message: string) { super(message); } }
 export function canRead(principal: Principal, record: ScopedRecord) {

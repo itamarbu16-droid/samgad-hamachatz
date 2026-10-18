@@ -4,14 +4,17 @@ import { z } from 'zod';
 import { getDb } from './db';
 import { getAuth } from './auth';
 import * as s from './schema';
-import { AppError, type Principal } from './policy';
+import { AppError, canEditAll, type Principal } from './policy';
+import {ensureSharedManagementSchema} from "./shared-management-schema";
 import { responsibilityDomains } from '../lib/responsibility-domains';
 
 export async function initializeWorkspace(p: Principal) {
+ await ensureSharedManagementSchema();
  const db=await getDb();
  if(p.role==='deputy') await db.insert(s.workspaceSettings).values({organizationId:p.organizationId,ownerId:p.userId}).onConflictDoNothing();
  const [settings]=await db.select().from(s.workspaceSettings).where(eq(s.workspaceSettings.organizationId,p.organizationId));
- if(settings?.ownerId===p.userId) p.manageAccess=true;
+ p.workspaceOwnerId=settings?.ownerId;
+ if(settings?.ownerId===p.userId || canEditAll(p)) p.manageAccess=true;
  return p;
 }
 export async function publicPrincipal():Promise<Principal> {
@@ -37,13 +40,13 @@ export async function ensureResponsibilityDomains(p:Principal) {
 export async function getAccess(p:Principal) {
  if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');
  const db=await getDb();const members=await db.select({id:s.user.id,email:s.user.email,name:s.user.name,active:s.memberships.active,editAll:s.memberships.editAll,role:s.memberships.role}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(eq(s.memberships.organizationId,p.organizationId));
- return {members:members.map(m=>({...m,level:m.id===p.userId?'owner':m.editAll?'all':m.role==='viewer'?'view':'own'})),publicRead:false};
+ return {members:members.map(m=>({...m,level:m.id===p.workspaceOwnerId?'owner':m.editAll?'all':m.role==='viewer'?'view':'own'})),publicRead:false};
 }
 export async function grantAccess(p:Principal,input:unknown) {
  if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');
  const data=z.object({email:z.string().trim().toLowerCase().email(),name:z.string().trim().min(2).max(100).optional(),level:z.enum(['view','own','all','revoke']),password:z.string().min(12).max(128).optional()}).strict().parse(input);
  const db=await getDb();let [user]=await db.select().from(s.user).where(sql`lower(${s.user.email})=${data.email}`);
- if(user?.id===p.userId)throw new AppError(403,'אי אפשר להסיר או לשנות את הרשאת בעל המרחב');
+ if(user?.id===(p.workspaceOwnerId || p.userId))throw new AppError(403,'אי אפשר להסיר או לשנות את הרשאת בעל המרחב');
  if(!user && data.level==='revoke')return {saved:true};
  if(!user){
   if(!data.password)throw new AppError(422,'לחשבון חדש יש להזין סיסמה ראשונית בת 12 תווים לפחות');
@@ -55,7 +58,7 @@ export async function grantAccess(p:Principal,input:unknown) {
  const other=await db.select().from(s.memberships).where(and(eq(s.memberships.userId,user.id),sql`${s.memberships.organizationId} <> ${p.organizationId}`,eq(s.memberships.active,true)));
  if(other.length)throw new AppError(422,'החשבון כבר שייך למרחב אחר');
  await db.insert(s.memberships).values({id:randomUUID(),userId:user.id,organizationId:p.organizationId,role:data.level==='view'?'viewer':'contributor',editAll:data.level==='all',active:data.level!=='revoke',companyId:null,domainId:null}).onConflictDoUpdate({target:[s.memberships.userId,s.memberships.organizationId],set:{active:data.level!=='revoke',editAll:data.level==='all',role:data.level==='view'?'viewer':'contributor',companyId:null,domainId:null}});
- await db.insert(s.workspaceAccessGrants).values({userId:user.id,organizationId:p.organizationId,grantedBy:p.userId}).onConflictDoNothing();
+ await db.insert(s.workspaceAccessGrants).values({userId:user.id,organizationId:p.organizationId,grantedBy:p.workspaceOwnerId || p.userId}).onConflictDoNothing();
  return {saved:true};
 }
 
@@ -65,8 +68,8 @@ export async function deleteAccess(p:Principal,input:unknown) {
  const db=await getDb();
  return db.transaction(async tx=>{
   const [settings]=await tx.select().from(s.workspaceSettings).where(eq(s.workspaceSettings.organizationId,p.organizationId));
-  if(settings?.ownerId!==p.userId)throw new AppError(403,'רק בעל המרחב רשאי לנהל הרשאות');
-  if(userId===settings.ownerId)throw new AppError(403,'אי אפשר למחוק את הרשאת בעל המרחב');
+  if(!p.manageAccess)throw new AppError(403,'ניהול הרשאות דורש הרשאת מנהל');
+  if(userId===settings?.ownerId)throw new AppError(403,'אי אפשר למחוק את הרשאת בעל המרחב');
   const removed=await tx.delete(s.memberships).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.userId,userId))).returning();
   if(!removed.length)throw new AppError(404,'ההרשאה לא נמצאה');
   await tx.delete(s.workspaceAccessGrants).where(and(eq(s.workspaceAccessGrants.organizationId,p.organizationId),eq(s.workspaceAccessGrants.userId,userId)));

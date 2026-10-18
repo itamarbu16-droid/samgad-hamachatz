@@ -145,7 +145,7 @@ export default function TaskTools({
           const ok = await actions.run([{
             url: "/api/rhythm/items",
             method: "POST",
-            body
+            body:{...body,personal:personalAllowed && Array.isArray(body.recipientIds) && body.recipientIds.length===1 && body.recipientIds[0]===userId && (!Array.isArray(body.groupIds)||body.groupIds.length===0)}
           }]);
           if (ok) setModal("");
           return ok;

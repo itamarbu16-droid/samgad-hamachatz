@@ -12,6 +12,7 @@ import {actionRef,getActionTask} from './task-actions';
 import {findFreeSlots,zonedTime,type TimeRange} from '../lib/calendar-slots';
 import {addDays} from '../lib/rhythm';
 const scopes=['https://www.googleapis.com/auth/calendar.events.freebusy','https://www.googleapis.com/auth/calendar.calendarlist.readonly','https://www.googleapis.com/auth/calendar.events'];
+const calendarPrincipal=(p:Principal):Principal=>canEditAll(p)&&p.workspaceOwnerId?{...p,userId:p.workspaceOwnerId}:p;
 const connectionId=(p:Principal)=>createHash('sha256').update(`${p.organizationId}:${p.userId}`).digest('hex');
 export const calendarConfigured=()=>Boolean(process.env.GOOGLE_CALENDAR_CLIENT_ID&&process.env.GOOGLE_CALENDAR_CLIENT_SECRET);
 function key(){if(!process.env.BETTER_AUTH_SECRET)throw Error('Missing auth secret');return createHash('sha256').update('calendar-v1:'+process.env.BETTER_AUTH_SECRET).digest();}
@@ -21,9 +22,10 @@ type Tokens={access_token:string;refresh_token?:string;expiresAt:number;calendar
 async function saveTokens(p:Principal,tokens:Tokens){await (await getDb()).insert(s.calendarConnections).values({id:connectionId(p),organizationId:p.organizationId,userId:p.userId,encryptedTokens:seal(tokens)}).onConflictDoUpdate({target:s.calendarConnections.id,set:{encryptedTokens:seal(tokens)}});}
 async function saved(p:Principal){const [row]=await (await getDb()).select().from(s.calendarConnections).where(and(eq(s.calendarConnections.id,connectionId(p)),eq(s.calendarConnections.userId,p.userId),eq(s.calendarConnections.organizationId,p.organizationId)));return row;}
 export async function calendarStatus(p:Principal){
+ p=calendarPrincipal(p);
  const db=await getDb();
  const members=await db.select({id:s.user.id,email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
- const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,p.userId)));
+ const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.archived,false),eq(s.rhythmGroups.creatorId,p.workspaceOwnerId || p.userId)));
  const groups=expandRoleGroups(rawGroups,members);
  return {configured:calendarConfigured(),connected:Boolean(await saved(p)),invitees:members.filter(m=>m.id!==p.userId).map(m=>({...m,roles:groups.filter(g=>g.emails.some(email=>email.toLowerCase()===m.email.toLowerCase())).map(g=>g.name)}))};
 }
@@ -65,8 +67,9 @@ export async function finishCalendarConnection(p:Principal,request:Request){
  if(!calendarsResponse.ok)throw new AppError(503,'לא ניתן לזהות את היומן הראשי. החיבור לא נשמר');
  const calendars=await calendarsResponse.json();const calendarId=calendars.items?.find((c:{primary?:boolean})=>c.primary)?.id;
  if(!calendarId)throw new AppError(422,'לא נמצא יומן ראשי בחשבון Google');
- let previous:Tokens|undefined;const row=await saved(p);if(row){try{previous=unseal<Tokens>(row.encryptedTokens);}catch{ /* Reconnection replaces invalid prior credentials. */ }}
- await saveTokens(p,{...tokens,calendarId,scheduleCalendarId:previous?.calendarId===calendarId?previous?.scheduleCalendarId:undefined,refresh_token:tokens.refresh_token||(previous?.calendarId===calendarId?previous?.refresh_token:undefined),expiresAt:Date.now()+tokens.expires_in*1000});
+ const target=calendarPrincipal(p);
+ let previous:Tokens|undefined;const row=await saved(target);if(row){try{previous=unseal<Tokens>(row.encryptedTokens);}catch{ /* Reconnection replaces invalid prior credentials. */ }}
+ await saveTokens(target,{...tokens,calendarId,scheduleCalendarId:previous?.calendarId===calendarId?previous?.scheduleCalendarId:undefined,refresh_token:tokens.refresh_token||(previous?.calendarId===calendarId?previous?.refresh_token:undefined),expiresAt:Date.now()+tokens.expires_in*1000});
  return new Response(null,{status:302,headers:{Location:appUrl()+(canEditAll(p)?'/':'/deputies')+'?view=calendar&connected=1','Cache-Control':'no-store','Set-Cookie':'samgad-calendar-state=; HttpOnly; SameSite=Lax; Path=/api/calendar; Max-Age=0'}});
 }
 /** Resolve the same selected calendar used by the workspace agenda. Never write to primary implicitly. */
@@ -92,6 +95,7 @@ async function busyTimes(p:Principal,start:string,end:string,providedToken?:stri
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>!Number.isNaN(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v);
 const clock=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 export async function calendarSlots(p:Principal,input:unknown){
+ p=calendarPrincipal(p);
  const data=actionRef.extend({from:date,through:date,dayStart:clock.default('09:00'),dayEnd:clock.default('18:00'),minutes:z.number().int().min(5).max(480)}).strict().parse(input);
  await getActionTask(p,{kind:data.kind,id:data.id,occurrenceId:data.occurrenceId});
  if(data.through<data.from||data.through>addDays(data.from,31)||data.dayEnd<=data.dayStart)throw new AppError(422,'יש לבחור טווח של עד חודש ושעות פעילות תקינות');
@@ -100,6 +104,7 @@ export async function calendarSlots(p:Principal,input:unknown){
  return {slots:findFreeSlots({...data,busy})};
 }
 export async function scheduleCalendarTask(p:Principal,input:unknown){
+ p=calendarPrincipal(p);
  const data=actionRef.extend({start:z.string().datetime(),end:z.string().datetime(),confirmed:z.literal(true),inviteeIds:z.array(z.string().min(1)).max(100).default([])}).strict().parse(input);
  const task=await getActionTask(p,{kind:data.kind,id:data.id,occurrenceId:data.occurrenceId});
  const start=Date.parse(data.start),end=Date.parse(data.end);
@@ -140,7 +145,7 @@ export async function scheduleCalendarTask(p:Principal,input:unknown){
   return {url:eventUrl,start:actualStart,end:actualEnd,alreadyAdded:Boolean(existing)};
  });
 }
-export async function disconnectCalendar(p:Principal){await (await getDb()).delete(s.calendarConnections).where(and(eq(s.calendarConnections.id,connectionId(p)),eq(s.calendarConnections.userId,p.userId),eq(s.calendarConnections.organizationId,p.organizationId)));return {connected:false};}
+export async function disconnectCalendar(p:Principal){p=calendarPrincipal(p);await (await getDb()).delete(s.calendarConnections).where(and(eq(s.calendarConnections.id,connectionId(p)),eq(s.calendarConnections.userId,p.userId),eq(s.calendarConnections.organizationId,p.organizationId)));return {connected:false};}
 
 /** Read the workspace owner's calendar; filter before returning any event data. */
 export async function workspaceSchedule(p:Principal){
@@ -152,7 +157,7 @@ export async function workspaceSchedule(p:Principal){
  const source:Principal={...p,userId:owner.id,name:owner.name};
  if(!await saved(source))return {connected:false,events:[]};
  const [viewer]=await db.select({email:s.user.email,name:s.user.name}).from(s.user).where(eq(s.user.id,p.userId));
- const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,owner.id)));
+ const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.archived,false),eq(s.rhythmGroups.creatorId,owner.id)));
  const members=await db.select({email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
  const groups=expandRoleGroups(rawGroups,members);
  const roles=groups.filter(group=>group.emails.some(email=>email.toLowerCase()===viewer?.email.toLowerCase())).map(group=>group.name.replace(/\s*\(קבוצה\)\s*$/,''));
@@ -182,6 +187,7 @@ export async function workspaceSchedule(p:Principal){
 }
 
 export async function scheduleCalendars(p:Principal){
+ p=calendarPrincipal(p);
  if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לבחור את יומן הלו״ז');
  const row=await saved(p);if(!row)return {calendars:[],selected:''};
  const tokens=unseal<Tokens>(row.encryptedTokens),calendars:Array<{id:string;name:string}>=[];let page='';
@@ -191,6 +197,7 @@ export async function scheduleCalendars(p:Principal){
  return {calendars,selected:tokens.scheduleCalendarId||tokens.calendarId||''};
 }
 export async function selectScheduleCalendar(p:Principal,input:unknown){
+ p=calendarPrincipal(p);
  const {calendarId}=z.object({calendarId:z.string().min(1).max(1024)}).strict().parse(input);
  const available=await scheduleCalendars(p);
  if(!available.calendars.some(calendar=>calendar.id===calendarId))throw new AppError(403,'היומן אינו זמין לקריאה בחשבון שלך');

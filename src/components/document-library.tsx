@@ -25,6 +25,7 @@ import {
   folderPath,
   documentExtensions,
   type DocumentSection,
+  type DocumentFolder,
 } from "@/lib/document-folders";
 import {prepareDocumentFiles,validateDocumentFiles,type DocumentUploadCache} from "@/lib/document-uploads";
 import { Modal, Empty } from "./workspace-primitives";
@@ -72,11 +73,13 @@ export default function DocumentLibrary({
     [files, setFiles] = useState<File[]>([]);
   const uploadCache=useRef<DocumentUploadCache>(new Map());
   const [uploadProgress,setUploadProgress]=useState("");
+  const [folders,setFolders]=useState<DocumentFolder[]>([...documentFolders]);
+  const [creatingFolder,setCreatingFolder]=useState(false);
   const requests = useRef(new Map<string, string>());
   const manager = ["deputy", "staff", "company_commander"].includes(role),
     canWrite = manager || role === "contributor";
   const rootName = section === "library" ? "ספרייה" : "סיכומי ישיבות וביקורות";
-  const catalog = documentFolders.filter((item) => item.section === section);
+  const catalog = folders.filter((item) => item.section === section);
   const current = catalog.find((item) => item.id === folder);
   const visibleFolders = catalog.filter((item) => item.parent === folder);
   const included = new Set<string>(catalog.map((item) => item.id));
@@ -96,6 +99,7 @@ export default function DocumentLibrary({
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || "המסמכים אינם זמינים");
       setEntries(value.entries);
+      setFolders(value.folders);
       setError("");
     } catch (error) {
       setError(error instanceof Error ? error.message : "שגיאה בטעינה");
@@ -193,6 +197,11 @@ export default function DocumentLibrary({
   if (section === "library" && folder === "trackers") return <TrackingTables userId={userId} role={role} back={() => {openFolder(null);void load();}} />;
   return (
     <div className="document-workspace">
+      {creatingFolder && <Modal title="הוספת תיקייה" close={()=>setCreatingFolder(false)}><form onSubmit={async event=>{
+        event.preventDefault();const form=new FormData(event.currentTarget);setBusy(true);setError('');
+        try{const response=await apiFetch('/api/documents/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.get('name'),parent:form.get('parent')||null,section,clientRequestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw Error(result.error||'לא ניתן ליצור תיקייה');await load();setCreatingFolder(false);openFolder(result.folder.id);setNotice('התיקייה נוספה');window.dispatchEvent(new Event('samgad:saved'));}catch(error){setError(error instanceof Error?error.message:'לא ניתן ליצור תיקייה');}finally{setBusy(false);}
+      }}><label>שם התיקייה<input name="name" required maxLength={120}/></label><label>בתוך תיקייה<select name="parent" defaultValue={folder||''}><option value="">{rootName} — תיקייה ראשית</option>{catalog.filter(item=>item.id!=='trackers').map(item=><option key={item.id} value={item.id}>{folderPath(item.id,folders)}</option>)}</select></label><button className="button primary" disabled={busy}>{busy?'שומר…':'יצירת תיקייה'}</button>{error&&<p role="alert">{error}</p>}</form></Modal>}
+
       <div className="document-breadcrumbs">
         <button onClick={() => openFolder(null)}>{rootName}</button>
         {current?.parent && (
@@ -220,6 +229,7 @@ export default function DocumentLibrary({
             placeholder="חיפוש במסמכים ובקבצים"
           />
         </label>
+        {manager && <button className="button secondary" onClick={()=>setCreatingFolder(true)}><Folder size={17}/>הוספת תיקייה</button>}
         {canWrite && (
           <button
             className="button primary"
@@ -247,7 +257,7 @@ export default function DocumentLibrary({
       {!query && (
         <div className="document-folder-grid">
           {visibleFolders.map((item) => {
-            const children = descendants(item.id),
+            const children = descendants(item.id,folders),
               count = entries.filter((entry) =>
                 children.includes(entry.folderId),
               ).length;
@@ -294,7 +304,7 @@ export default function DocumentLibrary({
             <FileText size={26} />
             <div>
               <strong>{entry.title}</strong>
-              {query && <small>{folderPath(entry.folderId)}</small>}
+              {query && <small>{folderPath(entry.folderId,folders)}</small>}
               {entry.preview && <p>{entry.preview}</p>}
               <small>
                 {entry.documentDate
@@ -366,7 +376,7 @@ export default function DocumentLibrary({
                     </option>
                     {catalog.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {folderPath(item.id)}
+                        {folderPath(item.id,folders)}
                       </option>
                     ))}
                   </select>
@@ -432,7 +442,7 @@ export default function DocumentLibrary({
             selected && (
               <>
                 <p className="document-detail-meta">
-                  {folderPath(selected.folderId)}
+                  {folderPath(selected.folderId,folders)}
                   {selected.documentDate && (
                     <>
                       {" "}

@@ -58,6 +58,7 @@ const itemInput = z
     completionMode: z.enum(["individual", "shared"]).default("individual"),
     emails: emailsInput,
     groupIds: z.array(z.string().min(1)).max(30).default([]),
+    personal:z.boolean().default(false),
   })
   .strict();
 const groupInput = z
@@ -73,7 +74,7 @@ export function rhythmScope(p: Principal) {
     p.role === "admin"
       ? sql`false`
       : p.guest || p.role==="viewer" ? sql`(${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId})))`
-      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
+      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.creatorId} = ${p.workspaceOwnerId || p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
       : sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.assigneeIds} @> ${JSON.stringify([p.userId])}::jsonb)`,
   );
 }
@@ -274,7 +275,9 @@ async function materialize(
 }
 export async function createRhythmItem(p: Principal, input: unknown) {
   assertWrite(p);
-  const { clientRequestId, emails, groupIds, recipientIds, ...parsed } = itemInput.parse(input);
+  const { clientRequestId, emails, groupIds, recipientIds, personal, ...parsed } = itemInput.parse(input);
+  if(personal && !canEditAll(p)) throw new AppError(403,"מרחב אישי דורש הרשאת מנהל");
+  const creatorId=personal ? p.workspaceOwnerId || p.userId : p.userId;
   const today = localDate();
   const data = {...parsed, startDate: parsed.startDate || today,
     hasDeadline: parsed.frequency !== "once" || (parsed.hasDeadline ?? Boolean(parsed.startDate))};
@@ -304,12 +307,13 @@ export async function createRhythmItem(p: Principal, input: unknown) {
               .where(
                 and(
                   eq(s.rhythmGroups.organizationId, p.organizationId),
-                  eq(s.rhythmGroups.creatorId, p.userId),
+            eq(s.rhythmGroups.archived,false),
+                  eq(s.rhythmGroups.creatorId, canEditAll(p) ? p.workspaceOwnerId || p.userId : p.userId),
                   inArray(s.rhythmGroups.id, groupIds),
                 ),
               )
           : [];
-        const allGroups = await tx.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,p.userId)));
+        const allGroups = await tx.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.archived,false),eq(s.rhythmGroups.creatorId,canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId)));
         const allowed = await tx.select({email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
         const expanded = expandRoleGroups(allGroups,allowed);
         groups = groups.map(group=>expanded.find(candidate=>candidate.id===group.id)!);
@@ -324,7 +328,7 @@ export async function createRhythmItem(p: Principal, input: unknown) {
         const assigned = [...new Set([...direct, ...await resolveEmails(tx, p, [
           ...new Set([...emails, ...groups.flatMap((group) => group.emails)]),
         ])])];
-        if (data.category === "point" && (assigned.some(id => id !== p.userId) || data.frequency !== "once"))
+        if (data.category === "point" && (assigned.some(id => id !== creatorId) || data.frequency !== "once"))
           throw new AppError(422, "נקודות לעיסוק הן פרטיות וחד פעמיות");
         const [item] = await tx
           .insert(s.rhythmItems)
@@ -332,8 +336,8 @@ export async function createRhythmItem(p: Principal, input: unknown) {
             ...data,
             id: randomUUID(),
             organizationId: p.organizationId,
-            creatorId: p.userId,
-            assigneeIds: assigned.length ? assigned : [p.userId],
+            creatorId,
+            assigneeIds: assigned.length ? assigned : [creatorId],
           })
           .returning();
         await materialize(
@@ -371,12 +375,13 @@ export async function saveRhythmGroup(
     if (id && "version" in data) {
       const [group] = await tx
         .update(s.rhythmGroups)
-        .set({ name: data.name, emails, version: data.version + 1 })
+        .set({ name: data.name, emails, customized:true, version: data.version + 1 })
         .where(
           and(
             eq(s.rhythmGroups.id, id),
-            eq(s.rhythmGroups.creatorId, p.userId),
+            eq(s.rhythmGroups.creatorId, canEditAll(p) ? p.workspaceOwnerId || p.userId : p.userId),
             eq(s.rhythmGroups.organizationId, p.organizationId),
+            eq(s.rhythmGroups.archived,false),
             eq(s.rhythmGroups.version, data.version),
           ),
         )
@@ -396,10 +401,11 @@ export async function saveRhythmGroup(
           .insert(s.rhythmGroups)
           .values({
             id: randomUUID(),
-            creatorId: p.userId,
+            creatorId: p.workspaceOwnerId || p.userId,
             organizationId: p.organizationId,
             name: data.name,
             emails,
+            customized:true,
           })
           .returning();
         return group;
@@ -455,7 +461,8 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
     .where(
       and(
         eq(s.rhythmGroups.organizationId, p.organizationId),
-        eq(s.rhythmGroups.creatorId, p.userId),
+            eq(s.rhythmGroups.archived,false),
+        eq(s.rhythmGroups.creatorId, canEditAll(p) ? p.workspaceOwnerId || p.userId : p.userId),
       ),
     );
   const eligible = isManager(p) ? await eligiblePeople(db, p) : [];
@@ -614,9 +621,9 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
     const assigneeIds = recipientIds === undefined || JSON.stringify(recipientIds)===JSON.stringify(before.assigneeIds) ? before.assigneeIds :
       (await resolveRecipientIds(tx,p,recipientIds));
     if (!assigneeIds.length) assigneeIds.push(p.userId);
-    if(data.category==="point" && before.creatorId!==p.userId)throw new AppError(403,"רק יוצר המשימה יכול להעביר אותה לנקודות פרטיות");
+    if(data.category==="point" && before.creatorId!==p.userId && !canEditAll(p))throw new AppError(403,"רק יוצר המשימה יכול להעביר אותה לנקודות פרטיות");
     const next = {...before,...data,assigneeIds};
-    if (next.category === "point" && (next.frequency !== "once" || assigneeIds.length !== 1 || assigneeIds[0] !== p.userId))
+    if (next.category === "point" && (next.frequency !== "once" || assigneeIds.length !== 1 || assigneeIds[0] !== before.creatorId))
       throw new AppError(422,"נקודה לעיסוק חייבת להישאר פרטית");
     if (data.startDate && (before.frequency !== "once" || data.startDate < addDays(localDate(),-730) || data.startDate > addDays(localDate(),1826)))
       throw new AppError(422,"אפשר לשנות מועד למשימה חד פעמית בטווח המותר");
@@ -691,3 +698,11 @@ export async function refreshRhythmSchedule(now = new Date()) {
   await materialize(db, items, monthEnd(today.slice(0, 7)), today);
 }
 export { completed as rhythmCompleted };
+
+export async function deleteRhythmGroup(p:Principal,id:string,input:unknown){
+ if(!canEditAll(p))throw new AppError(403,'מחיקת קבוצה דורשת הרשאת מנהל');
+ const {version}=z.object({version:z.number().int().positive()}).strict().parse(input);
+ const [group]=await (await getDb()).update(s.rhythmGroups).set({archived:true,version:version+1}).where(and(eq(s.rhythmGroups.id,id),eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.creatorId,p.workspaceOwnerId || p.userId),eq(s.rhythmGroups.archived,false),eq(s.rhythmGroups.version,version))).returning();
+ if(!group)throw new AppError(409,'הקבוצה השתנתה או נמחקה. יש לרענן');
+ return {deleted:true};
+}

@@ -98,18 +98,19 @@ export const documentExtensions = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
 } as const;
-export function folderPath(id: string): string {
-  const folder = documentFolders.find((folder) => folder.id === id);
+export type DocumentFolder={id:string;name:string;parent:string|null;section:string};
+export function folderPath(id: string, folders:readonly DocumentFolder[]=documentFolders): string {
+  const folder = folders.find((folder) => folder.id === id);
   if (!folder) return "";
   return folder.parent
-    ? `${folderPath(folder.parent)} / ${folder.name}`
+    ? `${folderPath(folder.parent,folders)} / ${folder.name}`
     : folder.name;
 }
-export function descendants(id: string): string[] {
+export function descendants(id: string, folders:readonly DocumentFolder[]=documentFolders): string[] {
   return [
     id,
-    ...documentFolders
+    ...folders
       .filter((folder) => folder.parent === id)
-      .flatMap((folder) => descendants(folder.id)),
+      .flatMap((folder) => descendants(folder.id,folders)),
   ];
 }

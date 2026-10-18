@@ -42,9 +42,9 @@ export async function ensureUnitRoleGroups(p: Principal) {
     .insert(s.rhythmGroups)
     .values(
       unitRoles.map((role) => ({
-        id: `role:${p.organizationId}:${p.userId}:${role.id}`,
+        id: `role:${p.organizationId}:${p.workspaceOwnerId || p.userId}:${role.id}`,
         organizationId: p.organizationId,
-        creatorId: p.userId,
+        creatorId: p.workspaceOwnerId || p.userId,
         name: role.title,
         emails: members.filter(member=>eligible.has(member.email.toLowerCase())&&mentionsRole(member.name,role.title)).map(member=>member.email),
       })),
