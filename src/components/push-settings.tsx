@@ -1,18 +1,33 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
+import {syncDevicePush} from '@/lib/device-push';
+
+/** Mounted for the authenticated workspace, even when the More menu is closed. */
+export function PushAutoRestore(){
+ useEffect(()=>{
+  let running=false;
+  const restore=async()=>{
+   if(running||!navigator.onLine||document.visibilityState==='hidden')return;
+   running=true;try{await syncDevicePush();}catch{/* Retry on the next entry or restored connection. */}finally{running=false;}
+  };
+  void restore();
+  const visible=()=>{if(document.visibilityState==='visible')void restore();};
+  window.addEventListener('online',restore);document.addEventListener('visibilitychange',visible);
+  return()=>{window.removeEventListener('online',restore);document.removeEventListener('visibilitychange',visible);};
+ },[]);
+ return null;
+}
 export function PushSettings(){
- const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+ const [message,setMessage]=useState(''),[busy,setBusy]=useState(false),[active,setActive]=useState(false),[checking,setChecking]=useState(true);
+ useEffect(()=>{
+  let mounted=true;
+  void syncDevicePush().then(enabled=>{if(mounted)setActive(enabled);}).catch(error=>{if(mounted)setMessage((error as Error).message);}).finally(()=>{if(mounted)setChecking(false);});
+  return()=>{mounted=false;};
+ },[]);
  async function enable(){
   setBusy(true);setMessage('');
-  try{
-   if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))throw Error('באייפון: הוסף למסך הבית ופתח את האפליקציה משם כדי להפעיל התראות.');
-   if(await Notification.requestPermission()!=='granted')throw Error('יש לאשר התראות בהגדרות המכשיר כדי לקבל עדכונים.');
-   const registration=await navigator.serviceWorker.ready,r=await fetch('/api/push'),data=await r.json();if(!r.ok)throw Error(data.error);
-   const raw=atob(data.publicKey.replace(/-/g,'+').replace(/_/g,'/')),key=Uint8Array.from(raw,c=>c.charCodeAt(0));
-   const subscription=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
-   const saved=await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(subscription.toJSON())});if(!saved.ok)throw Error('לא ניתן לשמור את הרשמת ההתראות. נסה שוב.');
-   setMessage('התראות הופעלו במכשיר הזה');
-  }catch(e){setMessage((e as Error).message);}finally{setBusy(false);}
+  try{setActive(await syncDevicePush(true));setMessage('ההרשאה נשמרת במכשיר הזה ותסונכרן אוטומטית בכניסה הבאה.');}
+  catch(error){setMessage((error as Error).message);}finally{setBusy(false);}
  }
- return <div className="push-settings"><button className="button secondary" disabled={busy} onClick={()=>void enable()}>{busy?'מפעיל…':'הפעל התראות בטלפון'}</button>{message&&<p role="status">{message}</p>}</div>;
+ return <div className="push-settings">{active?<p role="status">✓ התראות פעילות במכשיר הזה</p>:<button className="button secondary" disabled={busy||checking} onClick={()=>void enable()}>{checking?'בודק התראות…':busy?'מפעיל…':'הפעל התראות בטלפון'}</button>}{message&&<p role="status">{message}</p>}</div>;
 }

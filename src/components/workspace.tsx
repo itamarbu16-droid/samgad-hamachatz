@@ -9,10 +9,9 @@ import DeputiesDashboard from "./deputies-dashboard";
 import AccessSettings from "./access-settings";
 import {TaskActions,TaskActionNotice,SwipeTaskRow} from "./task-actions";
 import {TaskFilters} from "./task-filters";
-import {Schedule} from "./schedule";
 import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import {DeadlineRequests} from "./deadline-requests";
-import {PushSettings} from "./push-settings";
+import {PushSettings,PushAutoRestore} from "./push-settings";
 import PersonalRhythm from "./personal-rhythm";
 import TaskTools from "./task-tools";
 import {useTaskMutations} from "./use-rhythm";
@@ -29,7 +28,6 @@ import {
   X,
   LogOut,
   Check,
-  Clock3,
   AlertCircle,
   ChevronLeft,
   RefreshCw,
@@ -42,9 +40,8 @@ import {
   LoaderCircle,
   Menu,
   House,
-  UsersRound,
 } from "lucide-react";
-type Person = { id: string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
+type Person = { id: string; workspaceOwnerId?:string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
 type Task = {
   id: string;
   title: string;
@@ -131,7 +128,6 @@ const nav = [
   ["decisions", "ממתין להחלטה", CircleHelp],
   ["domains", "אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
-  ["calendar", "לו״ז", CalendarDays],
 ] as const;
 const date = (s: string | null) =>
   s
@@ -203,7 +199,7 @@ export default function Workspace() {
     if (q) p.set("q", q);
     if(sort!=="deadline_desc")p.set("sort",sort);
     if(v==="tasks" && location.search.includes("tab=all"))p.set("tab","all");
-    history.pushState({}, "", `${data?.user.permissions?.manageAccess ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
+    history.pushState({}, "", `${(data?.user.permissions?.manageAccess || data?.user.permissions?.editAll) ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
   async function load() {
@@ -215,7 +211,7 @@ export default function Workspace() {
       }
       const j = await r.json();
       if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
-      const base = j.user.permissions?.manageAccess ? '/' : '/deputies';
+      const base = (j.user.permissions?.manageAccess || j.user.permissions?.editAll) ? '/' : '/deputies';
       const params = new URLSearchParams(location.search);
       if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
         params.delete('view');
@@ -239,7 +235,7 @@ export default function Workspace() {
     }
   }
   const taskActions=useTaskMutations(load);
-  useEffect(() => { const refresh = () => void load(); window.addEventListener("samgad:saved", refresh); return () => window.removeEventListener("samgad:saved", refresh); }, []);
+  useEffect(() => { const refresh = () => void load(); const visibleRefresh=()=>{if(document.visibilityState==="visible")refresh();}; const timer=setInterval(visibleRefresh,60000); window.addEventListener("samgad:saved", refresh); document.addEventListener("visibilitychange",visibleRefresh); return () => {clearInterval(timer);window.removeEventListener("samgad:saved", refresh);document.removeEventListener("visibilitychange",visibleRefresh);}; }, []);
   useEffect(() => {
     void load();
   }, []);
@@ -319,13 +315,10 @@ export default function Workspace() {
   );
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
-  const ownerInterface=Boolean(data.user.permissions?.manageAccess);
+  const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
   const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
-  const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.id):!ownerInterface||!isPersonalTask(t,data.user.id));
-  const open = scopedTasks.filter(
-    (t) => !["completed", "cancelled"].includes(t.status),
-  );
+  const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.workspaceOwnerId || data.user.id):!ownerInterface||!isPersonalTask(t,data.user.workspaceOwnerId || data.user.id));
   const late = scopedTasks.filter(overdue);
   const pending = data.decisions.filter((d) =>
     ["pending", "clarification_requested"].includes(d.status),
@@ -339,12 +332,6 @@ export default function Workspace() {
   );
   filtered.sort((a,b)=>compareTasks({...a,done:a.status==="completed",pinned:data.pinnedTaskKeys?.includes("task:"+a.id)},{...b,done:b.status==="completed",pinned:data.pinnedTaskKeys?.includes("task:"+b.id)},sort));
   const canEditTask=(t:Task)=>canWrite && (manager || t.ownerId===data!.user.id);
-  const attention = [
-    ...late,
-    ...open.filter(
-      (t) => t.priority === "urgent" && !late.some((x) => x.id === t.id),
-    ),
-  ];
   function taskRow(t: Task) {
     const canAct = canEditTask(t);
     return <SwipeTaskRow canExtendDirectly={ownerInterface} key={t.id} task={{kind:"task",id:t.id}} title={t.title} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
@@ -412,7 +399,8 @@ export default function Workspace() {
   }
   const title = view==="access"?"הרשאות":nav.find((n) => n[0] === view)?.[1] || "ראשי";
   return (
-    <div className={`app-shell battalion-app ${view === "dashboard" ? "command-home" : ""}`}>
+    <div className={`app-shell battalion-app ${view === "dashboard" ? "command-home" : ""}`} >
+      <PushAutoRestore key={data.user.id}/>
       <aside className="sidebar">
         <a
           className="brand"
@@ -516,7 +504,7 @@ export default function Workspace() {
         </header>
         <main className="main-content">
           <DeadlineRequests manager={ownerInterface}/>
-          <TaskTools key={data.user.id} userId={data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
+          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -576,15 +564,15 @@ export default function Workspace() {
           {view === "personal" && data.user.permissions?.manageAccess && (
             <PersonalRhythm
               key={data.user.id}
-              userId={data.user.id}
+              userId={data.user.workspaceOwnerId || data.user.id}
               role={data.user.role}
-              legacyTasks={data.tasks.filter(t=>isPersonalTask(t,data.user.id))}
+              legacyTasks={data.tasks.filter(t=>isPersonalTask(t,data.user.workspaceOwnerId || data.user.id))}
               scope="personal"
             />
           )}
           {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
-          {view === "calendar" && <Schedule owner={ownerInterface}/>}
+          {view === "calendar" && <p className="panel">הלו״ז אינו פעיל במרחב רומח 75.</p>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (

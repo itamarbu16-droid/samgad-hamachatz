@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell, CheckCheck, ChevronLeft, ClipboardCheck, FileText, Folder, Send } from 'lucide-react';
+import {WeeklySchedule} from "./weekly-schedule";
 import { taskTone } from '@/lib/task-display';
 import { currentMonth, useRhythm } from './use-rhythm';
 
@@ -47,6 +48,7 @@ export default function DeputiesDashboard({ user, tasks, today, go,pinnedTaskKey
     </header>
     <div className="deputies-greeting"><span>מרחב בעלי התפקידים</span><h2>שלום, {user.name}</h2></div>
     <div className="command-tiles">{tiles.map(tile => <button className="command-tile" key={tile.view} onClick={() => go(tile.view)}><tile.icon size={30} strokeWidth={1.6} /><strong>{tile.title}</strong><span>{tile.sub}</span></button>)}</div>
+    <WeeklySchedule/>
     <section className="command-snapshot"><h2>תמונת המצב שלי</h2><div className="command-stats">
       {[{ count: rows.filter(row => !row.done && !row.pending).length, label: 'לביצוע', tone: 'total', filter: 'actionable' }, { count: pending, label: 'לאישור מנהל', tone: 'orange', filter: 'pending_review' }, { count: rows.filter(row => row.done).length, label: 'אושרו', tone: 'green', filter: 'completed' }, { count: overdue, label: 'באיחור', tone: 'red', filter: 'overdue' }].map(stat => <button className={stat.tone} key={stat.label} onClick={() => openTasks(stat.filter)}><strong>{stat.count}</strong><span>{stat.label}</span></button>)}
     </div><small className="snapshot-note">משימות שהוקצו לך ומשימות החודש</small></section>

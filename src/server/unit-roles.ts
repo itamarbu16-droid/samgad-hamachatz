@@ -1,7 +1,9 @@
 import { and, eq } from "drizzle-orm";
-import { getDb, isDemo } from "./db";
+import { getDb } from "./db";
 import * as s from "./schema";
 import { isManager, type Principal } from "./policy";
+import { authorizedMember } from "./access";
+import { mentionsRole } from "../lib/schedule";
 import { unitRoles } from "../lib/unit-roles";
 /** Canonical role slots exist without granting any new account access. */
 export async function ensureUnitRoleGroups(p: Principal) {
@@ -10,6 +12,7 @@ export async function ensureUnitRoleGroups(p: Principal) {
   const members = await db
     .select({
       email: s.user.email,
+      name: s.user.name,
       companyId: s.memberships.companyId,
       domainId: s.memberships.domainId,
       role: s.memberships.role,
@@ -20,6 +23,7 @@ export async function ensureUnitRoleGroups(p: Principal) {
       and(
         eq(s.memberships.organizationId, p.organizationId),
         eq(s.memberships.active, true),
+        authorizedMember(p.organizationId),
       ),
     );
   const eligible = new Set(
@@ -38,13 +42,11 @@ export async function ensureUnitRoleGroups(p: Principal) {
     .insert(s.rhythmGroups)
     .values(
       unitRoles.map((role) => ({
-        id: `role:${p.organizationId}:${p.userId}:${role.id}`,
+        id: `role:${p.organizationId}:${p.workspaceOwnerId || p.userId}:${role.id}`,
         organizationId: p.organizationId,
-        creatorId: p.userId,
+        creatorId: p.workspaceOwnerId || p.userId,
         name: role.title,
-        emails: isDemo()
-          ? role.emails.filter((email) => eligible.has(email))
-          : [],
+        emails: members.filter(member=>eligible.has(member.email.toLowerCase())&&mentionsRole(member.name,role.title)).map(member=>member.email),
       })),
     )
     .onConflictDoNothing();

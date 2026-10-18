@@ -1,5 +1,5 @@
 import { api, readBody } from "@/server/http";
-import { saveRhythmGroup } from "@/server/rhythm";
+import { saveRhythmGroup,deleteRhythmGroup } from "@/server/rhythm";
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -12,3 +12,5 @@ export async function PATCH(
     ),
   }));
 }
+
+export async function DELETE(request:Request,context:{params:Promise<{id:string}>}){return api(request,async p=>deleteRhythmGroup(p,(await context.params).id,await readBody(request)));}

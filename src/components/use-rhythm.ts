@@ -27,8 +27,13 @@ export function useRhythm(month: string) {
     void load();
     const refresh = () => void load();
     window.addEventListener("samgad:saved", refresh);
+    const visibleRefresh=()=>{if(document.visibilityState==="visible")refresh();};
+    const timer=setInterval(visibleRefresh,60000);
+    document.addEventListener("visibilitychange",visibleRefresh);
     return () => {
       sequence.current++;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange",visibleRefresh);
       window.removeEventListener("samgad:saved", refresh);
     };
   }, [load]);

@@ -5,7 +5,7 @@ import { randomUUID,createHash } from 'node:crypto';
 import { getDb, isDemo, type Database } from './db';
 import * as s from './schema';
 import { AppError, assertTransition, assertWrite, assertOwnTask, canEditAll, canRead, isManager, calculateMetrics, localDate, type Principal } from './policy';
-import { initializeWorkspace,ensureResponsibilityDomains } from './access';
+import { initializeWorkspace,ensureResponsibilityDomains,authorizedMember } from './access';
 import {getPins} from './task-pins';
 import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
@@ -40,7 +40,7 @@ export async function principalFor(userId: string, name: string): Promise<Princi
   return initializeWorkspace({ userId, name, organizationId: member[0].organizationId, role: member[0].role, editAll:member[0].editAll, companyId:member[0].editAll?null:member[0].companyId, domainId:member[0].editAll?null:member[0].domainId });
 }
 function taskScope(p: Principal): SQL | undefined {
-  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId})`];
+  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId} OR ${s.tasks.creatorId} = ${canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.tasks.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.tasks.domainId, p.domainId));
@@ -48,7 +48,7 @@ function taskScope(p: Principal): SQL | undefined {
   return and(...filters);
 }
 function decisionScope(p: Principal): SQL | undefined {
-  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId})`];
+  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId} AND private_task.creator_id<>${canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.decisions.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.decisions.domainId, p.domainId));
@@ -90,12 +90,12 @@ export async function getWorkspace(p: Principal) {
   const activity = entityFilters.length ? await db.select({ id: s.auditEvents.id, entityType: s.auditEvents.entityType, entityId: s.auditEvents.entityId, action: s.auditEvents.action, summary: s.auditEvents.summary, actorName: s.user.name, createdAt: s.auditEvents.createdAt }).from(s.auditEvents).innerJoin(s.user, eq(s.auditEvents.actorId, s.user.id)).where(and(eq(s.auditEvents.organizationId, p.organizationId), or(...entityFilters))).orderBy(desc(s.auditEvents.createdAt)).limit(100) : [];
   const domainRows = await db.select({ id: s.domains.id, name: s.domains.name, color: s.domains.color }).from(s.domains).where(and(eq(s.domains.organizationId, p.organizationId), p.domainId ? eq(s.domains.id, p.domainId) : undefined));
   const companyRows = await db.select({ id: s.companies.id, name: s.companies.name }).from(s.companies).where(and(eq(s.companies.organizationId, p.organizationId), p.companyId ? eq(s.companies.id, p.companyId) : undefined));
-  const userRows = await db.select({ id: s.user.id, name: s.user.name, role: s.memberships.role, companyId: s.memberships.companyId, domainId: s.memberships.domainId }).from(s.memberships).innerJoin(s.user, eq(s.memberships.userId, s.user.id)).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.active, true)));
+  const userRows = await db.select({ id: s.user.id, name: s.user.name, role: s.memberships.role, companyId: s.memberships.companyId, domainId: s.memberships.domainId }).from(s.memberships).innerJoin(s.user, eq(s.memberships.userId, s.user.id)).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.active, true), authorizedMember(p.organizationId)));
   const visibleUserIds = new Set([p.userId, ...taskRows.flatMap(t => [t.ownerId,t.creatorId]), ...decisionRows.flatMap(d => [d.deciderId,d.requesterId])]);
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
   const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));
   const normalizedTasks=taskRows.map(t=>({...t,domainId:['safety','people'].includes(t.domainId)?`${p.organizationId}:deputies`:t.domainId}));
-  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
+  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, workspaceOwnerId:p.workspaceOwnerId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
 }
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();
@@ -115,7 +115,7 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     const before = await findTask(tx,p,id);
     if (before.version !== version) throw new AppError(409, 'המשימה השתנתה מאז שנפתחה. יש לרענן ולנסות שוב');
     assertOwnTask(p,before);
-    if(!p.manageAccess&&data.dueDate!==undefined&&data.dueDate!==before.dueDate)throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
+    if(!canEditAll(p)&&data.dueDate!==undefined&&data.dueDate!==before.dueDate)throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
     if (!canEditAll(p) && Object.keys(data).some(k => ['ownerId','companyId','domainId','requiresReview'].includes(k))) throw new AppError(403,'שינוי הקצאה דורש הרשאת עריכה כללית');
     if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId && !canEditAll(p)) data.status = 'pending_review';
     const next = { ...before, ...data };

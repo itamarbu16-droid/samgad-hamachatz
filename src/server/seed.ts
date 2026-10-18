@@ -3,6 +3,7 @@ import { eq,and } from "drizzle-orm";
 import { getDb, isDemo } from "./db";
 import { getAuth } from "./auth";
 import * as s from "./schema";
+import {retireSyntheticAccess} from "./retire-synthetic-access";
 import { localDate } from "./policy";
 import { assertHostedPreviewSeedAllowed } from "../../scripts/preview-guard";
 
@@ -39,18 +40,23 @@ export async function refreshHostedPreviewRoles() {
   const organizations = await db.select().from(s.organizations);
   if (organizations.length !== 1 || organizations[0].id !== "demo-org")
     throw new Error("Role refresh requires the existing synthetic workspace");
-  const users = await db.select({ id:s.user.id,email: s.user.email }).from(s.user);
+  const users = await db.select({ id:s.user.id,email: s.user.email }).from(s.user).innerJoin(s.memberships,eq(s.memberships.userId,s.user.id)).where(and(eq(s.memberships.organizationId,"demo-org"),eq(s.memberships.active,true)));
   const explicitGrants=await db.select({userId:s.workspaceAccessGrants.userId}).from(s.workspaceAccessGrants).innerJoin(s.workspaceSettings,and(eq(s.workspaceAccessGrants.organizationId,s.workspaceSettings.organizationId),eq(s.workspaceAccessGrants.grantedBy,s.workspaceSettings.ownerId))).where(eq(s.workspaceAccessGrants.organizationId,"demo-org"));
   if (users.some((user) => !user.email.endsWith("@samgad.example") && !explicitGrants.some(g=>g.userId===user.id)))
     throw new Error("Role refresh refuses non-synthetic accounts");
-  return seedSyntheticWorkspace();
+  return retireSyntheticAccess("demo-org");
 }
 
 async function seedSyntheticWorkspace() {
+  const db = await getDb();
+  const [existingWorkspace]=await db.select({id:s.organizations.id}).from(s.organizations).where(eq(s.organizations.id,"demo-org"));
+  if(existingWorkspace){
+    const [owner]=await db.select({email:s.user.email}).from(s.workspaceSettings).innerJoin(s.user,eq(s.user.id,s.workspaceSettings.ownerId)).where(eq(s.workspaceSettings.organizationId,"demo-org"));
+    return {email:owner?.email || process.env.DEMO_EMAIL || "demo@samgad.example"};
+  }
   const password = process.env.DEMO_PASSWORD;
   if (!password || password.length < 12)
     throw new Error("Set DEMO_PASSWORD to at least 12 characters");
-  const db = await getDb();
   const auth = await getAuth(true);
   const people = [
     {

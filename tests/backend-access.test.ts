@@ -21,17 +21,20 @@ it('maps deadlines with completed taking precedence and null dates last',()=>{
  expect(taskTone(true,'2000-01-01',today)).toBe('task-done');expect(taskTone(false,'2000-01-01',today)).toBe('task-overdue');expect(taskTone(false,today,today)).toBe('task-due-soon');expect(taskTone(false,null,today)).toBe('');
  const a={id:'a',title:'a',done:false,dueDate:'2026-12-01'},b={...a,id:'b',dueDate:'2026-10-01'};expect(compareTasks(a,b,'deadline_desc')).toBeLessThan(0);expect(compareTasks({...a,dueDate:null},b,'deadline_desc')).toBeGreaterThan(0);
 });
-it('hides private tasks and points from guests, other assignees, and global editors including search',async()=>{
+it('hides private tasks and points from guests, other assignees while co-managers share owner records',async()=>{
  const privateItem=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'private-owner-secret',category:'point'});
  const privateTask=await createTask(owner,{title:'private-owner-legacy',ownerId:owner.userId,domainId:'safety'});
  const publicView:Principal={userId:'public-viewer',organizationId:owner.organizationId,role:'viewer',name:'guest',companyId:null,domainId:null,guest:true};
  await grantAccess(owner,{email:'contributor@samgad.example',level:'all'});const editor=await principalFor(other.userId,other.name);
- for(const p of [publicView,company,editor]){
+ for(const p of [publicView,company]){
   expect((await getRhythm(p)).items.some(i=>i.id===privateItem.id)).toBe(false);
   expect((await getWorkspace(p)).tasks.some(i=>i.id===privateTask.id)).toBe(false);
   expect((await searchWorkspace(p,'private-owner')).results).toHaveLength(0);
   await expect(editRhythmItem(p,privateItem.id,{version:1,title:'stolen'})).rejects.toMatchObject({status:p.guest?403:404});
  }
+ expect((await getRhythm(editor)).items.some(i=>i.id===privateItem.id)).toBe(true);
+ expect((await getWorkspace(editor)).tasks.some(i=>i.id===privateTask.id)).toBe(true);
+ await expect(editRhythmItem(editor,privateItem.id,{version:1,title:'shared manager update'})).resolves.toMatchObject({version:2});
  const guest=await getRhythm(publicView);expect(guest.groups).toHaveLength(0);expect(guest.people.every(p=>p.email==='')).toBe(true);
  await grantAccess(owner,{email:'contributor@samgad.example',level:'own'});
 });
@@ -50,12 +53,16 @@ it('allows assigned users to edit their task but not assignments, other tasks or
  await completeRhythm(company,row.id,{version:row.version,done:true});
  expect((await getRhythm(owner)).occurrences.find(r=>r.id===row.id)?.done).toBe(false);
 });
-it('grants and revokes global editing by email without granting access administration',async()=>{
+it('grants and revokes global editing by email with shared access administration',async()=>{
  const task=await createTask(owner,{title:'edit everyone grant',ownerId:company.userId,domainId:'safety',companyId:'company-a'});
  await grantAccess(owner,{email:'contributor@samgad.example',level:'all'});let editor=await principalFor(other.userId,other.name);
- expect(editor.editAll).toBe(true);expect(editor.manageAccess).not.toBe(true);
- await expect(updateTask(editor,task.id,{version:1,title:'global edit saved'})).resolves.toMatchObject({version:2});
- await expect(grantAccess(editor,{email:'viewer@samgad.example',level:'all'})).rejects.toMatchObject({status:403});
+ expect(editor.editAll).toBe(true);expect(editor.manageAccess).toBe(true);
+ const workspace=await getWorkspace(editor);
+ expect(workspace.user).toMatchObject({role:'deputy',permissions:{editAll:true,manageAccess:true}});
+ await expect(updateTask(editor,task.id,{version:1,title:'global edit saved',dueDate:today})).resolves.toMatchObject({version:2,dueDate:today});
+ await grantAccess(editor,{email:'viewer@samgad.example',level:'all'});
+ expect((await principalFor((await getAccess(owner)).members.find(m=>m.email==='viewer@samgad.example')!.id,'viewer')).manageAccess).toBe(true);
+ await grantAccess(owner,{email:'viewer@samgad.example',level:'view'});
  await grantAccess(owner,{email:'contributor@samgad.example',level:'own'});editor=await principalFor(other.userId,other.name);
  await expect(updateTask(editor,task.id,{version:2,title:'unauthorized after revoke'})).rejects.toMatchObject({status:404});
  await expect(grantAccess(owner,{email:'demo@samgad.example',level:'revoke'})).rejects.toMatchObject({status:403});
@@ -94,7 +101,7 @@ it('enforces email grants and revocation on an already signed-in session without
  const data=await allowed.json();expect(data.user.permissions).toMatchObject({manageAccess:false,editAll:false,guest:false});
  await expect(getAccess(await principalFor(data.user.id,'סמ״פ בדיקה'))).rejects.toMatchObject({status:403});
  await grantAccess(owner,{email,level:'all'});
- const editor=await (await workspaceRoute(request())).json();expect(editor.user.permissions).toMatchObject({manageAccess:false,editAll:true});
+ const editor=await (await workspaceRoute(request())).json();expect(editor.user.permissions).toMatchObject({manageAccess:true,editAll:true});
  await grantAccess(owner,{email,level:'revoke'});
  await expect(assertEmailAccess(email)).rejects.toMatchObject({status:403});
  expect((await workspaceRoute(request())).status).toBe(403);

@@ -7,3 +7,5 @@ Connect a fresh dedicated Postgres database through the hosting provider, then r
 The intended owner is configured privately through WORKSPACE_OWNER_EMAIL. The owner chooses an application password with a one-time activation link. OWNER_ACTIVATION_TOKEN and BETTER_AUTH_SECRET belong in protected deployment settings and must never be committed. Activation creates only the owner and an empty workspace. It sends no email. Public signup is disabled. Configure BETTER_AUTH_URL to this deployment's canonical origin, WORKSPACE_ORGANIZATION_ID to its isolated organization, and DEMO_MODE=false.
 
 The emblem comes from the supplied artwork. App metadata, manifests, push icons, splash, login and dashboards use the new branding. Real calendar OAuth and email delivery require separate credentials; nothing is reused from the original workspace.
+
+Updated to include shared full management, document folders, editable groups and access names, durable removal of sample accounts, tracking tables, and device push restoration. Calendar navigation is disabled for the initial Romach workspace.

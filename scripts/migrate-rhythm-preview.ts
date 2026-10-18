@@ -41,6 +41,7 @@ async function main() {
       await (await connection()).migrate();
       stage = "fresh-preview-synthetic-accounts";
       await seedHostedPreview();
+      await refreshHostedPreviewRoles();
       await closeDb();
       console.log(
         "Fresh isolated feature preview provisioned with synthetic accounts only.",
@@ -64,7 +65,7 @@ async function main() {
       // Only the workspace owner's explicit email grants may add real accounts to this preview.
       const tracked=await client.query<{exists:boolean}>("SELECT to_regclass('public.workspace_access_grants') IS NOT NULL AS exists");
       if(!tracked.rows[0].exists)throw new Error("Preview migration refuses untracked non-synthetic accounts");
-      const unexpected=await client.query<{count:string}>("SELECT count(*)::text AS count FROM auth_user u WHERE u.email NOT LIKE '%@samgad.example' AND NOT EXISTS(SELECT 1 FROM workspace_access_grants g JOIN workspace_settings w ON w.organization_id=g.organization_id AND w.owner_id=g.granted_by WHERE g.user_id=u.id AND g.organization_id='demo-org')");
+      const unexpected=await client.query<{count:string}>("SELECT count(*)::text AS count FROM auth_user u JOIN memberships m ON m.user_id=u.id WHERE m.organization_id='demo-org' AND m.active=true AND u.email NOT LIKE '%@samgad.example' AND NOT EXISTS(SELECT 1 FROM workspace_access_grants g JOIN workspace_settings w ON w.organization_id=g.organization_id AND w.owner_id=g.granted_by WHERE g.user_id=u.id AND g.organization_id='demo-org')");
       if(Number(unexpected.rows[0].count))throw new Error("Preview migration refuses untracked non-synthetic accounts");
     }
     stage = "schema-migration";
@@ -78,13 +79,15 @@ async function main() {
         await readFile("migrations/0007_task_actions_calendar.sql", "utf8"),
         await readFile("migrations/0008_large_document_uploads.sql", "utf8"),
         await readFile("migrations/0009_deadline_requests_push_archive.sql", "utf8"),
+        await readFile("migrations/0017_shared_management.sql", "utf8"),
       ].join("\n"),
     );
-    stage = "role-label-refresh";
+    stage = "retire-original-sample-access";
     process.env.ALLOW_HOSTED_PREVIEW_SEED = "true";
     process.env.APP_ENV = "preview";
     process.env.BETTER_AUTH_URL = appUrl();
-    await refreshHostedPreviewRoles();
+    const cleanup=await refreshHostedPreviewRoles();
+    console.log(`Removed ${cleanup.retired} original sample access records; existing users and work were preserved.`);
     await closeDb();
     console.log(
       "Additive personal-rhythm and document-library schema applied to the isolated synthetic preview.",

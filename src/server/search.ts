@@ -6,7 +6,7 @@ import { type Principal } from "./policy";
 import { getWorkspace } from "./service";
 import { getRhythm } from "./rhythm";
 import { getDocuments } from "./documents";
-import { documentFolders } from "../lib/document-folders";
+
 import { isPersonalItem } from "../lib/unit-roles";
 export async function searchWorkspace(p: Principal, query: unknown) {
   const q = z.string().trim().min(1).max(200).parse(query).toLowerCase();
@@ -28,10 +28,10 @@ export async function searchWorkspace(p: Principal, query: unknown) {
       id: t.id,
       title: t.title,
       kind: t.category === "point" ? "נקודה לעיסוק" : "משימה",
-      href: `/?view=${isPersonalItem(t, p.userId) ? "personal" : "tasks"}&rhythmFilter=all${t.category === "point" ? "&tab=points" : ""}${row ? `&occurrence=${encodeURIComponent(row.id)}` : ""}`
+      href: `/?view=${isPersonalItem(t, p.workspaceOwnerId || p.userId) ? "personal" : "tasks"}&rhythmFilter=all${t.category === "point" ? "&tab=points" : ""}${row ? `&occurrence=${encodeURIComponent(row.id)}` : ""}`
     };
   }), ...documents.entries.filter(t => ids.has(t.id) || matches(`${t.title} ${t.preview} ${t.attachments.map(f => f.filename).join(" ")}`)).map(t => {
-    const folder = documentFolders.find(f => f.id === t.folderId);
+    const folder = documents.folders.find(f => f.id === t.folderId);
     return {
       id: t.id,
       title: t.title,

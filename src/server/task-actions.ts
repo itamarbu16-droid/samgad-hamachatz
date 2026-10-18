@@ -41,7 +41,7 @@ export async function actOnTask(p:Principal,input:unknown){
   if(!task.canDelete)throw new AppError(403,'רק יוצר המשימה או מנהל רשאי למחוק אותה');
   return data.kind==='task'?deleteTask(p,data.id,data.version):editRhythmItem(p,data.id,{version:data.version,archived:true});
  }
- if(!p.manageAccess)throw new AppError(403,'יש להגיש בקשת הארכה לאישור מנהל');
+ if(!canEditAll(p))throw new AppError(403,'יש להגיש בקשת הארכה לאישור מנהל');
  const date=data.date;
  if(!date||Number.isNaN(Date.parse(date+'T12:00:00Z'))||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw new AppError(422,'יש לבחור תאריך תקין');
  if(task.dueDate&&date<=task.dueDate)throw new AppError(422,'התג״ב החדש צריך להיות מאוחר מהתג״ב הקיים');

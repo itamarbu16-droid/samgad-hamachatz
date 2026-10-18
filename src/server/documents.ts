@@ -3,7 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "./db";
 import * as s from "./schema";
-import { AppError, assertWrite, isManager, type Principal } from "./policy";
+import { AppError, assertWrite, isManager,canEditAll, type Principal } from "./policy";
 import {
   documentFolders,
   documentExtensions,
@@ -37,12 +37,7 @@ const dateInput = z
 const fields = {
   title: z.string().trim().min(2).max(160),
   body: z.string().trim().max(100000).default(""),
-  folderId: z
-    .string()
-    .refine(
-      (value) => documentFolders.some((folder) => folder.id === value),
-      "התיקייה אינה קיימת",
-    ),
+  folderId: z.string().min(1).max(160),
   documentDate: dateInput.default(null),
   attachments: z.array(attachmentInput).max(5).default([]),
 };
@@ -131,7 +126,7 @@ export async function getDocuments(p: Principal) {
         )
     : [];
   return {
-    folders: documentFolders,
+    folders: await getDocumentFolders(p),
     entries: entries.map((entry) => ({
       ...entry,
       attachments: attachments.filter((file) => file.entryId === entry.id),
@@ -160,6 +155,7 @@ export async function getDocument(p: Principal, id: string) {
 export async function createDocument(p: Principal, input: unknown) {
   assertWrite(p);
   const { clientRequestId, attachments, ...data } = createInput.parse(input);
+  await assertDocumentFolder(p,data.folderId);
   const db = await getDb();
   return db.transaction(async (tx) => {
     const key = `${p.organizationId}:${p.userId}:document:${clientRequestId}`;
@@ -229,6 +225,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
     })
     .strict()
     .parse(input);
+  await assertDocumentFolder(p,data.folderId);
   const db = await getDb();
   return db.transaction(async (tx) => {
     const [before] = await tx
@@ -297,4 +294,21 @@ export async function downloadDocument(p: Principal, attachmentId: string) {
     );
   if (!file) throw new AppError(404, "הקובץ אינו זמין לך");
   return { ...file, bytes: Buffer.from(file.contentBase64, "base64") };
+}
+
+export async function getDocumentFolders(p:Principal){
+ const custom=await (await getDb()).select().from(s.customDocumentFolders).where(eq(s.customDocumentFolders.organizationId,p.organizationId));
+ return [...documentFolders,...custom.map(({id,name,parent,section})=>({id,name,parent,section}))];
+}
+async function assertDocumentFolder(p:Principal,id:string){if(!(await getDocumentFolders(p)).some(f=>f.id===id&&f.id!=='trackers'))throw new AppError(422,'התיקייה אינה קיימת');}
+export async function createDocumentFolder(p:Principal,input:unknown){
+ if(!canEditAll(p))throw new AppError(403,'יצירת תיקייה דורשת הרשאת מנהל');
+ const data=z.object({name:z.string().trim().min(1).max(120),parent:z.string().max(160).nullable().default(null),section:z.enum(['library','records']),clientRequestId:z.string().uuid()}).strict().parse(input);
+ const folders=await getDocumentFolders(p);
+ if(data.parent&&!folders.some(f=>f.id===data.parent&&f.section===data.section&&f.id!=='trackers'))throw new AppError(422,'תיקיית האב אינה קיימת במרחב שנבחר');
+ const db=await getDb();const [existing]=await db.select().from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.organizationId,p.organizationId),eq(s.customDocumentFolders.clientRequestId,data.clientRequestId)));
+ if(existing){if(existing.name!==data.name||existing.parent!==data.parent||existing.section!==data.section)throw new AppError(409,'מזהה הבקשה כבר שימש לתיקייה אחרת');return existing;}
+ const [folder]=await db.insert(s.customDocumentFolders).values({...data,id:randomUUID(),organizationId:p.organizationId}).onConflictDoNothing().returning();
+ if(!folder) return (await db.select().from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.organizationId,p.organizationId),eq(s.customDocumentFolders.clientRequestId,data.clientRequestId))))[0];
+ return folder;
 }
