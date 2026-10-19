@@ -7,8 +7,14 @@ import {AppError,assertWrite,canEditAll,type Principal} from './policy';
 import {actionRef,getActionTask} from './task-actions';
 import {queueTaskNotification} from './notifications';
 export async function listDeadlineRequests(p:Principal){
- const db=await getDb();return db.select({...getTableColumns(s.deadlineRequests),requesterName:s.user.name}).from(s.deadlineRequests).innerJoin(s.user,eq(s.user.id,s.deadlineRequests.requesterId)).where(and(eq(s.deadlineRequests.organizationId,p.organizationId),canEditAll(p)?undefined:eq(s.deadlineRequests.requesterId,p.userId))).orderBy(desc(s.deadlineRequests.createdAt)).limit(100);
+ const db=await getDb();const rows=await db.select({...getTableColumns(s.deadlineRequests),requesterName:s.user.name}).from(s.deadlineRequests).innerJoin(s.user,eq(s.user.id,s.deadlineRequests.requesterId)).where(and(eq(s.deadlineRequests.organizationId,p.organizationId),canEditAll(p)?undefined:eq(s.deadlineRequests.requesterId,p.userId))).orderBy(desc(s.deadlineRequests.createdAt)).limit(100);
+ const visible=await Promise.all(rows.map(async row=>{
+  try{await getActionTask(p,{kind:row.kind,id:row.taskId,occurrenceId:row.occurrenceId||undefined});return row;}
+  catch(error){if(error instanceof AppError&&error.status===404)return null;throw error;}
+ }));
+ return visible.filter((row):row is NonNullable<typeof row>=>row!==null);
 }
+
 export async function requestDeadline(p:Principal,input:unknown){
  assertWrite(p);
  const data=actionRef.extend({date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),reason:z.string().trim().min(2).max(1500)}).strict().parse(input);

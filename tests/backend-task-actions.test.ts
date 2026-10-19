@@ -1,3 +1,4 @@
+import {requestDeadline,listDeadlineRequests} from '../src/server/deadline-requests';
 import {grantAccess} from "../src/server/access";
 import {beforeAll,afterAll,it,expect,vi} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
@@ -160,12 +161,14 @@ it('does not silently use the primary calendar when no battalion calendar is sel
 
 it('moves existing tasks to owner-only space and rejects other users and stale moves',async()=>{
  const task=await assigned();
+ const request=await requestDeadline(deputy,{kind:'task',id:task.id,date:addDays(today,5),reason:'test private move'});
  await expect(actOnTask(deputy,{kind:'task',id:task.id,action:'personal',version:task.version})).rejects.toMatchObject({status:403});
  await actOnTask(owner,{kind:'task',id:task.id,action:'personal',version:task.version});
  const moved=(await getWorkspace(owner)).tasks.find(t=>t.id===task.id)!;
  expect(moved.ownerId).toBe(owner.userId);expect(moved.creatorId).toBe(owner.userId);expect(moved.title).toBe(task.title);expect(moved.dueDate).toBe(task.dueDate);
  expect((await getWorkspace(deputy)).tasks.some(t=>t.id===task.id)).toBe(false);
  const editor={...owner,userId:deputy.userId,editAll:true};
+ expect((await listDeadlineRequests(editor)).some(r=>r.id===request.id)).toBe(false);
  expect((await getWorkspace(editor)).tasks.some(t=>t.id===task.id)).toBe(false);
  await expect(actOnTask(editor,{kind:'task',id:task.id,action:'pin',pinned:true})).rejects.toMatchObject({status:404});
  await expect(actOnTask(owner,{kind:'task',id:task.id,action:'personal',version:task.version})).rejects.toMatchObject({status:409});
