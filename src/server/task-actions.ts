@@ -39,7 +39,7 @@ export async function actOnTask(p:Principal,input:unknown){
  if(!data.version||data.version!==task.version)throw new AppError(409,'המשימה השתנתה. יש לרענן');
  if(data.action==='personal'){
   const owner=p.workspaceOwnerId || p.userId;
-  if(p.userId!==owner || !canEditAll(p))throw new AppError(403,'רק בעל המרחב רשאי להעביר משימה לאישי');
+  if(!canEditAll(p))throw new AppError(403,'העברה לאישי דורשת הרשאת עריכה מלאה');
   return db.transaction(async tx=>{
    await tx.delete(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.body,task.title.slice(0,180)),ne(s.pushEvents.recipientId,owner)));
    if(data.kind==='task'){

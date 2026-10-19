@@ -14,6 +14,7 @@ import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from 
 import {DeadlineRequests} from "./deadline-requests";
 import {PushSettings,PushAutoRestore} from "./push-settings";
 import PersonalRhythm from "./personal-rhythm";
+import ResponsibilitySummary from "./responsibility-summary";
 import TaskTools from "./task-tools";
 import {useTaskMutations} from "./use-rhythm";
 import { Modal, Empty, PanelHeading } from "./workspace-primitives";
@@ -25,7 +26,6 @@ import {
   History,
   Plus,
   Search,
-  ArrowLeft,
   X,
   LogOut,
   Check,
@@ -167,7 +167,7 @@ export default function Workspace() {
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(""),
     [refreshed, setRefreshed] = useState("");
-  const [sort,setSort]=useState<TaskSort>("deadline_desc");
+  const [sort,setSort]=useState<TaskSort>("deadline_asc");
   const [taskSelection,setTaskSelection]=useState<string[]>([]),[batchOwner,setBatchOwner]=useState("");
   const requestIds = useRef(new Map<string, string>());
   const sync = () => {
@@ -183,7 +183,7 @@ export default function Workspace() {
     setDomain(p.get("domain") || "");
     setSelected(p.get("task") || "");
     setQuery(p.get("q") || "");
-    const nextSort=p.get("sort") || "deadline_desc";
+    const nextSort=p.get("sort") || "deadline_asc";
     if(Object.hasOwn(taskSorts,nextSort))setSort(nextSort as TaskSort);
   };
   useEffect(() => {
@@ -199,7 +199,7 @@ export default function Workspace() {
     if (d) p.set("domain", d);
     if (task) p.set("task", task);
     if (q) p.set("q", q);
-    if(sort!=="deadline_desc")p.set("sort",sort);
+    if(sort!=="deadline_asc")p.set("sort",sort);
     if(v==="tasks" && location.search.includes("tab=all"))p.set("tab","all");
     history.pushState({}, "", `${(data?.user.permissions?.manageAccess || data?.user.permissions?.editAll) ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
@@ -318,7 +318,7 @@ export default function Workspace() {
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
   const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
-  const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id)));
+  const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
   const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.workspaceOwnerId || data.user.id):!ownerInterface||!isPersonalTask(t,data.user.workspaceOwnerId || data.user.id));
   const late = scopedTasks.filter(overdue);
@@ -344,7 +344,7 @@ export default function Workspace() {
       </button>
       <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
-      <TaskActions canMoveToPersonal={data!.user.id===(data!.user.workspaceOwnerId || data!.user.id)&&!isPersonalTask(t,data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+      <TaskActions canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"]) {
@@ -506,7 +506,7 @@ export default function Workspace() {
         </header>
         <main className="main-content">
           <DeadlineRequests manager={ownerInterface}/>
-          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id))} tasks={data.tasks} dashboard={false} onSaved={load} />
+          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -563,7 +563,7 @@ export default function Workspace() {
               </button>
             </div>
           )}
-          {view === "personal" && data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id) && (
+          {view === "personal" && data.user.permissions?.manageAccess && (
             <PersonalRhythm
               key={data.user.id}
               userId={data.user.workspaceOwnerId || data.user.id}
@@ -574,17 +574,17 @@ export default function Workspace() {
           )}
           {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
-          {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id))} manager={ownerInterface}/>}
+          {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
             <PersonalRhythm
               key={data.user.id}
-              userId={data.user.id}
+              userId={ownerInterface ? data.user.workspaceOwnerId || data.user.id : data.user.id}
               role={data.user.role}
               scope="assigned"
               manageRhythm={ownerInterface}
-              canMoveToPersonal={data.user.id===(data.user.workspaceOwnerId || data.user.id)}
+              canMoveToPersonal={ownerInterface}
             />
           )}
           {view === "library" && (
@@ -625,7 +625,7 @@ export default function Workspace() {
                   </button>
                 ))}
               </div>
-              <TaskFilters archived={filter==="completed"} onArchive={()=>go(view,filter==="completed"?"all":"completed")} count={filtered.length} active={Boolean(domain)||sort!=="deadline_desc"} search={<label className="search-field">
+              <TaskFilters archived={filter==="completed"} onArchive={()=>go(view,filter==="completed"?"all":"completed")} count={filtered.length} active={Boolean(domain)||sort!=="deadline_asc"} search={<label className="search-field">
                   <Search size={17} />
                   <input
                     aria-label="חיפוש משימות"
@@ -747,44 +747,7 @@ export default function Workspace() {
               )}
             </div>
           )}
-          {view === "domains" && (
-            <div className="all-domains">
-              {data.domains.map((d, i) => {
-                const ts = scopedTasks.filter((t) => t.domainId === d.id);
-                return (
-                  <button
-                    key={d.id}
-                    className="panel domain-large"
-                    onClick={() => go("tasks", "all", d.id)}
-                  >
-                    <span className={`domain-icon tone-${i % 4}`}>
-                      <Layers3 size={22} />
-                    </span>
-                    <h2>{d.name}</h2>
-                    <div className="domain-stats">
-                      <span>
-                        <strong>
-                          {
-                            ts.filter(
-                              (t) =>
-                                !["completed", "cancelled"].includes(t.status),
-                            ).length
-                          }
-                        </strong>
-                        פתוחות
-                      </span>
-                      <span>
-                        <strong>{ts.filter(overdue).length}</strong>באיחור
-                      </span>
-                    </div>
-                    <span className="text-action">
-                      פתיחת המשימות בתחום <ArrowLeft size={15} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {view === "domains" && <ResponsibilitySummary tasks={data.tasks} users={data.users} workspaceOwnerId={data.user.workspaceOwnerId || data.user.id} manager={ownerInterface} today={data.today}/>}
           {view === "activity" && (
             <section className="panel">
               <PanelHeading

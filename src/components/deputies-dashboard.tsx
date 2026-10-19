@@ -33,7 +33,7 @@ export default function DeputiesDashboard({ user, tasks, today, go,pinnedTaskKey
   }
   const pending = rows.filter(row => row.pending).length;
   const overdue = rows.filter(row => !row.done && row.due && row.due < today).length;
-  const upcoming = [...rows].filter(row => !row.done && !row.pending).sort((a, b) => Number(b.pinned)-Number(a.pinned)||(a.due || '9999').localeCompare(b.due || '9999')).slice(0, 5);
+  const upcoming = [...rows].filter(row => !row.done && !row.pending).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')||Number(b.pinned)-Number(a.pinned)).slice(0, 5);
   const tiles = [
     { title: 'המשימות שלי', sub: 'עדכון ביצוע ומעקב', icon: ClipboardCheck, view: 'tasks' },
     { title: 'ספרייה', sub: 'פקודות, נהלים ופורמטים', icon: Folder, view: 'library' },

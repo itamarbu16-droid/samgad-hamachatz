@@ -128,7 +128,7 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
   setBusy(true);setError('');
   try{const result=await send(action==='extend'&&!canExtendDirectly?'/api/deadline-requests':'/api/task-actions',action==='extend'&&!canExtendDirectly?{...task,date,reason}:{...task,version,occurrenceVersion,action,...(action==='pin'?{pinned:!pinned}:action==='extend'?{date}:{})});
    setDialog('');setMenu('');
-   window.dispatchEvent(new CustomEvent('samgad:task-notice',{detail:{title,message:action==='personal'?'המשימה הועברה למרחב האישי שלך':action==='delete'?'המשימה נמחקה':action==='pin'?(pinned?'ההצמדה בוטלה':'המשימה הוצמדה לראש הרשימה'):canExtendDirectly?'התג״ב עודכן':'בקשת ההארכה נשלחה לאישור; התג״ב המקורי בתוקף',undoToken:result.undoToken}}));
+   window.dispatchEvent(new CustomEvent('samgad:task-notice',{detail:{title,message:action==='personal'?'המשימה הועברה למרחב האישי':action==='delete'?'המשימה נמחקה':action==='pin'?(pinned?'ההצמדה בוטלה':'המשימה הוצמדה'):canExtendDirectly?'התג״ב עודכן':'בקשת ההארכה נשלחה לאישור; התג״ב המקורי בתוקף',undoToken:result.undoToken}}));
    window.dispatchEvent(new Event('samgad:saved'));await onSaved();
   }catch(error){setError(error instanceof Error?error.message:'לא ניתן להשלים את הפעולה');}finally{setBusy(false);}
  },[task,version,occurrenceVersion,pinned,date,title,onSaved,canExtendDirectly,reason]);
@@ -147,8 +147,8 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
   <button type="button" className="icon-button task-options" aria-label={`אפשרויות למשימה ${title}`} aria-haspopup="dialog" aria-expanded={Boolean(menu)} onClick={()=>setMenu(menu?'':'all')}><MoreHorizontal size={22}/></button>
   {(menu||dialog||error)&&createPortal(<>
   {menu&&<Modal title="פעולות משימה" close={()=>setMenu('')}><p className="task-menu-title">{title}</p><div className="task-action-menu" role="group" aria-label={`פעולות עבור ${title}`}>
-   <button className="swipe-pin" disabled={busy} onClick={()=>void act('pin')}>{pinned?<PinOff size={21}/>:<Pin size={21}/>} {pinned?'בטל הצמדה':'הצמד לראש'}</button>
-   {props.canMoveToPersonal&&<button className="button secondary" disabled={busy} onClick={()=>void act('personal')}>העבר לאישי — גלוי רק לי</button>}
+   <button className="swipe-pin" disabled={busy} onClick={()=>void act('pin')}>{pinned?<PinOff size={21}/>:<Pin size={21}/>} {pinned?'בטל הצמדה':'הצמדה'}</button>
+   {props.canMoveToPersonal&&<button className="button secondary" disabled={busy} onClick={()=>void act('personal')}>העבר למרחב האישי</button>}
    {canDelete&&<button className="swipe-delete" disabled={busy} onClick={()=>{setError('');setMenu('');setDialog('delete');}}><Trash2 size={21}/>מחיקה</button>}
    {canEdit&&<button className="swipe-extend" disabled={busy} onClick={()=>{setError('');setMenu('');setDate(addDays(dueDate&&dueDate>localDate()?dueDate:localDate(),1));setDialog('extend');}}><CalendarClock size={21}/>{canExtendDirectly?'הארך תג״ב':'בקש הארכת תג״ב'}</button>}
    <button className="swipe-calendar" disabled={busy} onClick={()=>{setError('');setMenu('');setDialog('calendar');}}><CalendarPlus size={21}/>הוסף ליומן</button>

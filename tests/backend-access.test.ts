@@ -21,18 +21,21 @@ it('maps deadlines with completed taking precedence and null dates last',()=>{
  expect(taskTone(true,'2000-01-01',today)).toBe('task-done');expect(taskTone(false,'2000-01-01',today)).toBe('task-overdue');expect(taskTone(false,today,today)).toBe('task-due-soon');expect(taskTone(false,null,today)).toBe('');
  const a={id:'a',title:'a',done:false,dueDate:'2026-12-01'},b={...a,id:'b',dueDate:'2026-10-01'};expect(compareTasks(a,b,'deadline_desc')).toBeLessThan(0);expect(compareTasks({...a,dueDate:null},b,'deadline_desc')).toBeGreaterThan(0);
 });
-it('hides owner personal tasks and points from guests, assignees and co-managers',async()=>{
+it('shares owner personal work with full editors while hiding it from ordinary users',async()=>{
  const privateItem=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'private-owner-secret',category:'point'});
  const privateTask=await createTask(owner,{title:'private-owner-legacy',ownerId:owner.userId,domainId:'safety'});
  const publicView:Principal={userId:'public-viewer',organizationId:owner.organizationId,role:'viewer',name:'guest',companyId:null,domainId:null,guest:true};
  await grantAccess(owner,{email:'contributor@samgad.example',level:'all'});const editor=await principalFor(other.userId,other.name);
- for(const p of [publicView,company,editor]){
+ for(const p of [publicView,company]){
   expect((await getRhythm(p)).items.some(i=>i.id===privateItem.id)).toBe(false);
   expect((await getWorkspace(p)).tasks.some(i=>i.id===privateTask.id)).toBe(false);
   expect((await searchWorkspace(p,'private-owner')).results).toHaveLength(0);
   await expect(editRhythmItem(p,privateItem.id,{version:1,title:'stolen'})).rejects.toMatchObject({status:p.guest?403:404});
  }
 
+ expect((await getRhythm(editor)).items.some(i=>i.id===privateItem.id)).toBe(true);
+ expect((await getWorkspace(editor)).tasks.some(i=>i.id===privateTask.id)).toBe(true);
+ await expect(editRhythmItem(editor,privateItem.id,{version:1,title:'shared manager update'})).resolves.toMatchObject({version:2});
  const guest=await getRhythm(publicView);expect(guest.groups).toHaveLength(0);expect(guest.people.every(p=>p.email==='')).toBe(true);
  await grantAccess(owner,{email:'contributor@samgad.example',level:'own'});
 });

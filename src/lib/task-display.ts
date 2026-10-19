@@ -38,11 +38,10 @@ export function taskTone(done:boolean,due:string|null,today:string) {
  return '';
 }
 export function compareTasks(a:{title:string;dueDate:string|null;done:boolean;id:string;pinned?:boolean},b:typeof a,sort:TaskSort) {
- if(Boolean(a.pinned)!==Boolean(b.pinned))return Number(Boolean(b.pinned))-Number(Boolean(a.pinned));
  if(sort==='title')return a.title.localeCompare(b.title,'he') || a.id.localeCompare(b.id);
  if(sort==='status' && a.done!==b.done)return Number(a.done)-Number(b.done);
  if(!a.dueDate && b.dueDate)return 1;
  if(a.dueDate && !b.dueDate)return -1;
  const direction=sort==='deadline_asc'?1:-1;
- return direction*(a.dueDate||'').localeCompare(b.dueDate||'') || a.title.localeCompare(b.title,'he') || a.id.localeCompare(b.id);
+ return direction*(a.dueDate||'').localeCompare(b.dueDate||'') || Number(Boolean(b.pinned))-Number(Boolean(a.pinned)) || a.title.localeCompare(b.title,'he') || a.id.localeCompare(b.id);
 }

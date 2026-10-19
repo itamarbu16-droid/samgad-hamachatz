@@ -25,12 +25,12 @@ beforeAll(async()=>{
 },60000);
 afterAll(async()=>{vi.unstubAllGlobals();await closeDb();});
 const assigned=()=>createTask(owner,{title:'פעולת משימה לבדיקה',ownerId:deputy.userId,domainId:'safety',companyId:'company-a',dueDate:addDays(today,2)});
-it('keeps pins personal and puts pinned tasks first for every sorting choice',async()=>{
+it('keeps pins personal without overriding chronological deadlines',async()=>{
  const task=await assigned();await actOnTask(deputy,{kind:'task',id:task.id,action:'pin',pinned:true});
  expect(await getPins(deputy)).toContain('task:'+task.id);expect(await getPins(owner)).not.toContain('task:'+task.id);
  expect((await getWorkspace(deputy)).pinnedTaskKeys).toContain('task:'+task.id);
  await expect(actOnTask(other,{kind:'task',id:task.id,action:'pin',pinned:true})).rejects.toMatchObject({status:404});
- for(const sort of ['deadline_desc','deadline_asc','title','status'] as const)expect(compareTasks({id:'p',title:'z',dueDate:null,done:true,pinned:true},{id:'u',title:'a',dueDate:today,done:false},sort)).toBeLessThan(0);
+ expect(compareTasks({id:'p',title:'z',dueDate:null,done:false,pinned:true},{id:'u',title:'a',dueDate:today,done:false},'deadline_asc')).toBeGreaterThan(0);
  await actOnTask(deputy,{kind:'task',id:task.id,action:'pin',pinned:false});expect(await getPins(deputy)).not.toContain('task:'+task.id);
 });
 it('extends permitted deadlines, rejects stale versions and protects manager-assigned deletions',async()=>{
@@ -159,7 +159,7 @@ it('does not silently use the primary calendar when no battalion calendar is sel
  try{await expect(calendarSlots(owner,{kind:'task',id:task.id,from:addDays(today,1),through:addDays(today,2),minutes:30})).rejects.toMatchObject({status:409});expect(fetchMock).toHaveBeenCalledTimes(1);}finally{vi.unstubAllGlobals();}
 });
 
-it('moves existing tasks to owner-only space and rejects other users and stale moves',async()=>{
+it('moves existing tasks to shared manager personal space and rejects ordinary users and stale moves',async()=>{
  const task=await assigned();
  const request=await requestDeadline(deputy,{kind:'task',id:task.id,date:addDays(today,5),reason:'test private move'});
  await expect(actOnTask(deputy,{kind:'task',id:task.id,action:'personal',version:task.version})).rejects.toMatchObject({status:403});
@@ -168,31 +168,33 @@ it('moves existing tasks to owner-only space and rejects other users and stale m
  expect(moved.ownerId).toBe(owner.userId);expect(moved.creatorId).toBe(owner.userId);expect(moved.title).toBe(task.title);expect(moved.dueDate).toBe(task.dueDate);
  expect((await getWorkspace(deputy)).tasks.some(t=>t.id===task.id)).toBe(false);
  const editor={...owner,userId:deputy.userId,editAll:true};
- expect((await listDeadlineRequests(editor)).some(r=>r.id===request.id)).toBe(false);
- expect((await getWorkspace(editor)).tasks.some(t=>t.id===task.id)).toBe(false);
- await expect(actOnTask(editor,{kind:'task',id:task.id,action:'pin',pinned:true})).rejects.toMatchObject({status:404});
+ expect((await listDeadlineRequests(editor)).some(r=>r.id===request.id)).toBe(true);
+ expect((await getWorkspace(editor)).tasks.some(t=>t.id===task.id)).toBe(true);
+ await expect(actOnTask(editor,{kind:'task',id:task.id,action:'pin',pinned:true})).resolves.toHaveProperty('pinnedTaskKeys');
  await expect(actOnTask(owner,{kind:'task',id:task.id,action:'personal',version:task.version})).rejects.toMatchObject({status:409});
 });
 it('puts tasks created by an assistant solely for the owner in personal space',async()=>{
  const assistant={...owner,userId:deputy.userId,editAll:true};
  const task=await createTask(assistant,{title:'משימה למפקד בלבד',ownerId:owner.userId,domainId:'safety'});
  expect(task.creatorId).toBe(owner.userId);
- expect((await getWorkspace(assistant)).tasks.some(t=>t.id===task.id)).toBe(false);
+ expect((await getWorkspace(assistant)).tasks.some(t=>t.id===task.id)).toBe(true);
  const item=await createRhythmItem(assistant,{clientRequestId:uuid(),title:'משימה אישית מהלשכה',recipientIds:[owner.userId],startDate:today,frequency:'once'});
  expect(item.creatorId).toBe(owner.userId);
- expect((await getRhythm(assistant)).items.some(t=>t.id===item.id)).toBe(false);
+ expect((await getRhythm(assistant)).items.some(t=>t.id===item.id)).toBe(true);
  expect((await getRhythm(owner)).items.some(t=>t.id===item.id)).toBe(true);
 });
 it('moves recurring tasks without recreating occurrences or leaking reminders',async()=>{
  const item=await createRhythmItem(owner,{clientRequestId:uuid(),title:'משימה להעברה לאישי',recipientIds:[deputy.userId],startDate:today,frequency:'daily',endDate:addDays(today,2)});
  const rows=(await getRhythm(owner)).occurrences.filter(o=>o.itemId===item.id);
- await actOnTask(owner,{kind:'rhythm',id:item.id,action:'personal',version:item.version});
+ const assistant={...owner,userId:deputy.userId,editAll:true};
+ await actOnTask(assistant,{kind:'rhythm',id:item.id,action:'personal',version:item.version});
  const result=await getRhythm(owner);
  expect(result.items.find(i=>i.id===item.id)?.assigneeIds).toEqual([owner.userId]);
  expect(result.occurrences.filter(o=>o.itemId===item.id).map(o=>o.id)).toEqual(rows.map(o=>o.id));
  const editor={...owner,userId:deputy.userId,editAll:true};
- expect((await getRhythm(editor)).items.some(i=>i.id===item.id)).toBe(false);
- await expect(actOnTask(editor,{kind:'rhythm',id:item.id,action:'pin',pinned:true})).rejects.toMatchObject({status:404});
+ expect((await getRhythm(editor)).items.some(i=>i.id===item.id)).toBe(true);
+ await expect(actOnTask(editor,{kind:'rhythm',id:item.id,action:'pin',pinned:true})).resolves.toHaveProperty('pinnedTaskKeys');
+ expect((await getRhythm(deputy)).items.some(i=>i.id===item.id)).toBe(false);
  const mail=await (await getDb()).select().from(s.rhythmMail);
  expect(mail.filter(m=>rows.some(o=>o.id===m.occurrenceId)&&m.recipientId!==owner.userId)).toHaveLength(0);
 });

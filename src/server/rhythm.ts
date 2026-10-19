@@ -74,7 +74,7 @@ export function rhythmScope(p: Principal) {
     p.role === "admin"
       ? sql`false`
       : p.guest || p.role==="viewer" ? sql`(${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId})))`
-      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
+      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.creatorId} = ${p.workspaceOwnerId || p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
       : sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.assigneeIds} @> ${JSON.stringify([p.userId])}::jsonb)`,
   );
 }
