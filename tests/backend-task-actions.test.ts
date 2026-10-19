@@ -157,3 +157,39 @@ it('does not silently use the primary calendar when no battalion calendar is sel
  const task=await assigned();const fetchMock=vi.fn(async()=>Response.json({items:[{id:'personal',summary:'Personal',accessRole:'owner'}]}));vi.stubGlobal('fetch',fetchMock);
  try{await expect(calendarSlots(owner,{kind:'task',id:task.id,from:addDays(today,1),through:addDays(today,2),minutes:30})).rejects.toMatchObject({status:409});expect(fetchMock).toHaveBeenCalledTimes(1);}finally{vi.unstubAllGlobals();}
 });
+
+it('moves existing tasks to owner-only space and rejects other users and stale moves',async()=>{
+ const task=await assigned();
+ await expect(actOnTask(deputy,{kind:'task',id:task.id,action:'personal',version:task.version})).rejects.toMatchObject({status:403});
+ await actOnTask(owner,{kind:'task',id:task.id,action:'personal',version:task.version});
+ const moved=(await getWorkspace(owner)).tasks.find(t=>t.id===task.id)!;
+ expect(moved.ownerId).toBe(owner.userId);expect(moved.creatorId).toBe(owner.userId);expect(moved.title).toBe(task.title);expect(moved.dueDate).toBe(task.dueDate);
+ expect((await getWorkspace(deputy)).tasks.some(t=>t.id===task.id)).toBe(false);
+ const editor={...owner,userId:deputy.userId,editAll:true};
+ expect((await getWorkspace(editor)).tasks.some(t=>t.id===task.id)).toBe(false);
+ await expect(actOnTask(editor,{kind:'task',id:task.id,action:'pin',pinned:true})).rejects.toMatchObject({status:404});
+ await expect(actOnTask(owner,{kind:'task',id:task.id,action:'personal',version:task.version})).rejects.toMatchObject({status:409});
+});
+it('puts tasks created by an assistant solely for the owner in personal space',async()=>{
+ const assistant={...owner,userId:deputy.userId,editAll:true};
+ const task=await createTask(assistant,{title:'משימה למפקד בלבד',ownerId:owner.userId,domainId:'safety'});
+ expect(task.creatorId).toBe(owner.userId);
+ expect((await getWorkspace(assistant)).tasks.some(t=>t.id===task.id)).toBe(false);
+ const item=await createRhythmItem(assistant,{clientRequestId:uuid(),title:'משימה אישית מהלשכה',recipientIds:[owner.userId],startDate:today,frequency:'once'});
+ expect(item.creatorId).toBe(owner.userId);
+ expect((await getRhythm(assistant)).items.some(t=>t.id===item.id)).toBe(false);
+ expect((await getRhythm(owner)).items.some(t=>t.id===item.id)).toBe(true);
+});
+it('moves recurring tasks without recreating occurrences or leaking reminders',async()=>{
+ const item=await createRhythmItem(owner,{clientRequestId:uuid(),title:'משימה להעברה לאישי',recipientIds:[deputy.userId],startDate:today,frequency:'daily',endDate:addDays(today,2)});
+ const rows=(await getRhythm(owner)).occurrences.filter(o=>o.itemId===item.id);
+ await actOnTask(owner,{kind:'rhythm',id:item.id,action:'personal',version:item.version});
+ const result=await getRhythm(owner);
+ expect(result.items.find(i=>i.id===item.id)?.assigneeIds).toEqual([owner.userId]);
+ expect(result.occurrences.filter(o=>o.itemId===item.id).map(o=>o.id)).toEqual(rows.map(o=>o.id));
+ const editor={...owner,userId:deputy.userId,editAll:true};
+ expect((await getRhythm(editor)).items.some(i=>i.id===item.id)).toBe(false);
+ await expect(actOnTask(editor,{kind:'rhythm',id:item.id,action:'pin',pinned:true})).rejects.toMatchObject({status:404});
+ const mail=await (await getDb()).select().from(s.rhythmMail);
+ expect(mail.filter(m=>rows.some(o=>o.id===m.occurrenceId)&&m.recipientId!==owner.userId)).toHaveLength(0);
+});

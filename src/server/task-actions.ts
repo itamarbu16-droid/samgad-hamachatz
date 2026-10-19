@@ -25,7 +25,7 @@ export async function getActionTask(p:Principal,input:unknown,executor?:ActionDa
  return {ref,title:item.title,description:item.description,dueDate:item.hasDeadline?occurrence?.dueDate||item.startDate:null,version:item.version,creatorId:item.creatorId,assigneeIds:item.assigneeIds,canEdit:canEditAll(p)||item.assigneeIds.includes(p.userId),canDelete:canEditAll(p)||item.creatorId===p.userId,key:`rhythm:${item.id}`,bookingKey:`rhythm:${item.id}:${occurrence?.id||'once'}`,frequency:item.frequency,occurrence};
 }
 export async function actOnTask(p:Principal,input:unknown){
- const data=actionRef.extend({action:z.enum(['pin','delete','extend']),version:z.number().int().positive().optional(),occurrenceVersion:z.number().int().positive().optional(),pinned:z.boolean().optional(),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()}).strict().parse(input);
+ const data=actionRef.extend({action:z.enum(['pin','delete','extend','personal']),version:z.number().int().positive().optional(),occurrenceVersion:z.number().int().positive().optional(),pinned:z.boolean().optional(),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()}).strict().parse(input);
  const task=await getActionTask(p,{kind:data.kind,id:data.id,occurrenceId:data.occurrenceId}),db=await getDb();
  if(data.action==='pin'){
   if(data.pinned===undefined)throw new AppError(422,'יש לבחור הצמדה או ביטול הצמדה');
@@ -37,6 +37,32 @@ export async function actOnTask(p:Principal,input:unknown){
  assertWrite(p);
  if(!task.canEdit)throw new AppError(403,'אין הרשאת שינוי למשימה');
  if(!data.version||data.version!==task.version)throw new AppError(409,'המשימה השתנתה. יש לרענן');
+ if(data.action==='personal'){
+  const owner=p.workspaceOwnerId || p.userId;
+  if(p.userId!==owner || !canEditAll(p))throw new AppError(403,'רק בעל המרחב רשאי להעביר משימה לאישי');
+  return db.transaction(async tx=>{
+   await tx.delete(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.body,task.title.slice(0,180)),ne(s.pushEvents.recipientId,owner)));
+   if(data.kind==='task'){
+    const before=await findTask(tx,p,data.id);
+    const [updated]=await tx.update(s.tasks).set({creatorId:owner,ownerId:owner,version:data.version!+1,updatedAt:new Date()}).where(and(eq(s.tasks.id,data.id),eq(s.tasks.version,data.version!))).returning();
+    if(!updated)throw new AppError(409,'המשימה השתנתה. יש לרענן');
+    await tx.insert(s.auditEvents).values({id:randomUUID(),organizationId:p.organizationId,entityType:'task',entityId:data.id,actorId:p.userId,action:'task.personal',summary:'המשימה הועברה לאישי',details:{previousCreatorId:before.creatorId,previousOwnerId:before.ownerId}});
+    return updated;
+   }
+   const [updated]=await tx.update(s.rhythmItems).set({creatorId:owner,assigneeIds:[owner],version:data.version!+1}).where(and(eq(s.rhythmItems.id,data.id),eq(s.rhythmItems.organizationId,p.organizationId),eq(s.rhythmItems.version,data.version!))).returning();
+   if(!updated)throw new AppError(409,'המשימה השתנתה. יש לרענן');
+   // Old recipients must not receive queued reminders after the move.
+   const rows=await tx.select().from(s.rhythmOccurrences).where(eq(s.rhythmOccurrences.itemId,data.id));
+   for(const row of rows){
+    await tx.delete(s.rhythmMail).where(and(eq(s.rhythmMail.occurrenceId,row.id),ne(s.rhythmMail.recipientId,owner)));
+    const completions=row.completions[owner]?{[owner]:row.completions[owner]}:{};
+    const reports=row.reports[owner]?{[owner]:row.reports[owner]}:{};
+    const [changed]=await tx.update(s.rhythmOccurrences).set({completions,reports,completedAt:row.completions[owner]?row.completedAt:null,completedBy:row.completions[owner]?owner:null,version:row.version+1}).where(and(eq(s.rhythmOccurrences.id,row.id),eq(s.rhythmOccurrences.version,row.version))).returning();
+    if(!changed)throw new AppError(409,'מצב הביצוע השתנה. יש לרענן');
+   }
+   return updated;
+  });
+ }
  if(data.action==='delete'){
   if(!task.canDelete)throw new AppError(403,'רק יוצר המשימה או מנהל רשאי למחוק אותה');
   return data.kind==='task'?deleteTask(p,data.id,data.version):editRhythmItem(p,data.id,{version:data.version,archived:true});

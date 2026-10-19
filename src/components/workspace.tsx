@@ -318,7 +318,7 @@ export default function Workspace() {
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
   const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
-  const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
+  const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id)));
   const task = data.tasks.find((t) => t.id === selected);
   const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.workspaceOwnerId || data.user.id):!ownerInterface||!isPersonalTask(t,data.user.workspaceOwnerId || data.user.id));
   const late = scopedTasks.filter(overdue);
@@ -344,7 +344,7 @@ export default function Workspace() {
       </button>
       <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
-      <TaskActions canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+      <TaskActions canMoveToPersonal={data!.user.id===(data!.user.workspaceOwnerId || data!.user.id)&&!isPersonalTask(t,data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"]) {
@@ -506,7 +506,7 @@ export default function Workspace() {
         </header>
         <main className="main-content">
           <DeadlineRequests manager={ownerInterface}/>
-          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
+          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id))} tasks={data.tasks} dashboard={false} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -563,7 +563,7 @@ export default function Workspace() {
               </button>
             </div>
           )}
-          {view === "personal" && data.user.permissions?.manageAccess && (
+          {view === "personal" && data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id) && (
             <PersonalRhythm
               key={data.user.id}
               userId={data.user.workspaceOwnerId || data.user.id}
@@ -574,7 +574,7 @@ export default function Workspace() {
           )}
           {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
-          {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
+          {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess && data.user.id===(data.user.workspaceOwnerId || data.user.id))} manager={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
@@ -584,6 +584,7 @@ export default function Workspace() {
               role={data.user.role}
               scope="assigned"
               manageRhythm={ownerInterface}
+              canMoveToPersonal={data.user.id===(data.user.workspaceOwnerId || data.user.id)}
             />
           )}
           {view === "library" && (

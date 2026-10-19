@@ -40,7 +40,7 @@ export async function principalFor(userId: string, name: string): Promise<Princi
   return initializeWorkspace({ userId, name, organizationId: member[0].organizationId, role: member[0].role, editAll:member[0].editAll, companyId:member[0].editAll?null:member[0].companyId, domainId:member[0].editAll?null:member[0].domainId });
 }
 function taskScope(p: Principal): SQL | undefined {
-  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId} OR ${s.tasks.creatorId} = ${canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId})`];
+  const filters = [eq(s.tasks.organizationId, p.organizationId),sql`(${s.tasks.ownerId} <> ${s.tasks.creatorId} OR ${s.tasks.creatorId} = ${p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.tasks.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.tasks.domainId, p.domainId));
@@ -48,7 +48,7 @@ function taskScope(p: Principal): SQL | undefined {
   return and(...filters);
 }
 function decisionScope(p: Principal): SQL | undefined {
-  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId} AND private_task.creator_id<>${canEditAll(p)?p.workspaceOwnerId || p.userId:p.userId})`];
+  const filters: (SQL | undefined)[] = [eq(s.decisions.organizationId, p.organizationId),sql`NOT EXISTS (SELECT 1 FROM tasks private_task WHERE private_task.id=${s.decisions.taskId} AND private_task.organization_id=${p.organizationId} AND private_task.owner_id=private_task.creator_id AND private_task.creator_id<>${p.userId})`];
   if (p.role === 'admin') filters.push(sql`false`);
   if (p.companyId) filters.push(eq(s.decisions.companyId, p.companyId));
   if (p.domainId) filters.push(eq(s.decisions.domainId, p.domainId));
@@ -100,7 +100,7 @@ export async function getWorkspace(p: Principal) {
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();
   return db.transaction(async tx => idempotent(tx,p,'task.create',clientRequestId,data,async()=>{
-    const task = { ...data, id: randomUUID(), organizationId: p.organizationId, companyId: data.companyId ?? p.companyId, creatorId: p.userId };
+    const task = { ...data, id: randomUUID(), organizationId: p.organizationId, companyId: data.companyId ?? p.companyId, creatorId: data.ownerId === p.workspaceOwnerId ? data.ownerId : p.userId };
     if (!canEditAll(p) && data.ownerId !== p.userId) throw new AppError(403, 'ניתן ליצור משימות לעצמך בלבד');
     await validateScope(tx,p,task); await validateAssignee(tx,p,task.ownerId,task);
     const [created] = await tx.insert(s.tasks).values(task).returning();
@@ -118,12 +118,12 @@ export async function updateTask(p: Principal, id: string, input: unknown) {
     if(!canEditAll(p)&&data.dueDate!==undefined&&data.dueDate!==before.dueDate)throw new AppError(403,'שינוי תג״ב מחייב בקשת הארכה ואישור מנהל');
     if (!canEditAll(p) && Object.keys(data).some(k => ['ownerId','companyId','domainId','requiresReview'].includes(k))) throw new AppError(403,'שינוי הקצאה דורש הרשאת עריכה כללית');
     if (data.status === 'completed' && before.status !== 'pending_review' && before.ownerId !== before.creatorId && p.userId !== before.creatorId && !canEditAll(p)) data.status = 'pending_review';
-    const next = { ...before, ...data };
+    const next = { ...before, ...data, ...(data.ownerId === p.workspaceOwnerId ? {creatorId:data.ownerId} : {}) };
     await validateScope(tx,p,next); await validateAssignee(tx,p,next.ownerId,next);
     if (data.status) assertTransition(p,before,data.status);
     if (next.status === 'blocked' && !next.blockerReason?.trim()) throw new AppError(422, 'יש לתאר מה חוסם את המשימה');
     const completed = next.status === 'completed';
-    const [updated] = await tx.update(s.tasks).set({...data, blockerReason: next.status === 'blocked' ? next.blockerReason : null, completedAt: completed ? before.completedAt ?? new Date() : null, completedBy: completed ? before.completedBy ?? p.userId : null, version: version+1, updatedAt: new Date()}).where(and(eq(s.tasks.id,id),eq(s.tasks.version,version),taskScope(p))).returning();
+    const [updated] = await tx.update(s.tasks).set({...data, creatorId:next.creatorId, blockerReason: next.status === 'blocked' ? next.blockerReason : null, completedAt: completed ? before.completedAt ?? new Date() : null, completedBy: completed ? before.completedBy ?? p.userId : null, version: version+1, updatedAt: new Date()}).where(and(eq(s.tasks.id,id),eq(s.tasks.version,version),taskScope(p))).returning();
     if (!updated) throw new AppError(409,'המשימה השתנתה. יש לרענן ולנסות שוב');
     await audit(tx,p,'task',id,'task.updated',`עודכנה משימה: ${updated.title}`, {changes: Object.fromEntries(Object.keys(data).map(k=>[k,{before:before[k as keyof Task],after:updated[k as keyof Task]}]))});
     await queueTaskNotification(tx,p,[updated.ownerId,updated.creatorId],updated.status==='pending_review'?'ביצוע משימה ממתין לאישורך':'המשימה עודכנה',updated.title);

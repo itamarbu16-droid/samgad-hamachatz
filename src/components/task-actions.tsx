@@ -8,7 +8,7 @@ import {addDays} from '@/lib/rhythm';
 import {localDate} from '@/server/policy';
 import {CalendarTaskDialog} from './task-calendar';
 export type TaskActionRef={kind:'task'|'rhythm';id:string;occurrenceId?:string};
-export type TaskActionProps={task:TaskActionRef;title:string;version:number;occurrenceVersion?:number;dueDate:string|null;pinned:boolean;canEdit:boolean;canDelete:boolean;canExtendDirectly?:boolean;recurring?:boolean;onSaved:()=>Promise<void>};
+export type TaskActionProps={task:TaskActionRef;title:string;version:number;occurrenceVersion?:number;dueDate:string|null;pinned:boolean;canEdit:boolean;canDelete:boolean;canExtendDirectly?:boolean;canMoveToPersonal?:boolean;recurring?:boolean;onSaved:()=>Promise<void>};
 const rowKey=(task:TaskActionRef)=>`${task.kind}:${task.id}:${task.occurrenceId||''}`;
 async function send(url:string,body:object){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.error||'הפעולה לא נשמרה');return j;}
 type SwipeAction = 'pin'|'delete'|'extend'|'calendar';
@@ -124,11 +124,11 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
  const [menu,setMenu]=useState(''),[dialog,setDialog]=useState(''),[date,setDate]=useState(addDays(dueDate&&dueDate>localDate()?dueDate:localDate(),1)),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [reason,setReason]=useState('');
  const key=rowKey(task);
- const act=useCallback(async (action:'pin'|'delete'|'extend')=>{
+ const act=useCallback(async (action:'pin'|'delete'|'extend'|'personal')=>{
   setBusy(true);setError('');
   try{const result=await send(action==='extend'&&!canExtendDirectly?'/api/deadline-requests':'/api/task-actions',action==='extend'&&!canExtendDirectly?{...task,date,reason}:{...task,version,occurrenceVersion,action,...(action==='pin'?{pinned:!pinned}:action==='extend'?{date}:{})});
    setDialog('');setMenu('');
-   window.dispatchEvent(new CustomEvent('samgad:task-notice',{detail:{title,message:action==='delete'?'המשימה נמחקה':action==='pin'?(pinned?'ההצמדה בוטלה':'המשימה הוצמדה לראש הרשימה'):canExtendDirectly?'התג״ב עודכן':'בקשת ההארכה נשלחה לאישור; התג״ב המקורי בתוקף',undoToken:result.undoToken}}));
+   window.dispatchEvent(new CustomEvent('samgad:task-notice',{detail:{title,message:action==='personal'?'המשימה הועברה למרחב האישי שלך':action==='delete'?'המשימה נמחקה':action==='pin'?(pinned?'ההצמדה בוטלה':'המשימה הוצמדה לראש הרשימה'):canExtendDirectly?'התג״ב עודכן':'בקשת ההארכה נשלחה לאישור; התג״ב המקורי בתוקף',undoToken:result.undoToken}}));
    window.dispatchEvent(new Event('samgad:saved'));await onSaved();
   }catch(error){setError(error instanceof Error?error.message:'לא ניתן להשלים את הפעולה');}finally{setBusy(false);}
  },[task,version,occurrenceVersion,pinned,date,title,onSaved,canExtendDirectly,reason]);
@@ -148,6 +148,7 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
   {(menu||dialog||error)&&createPortal(<>
   {menu&&<Modal title="פעולות משימה" close={()=>setMenu('')}><p className="task-menu-title">{title}</p><div className="task-action-menu" role="group" aria-label={`פעולות עבור ${title}`}>
    <button className="swipe-pin" disabled={busy} onClick={()=>void act('pin')}>{pinned?<PinOff size={21}/>:<Pin size={21}/>} {pinned?'בטל הצמדה':'הצמד לראש'}</button>
+   {props.canMoveToPersonal&&<button className="button secondary" disabled={busy} onClick={()=>void act('personal')}>העבר לאישי — גלוי רק לי</button>}
    {canDelete&&<button className="swipe-delete" disabled={busy} onClick={()=>{setError('');setMenu('');setDialog('delete');}}><Trash2 size={21}/>מחיקה</button>}
    {canEdit&&<button className="swipe-extend" disabled={busy} onClick={()=>{setError('');setMenu('');setDate(addDays(dueDate&&dueDate>localDate()?dueDate:localDate(),1));setDialog('extend');}}><CalendarClock size={21}/>{canExtendDirectly?'הארך תג״ב':'בקש הארכת תג״ב'}</button>}
    <button className="swipe-calendar" disabled={busy} onClick={()=>{setError('');setMenu('');setDialog('calendar');}}><CalendarPlus size={21}/>הוסף ליומן</button>

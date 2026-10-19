@@ -74,7 +74,7 @@ export function rhythmScope(p: Principal) {
     p.role === "admin"
       ? sql`false`
       : p.guest || p.role==="viewer" ? sql`(${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId})))`
-      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.creatorId} = ${p.workspaceOwnerId || p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
+      : canEditAll(p) ? sql`(${s.rhythmItems.creatorId} = ${p.userId} OR (${s.rhythmItems.category} <> 'point' AND NOT (${s.rhythmItems.assigneeIds} = jsonb_build_array(${s.rhythmItems.creatorId}))))`
       : sql`(${s.rhythmItems.creatorId} = ${p.userId} OR ${s.rhythmItems.assigneeIds} @> ${JSON.stringify([p.userId])}::jsonb)`,
   );
 }
@@ -277,7 +277,8 @@ export async function createRhythmItem(p: Principal, input: unknown) {
   assertWrite(p);
   const { clientRequestId, emails, groupIds, recipientIds, personal, ...parsed } = itemInput.parse(input);
   if(personal && !canEditAll(p)) throw new AppError(403,"מרחב אישי דורש הרשאת מנהל");
-  const creatorId=personal ? p.workspaceOwnerId || p.userId : p.userId;
+  const owner=p.workspaceOwnerId || p.userId;
+  let creatorId=personal ? owner : p.userId;
   const today = localDate();
   const data = {...parsed, startDate: parsed.startDate || today,
     hasDeadline: parsed.frequency !== "once" || (parsed.hasDeadline ?? Boolean(parsed.startDate))};
@@ -328,6 +329,8 @@ export async function createRhythmItem(p: Principal, input: unknown) {
         const assigned = [...new Set([...direct, ...await resolveEmails(tx, p, [
           ...new Set([...emails, ...groups.flatMap((group) => group.emails)]),
         ])])];
+        if(personal && assigned.some(id=>id!==owner))throw new AppError(422,"משימה אישית יכולה להיות משויכת לבעל המרחב בלבד");
+        if(assigned.length===1 && assigned[0]===owner)creatorId=owner;
         if (data.category === "point" && (assigned.some(id => id !== creatorId) || data.frequency !== "once"))
           throw new AppError(422, "נקודות לעיסוק הן פרטיות וחד פעמיות");
         const [item] = await tx
@@ -622,14 +625,15 @@ export async function editRhythmItem(p: Principal, id: string, input: unknown) {
       (await resolveRecipientIds(tx,p,recipientIds));
     if (!assigneeIds.length) assigneeIds.push(p.userId);
     if(data.category==="point" && before.creatorId!==p.userId && !canEditAll(p))throw new AppError(403,"רק יוצר המשימה יכול להעביר אותה לנקודות פרטיות");
-    const next = {...before,...data,assigneeIds};
+    const creatorId=assigneeIds.length===1 && assigneeIds[0]===p.workspaceOwnerId ? p.workspaceOwnerId : before.creatorId;
+    const next = {...before,...data,assigneeIds,creatorId};
     if (next.category === "point" && (next.frequency !== "once" || assigneeIds.length !== 1 || assigneeIds[0] !== before.creatorId))
       throw new AppError(422,"נקודה לעיסוק חייבת להישאר פרטית");
     if (data.startDate && (before.frequency !== "once" || data.startDate < addDays(localDate(),-730) || data.startDate > addDays(localDate(),1826)))
       throw new AppError(422,"אפשר לשנות מועד למשימה חד פעמית בטווח המותר");
     if (before.frequency !== "once" && data.hasDeadline === false) throw new AppError(422,"למשימה חוזרת יש מועדי ביצוע");
     const occurrences = await tx.select().from(s.rhythmOccurrences).where(eq(s.rhythmOccurrences.itemId,id));
-    const [item] = await tx.update(s.rhythmItems).set({...data,assigneeIds,version:version+1})
+    const [item] = await tx.update(s.rhythmItems).set({...data,assigneeIds,creatorId,version:version+1})
       .where(and(eq(s.rhythmItems.id,id),eq(s.rhythmItems.version,version))).returning();
     if (!item) throw new AppError(409,"המשימה השתנתה. יש לרענן");
     const reassign = JSON.stringify(assigneeIds) !== JSON.stringify(before.assigneeIds);

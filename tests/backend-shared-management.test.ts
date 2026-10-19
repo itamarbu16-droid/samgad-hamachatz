@@ -32,11 +32,12 @@ it('co-manages access while preserving the real identity and protecting the orig
  await expect(deleteAccess(editor,{userId:owner.userId})).rejects.toMatchObject({status:403});
  await expect(grantAccess(editor,{email:'demo@samgad.example',level:'view'})).rejects.toMatchObject({status:403});
 });
-it('shares existing and newly created owner personal work, while ordinary members cannot read it',async()=>{
+it('lets assistants create owner personal work without reading existing or newly created private work',async()=>{
  const point=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'owner shared point',category:'point'});
- expect((await getRhythm(editor)).items.some(i=>i.id===point.id)).toBe(true);
- await editRhythmItem(editor,point.id,{version:1,title:'co-managed point'});
+ expect((await getRhythm(editor)).items.some(i=>i.id===point.id)).toBe(false);
+ await expect(editRhythmItem(editor,point.id,{version:1,title:'co-managed point'})).rejects.toMatchObject({status:404});
  const added=await createRhythmItem(editor,{clientRequestId:randomUUID(),title:'added by co-manager',category:'point',personal:true,recipientIds:[owner.userId]});
+ expect((await getRhythm(editor)).items.some(i=>i.id===added.id)).toBe(false);
  expect(added.creatorId).toBe(owner.userId);expect(added.assigneeIds).toEqual([owner.userId]);
  expect((await getRhythm(owner)).items.some(i=>i.id===added.id)).toBe(true);
  expect((await getRhythm(member)).items.some(i=>i.id===added.id)).toBe(false);
