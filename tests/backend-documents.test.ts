@@ -226,3 +226,18 @@ describe("canonical role groups and category split", () => {
     ).rejects.toMatchObject({ status: 422 });
   });
 });
+
+it("lets deputies fill shared 50-row tracking sheets and preserves names and marks", async () => {
+  const rows = Array.from({length:50},()=>({} as Record<string,string>));
+  const doc = await createDocument(deputy, input({folderId:"trackers",title:"מעקב פלוגות",body:JSON.stringify({kind:"tracking-table-v1",columns:[],rows})}));
+  rows[0] = {"company-a":"שם לבדיקה","company-a:status":"v"};
+  rows[49] = {"company-support":"שם נוסף","company-support:status":"x"};
+  await updateDocument(contributor,doc.id,{folderId:"trackers",title:"מעקב פלוגות",version:1,body:JSON.stringify({kind:"tracking-table-v1",columns:[],rows})});
+  const saved = await getDocument(deputy,doc.id);
+  const body = JSON.parse(saved.body);
+  expect(body.rows).toHaveLength(50);
+  expect(body.rows[0]["company-a:status"]).toBe("v");
+  expect(body.rows[49]["company-support:status"]).toBe("x");
+  await expect(updateDocument(viewer,doc.id,{folderId:"trackers",title:"מעקב פלוגות",version:2,body:"blocked"})).rejects.toMatchObject({status:403});
+  await expect(updateDocument(contributor,doc.id,{folderId:"trackers",title:"שינוי שם אסור",version:2,body:"blocked"})).rejects.toMatchObject({status:403});
+});

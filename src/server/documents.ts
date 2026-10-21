@@ -239,7 +239,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
         ),
       );
     if (!before) throw new AppError(404, "המסמך אינו זמין לך");
-    if (before.creatorId !== p.userId && !isManager(p))
+    if (before.creatorId !== p.userId && !isManager(p) && !(before.folderId === "trackers" && data.folderId === "trackers" && !data.archived && data.title === before.title))
       throw new AppError(403, "רק יוצר המסמך או מנהל יכולים לערוך אותו");
     const existingFiles = await tx
       .select({ id: s.documentAttachments.id })
@@ -300,7 +300,7 @@ export async function getDocumentFolders(p:Principal){
  const custom=await (await getDb()).select().from(s.customDocumentFolders).where(eq(s.customDocumentFolders.organizationId,p.organizationId));
  return [...documentFolders,...custom.map(({id,name,parent,section})=>({id,name,parent,section}))];
 }
-async function assertDocumentFolder(p:Principal,id:string){if(!(await getDocumentFolders(p)).some(f=>f.id===id&&f.id!=='trackers'))throw new AppError(422,'התיקייה אינה קיימת');}
+async function assertDocumentFolder(p:Principal,id:string){if(!(await getDocumentFolders(p)).some(f=>f.id===id))throw new AppError(422,'התיקייה אינה קיימת');}
 export async function createDocumentFolder(p:Principal,input:unknown){
  if(!canEditAll(p))throw new AppError(403,'יצירת תיקייה דורשת הרשאת מנהל');
  const data=z.object({name:z.string().trim().min(1).max(120),parent:z.string().max(160).nullable().default(null),section:z.enum(['library','records']),clientRequestId:z.string().uuid()}).strict().parse(input);
