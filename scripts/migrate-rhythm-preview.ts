@@ -80,6 +80,7 @@ async function main() {
         await readFile("migrations/0008_large_document_uploads.sql", "utf8"),
         await readFile("migrations/0009_deadline_requests_push_archive.sql", "utf8"),
         await readFile("migrations/0017_shared_management.sql", "utf8"),
+        await readFile("migrations/0018_overdue_digest.sql", "utf8"),
       ].join("\n"),
     );
     stage = "retire-original-sample-access";

@@ -1,5 +1,6 @@
 import {flushPush} from "@/server/notifications";
-import { timingSafeEqual } from "node:crypto";
+import {queueOverdueDigests} from "@/server/overdue-digest";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { refreshRhythmSchedule } from "@/server/rhythm";
 import { flushRhythmMail } from "@/server/rhythm-mail";
 export const dynamic = "force-dynamic";
@@ -16,10 +17,18 @@ export async function GET(request: Request) {
   )
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    if (new URL(request.url).searchParams.get('check') === '1') {
+      // Authenticated deployment check; never return connection strings or user data.
+      return Response.json({
+        databaseFingerprint:createHash('sha256').update(process.env.DATABASE_URL || '').digest('hex'),
+        schedulerConfigured:true,
+      },{headers:{'Cache-Control':'no-store'}});
+    }
     await refreshRhythmSchedule();
+    const digests = await queueOverdueDigests();
     await flushPush();
     const result = await flushRhythmMail();
-    return Response.json(result, {
+    return Response.json({...result, digests}, {
       status: result.failed ? 503 : 200,
       headers: { "Cache-Control": "no-store" },
     });

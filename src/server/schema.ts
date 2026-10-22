@@ -135,4 +135,7 @@ export const pushEvents=pgTable('push_events',{
  id:text('id').primaryKey(),organizationId:text('organization_id').notNull(),recipientId:text('recipient_id').notNull().references(()=>user.id),title:text('title').notNull(),body:text('body').notNull(),url:text('url').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),sentAt:timestamp('sent_at',{withTimezone:true}),attempts:integer('attempts').notNull().default(0),
 });
 export const pushConfig=pgTable('push_config',{organizationId:text('organization_id').primaryKey(),publicKey:text('public_key').notNull(),encryptedPrivateKey:text('encrypted_private_key').notNull()});
+export const overdueDigestRuns=pgTable('overdue_digest_runs',{
+ id:text('id').primaryKey(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
 export const expiredTaskRecords=pgTable('expired_task_records',{taskKey:text('task_key').primaryKey(),expiredAt:timestamp('expired_at',{withTimezone:true}).notNull().defaultNow()});
