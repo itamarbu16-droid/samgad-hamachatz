@@ -48,6 +48,10 @@ const createInput = z
     (value) => value.body.length > 0 || value.attachments.length > 0,
     "יש להוסיף טקסט או קובץ",
   );
+function isTrackingTable(body:string) {
+  try {const value=JSON.parse(body);return value?.kind==='tracking-table-v1'&&Array.isArray(value.columns)&&Array.isArray(value.rows);}
+  catch {return false;}
+}
 function scope(p: Principal) {
   return and(
     eq(s.documentEntries.organizationId, p.organizationId),
@@ -239,7 +243,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
         ),
       );
     if (!before) throw new AppError(404, "המסמך אינו זמין לך");
-    if (before.creatorId !== p.userId && !isManager(p) && !(before.folderId === "trackers" && data.folderId === "trackers" && !data.archived && data.title === before.title))
+    if (before.creatorId !== p.userId && !isManager(p) && !(before.folderId === "trackers" && data.folderId === "trackers" && !data.archived && data.title === before.title && isTrackingTable(before.body) && isTrackingTable(data.body)))
       throw new AppError(403, "רק יוצר המסמך או מנהל יכולים לערוך אותו");
     const existingFiles = await tx
       .select({ id: s.documentAttachments.id })

@@ -5,7 +5,7 @@ import { Modal } from "./workspace-primitives";
 
 type Column = { id: string; name: string; type: "text" | "date" | "status" };
 type Sheet = { columns: Column[]; rows: Record<string, string>[]; previousLayout?: unknown };
-type Entry = { id: string; title: string; version: number; creatorId: string };
+type Entry = { id: string; title: string; version: number; creatorId: string; preview?:string; attachments?:{id:string;filename:string;byteSize:number}[] };
 const initialTitle = "הסמכת תחמושת מתפצלת";
 const initialColumns: Column[] = [
   {id:"company-a",name:"א׳",type:"text"},
@@ -16,7 +16,7 @@ const initialColumns: Column[] = [
   {id:"company-engineering",name:"צמ״ה",type:"text"},
   {id:"company-support",name:"פלס״ם",type:"text"},
 ];
-export default function TrackingTables({userId,role,back}:{userId:string;role:string;back:()=>void}) {
+export default function TrackingTables({userId,role,back,addFile,openFile,refreshKey}:{userId:string;role:string;back:()=>void;addFile:()=>void;openFile:(id:string)=>void;refreshKey:number}) {
   const manager = ["deputy","staff","company_commander"].includes(role);
   const canWrite = manager || role === "contributor";
   const [entries,setEntries]=useState<Entry[]>([]),[selected,setSelected]=useState<Entry|null>(null);
@@ -30,14 +30,16 @@ export default function TrackingTables({userId,role,back}:{userId:string;role:st
     const response=await apiFetch("/api/documents",{cache:"no-store"});const data=await response.json();
     if(!response.ok)throw new Error(data.error);setEntries(data.entries.filter((e:Entry & {folderId:string})=>e.folderId==="trackers"));
   }
-  useEffect(()=>{load().catch(e=>setError(e.message)).finally(()=>setLoading(false));},[]);
+  useEffect(()=>{load().catch(e=>setError(e.message)).finally(()=>setLoading(false));},[refreshKey]);
   const editable=canWrite;
   function change(next:Sheet){setSheet(next);setDirty(true);setNotice("");}
   async function open(entry:Entry) {
-    if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
     setBusy(true);setError("");
     try {const r=await apiFetch(`/api/documents/${entry.id}`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.error);
-      const parsed=JSON.parse(d.entry.body);if(parsed.kind!=="tracking-table-v1"||!Array.isArray(parsed.columns)||!Array.isArray(parsed.rows))throw new Error("הפריט אינו טבלת מעקב תקינה");
+      let parsed;try{parsed=JSON.parse(d.entry.body);}catch{parsed=null;}
+      if(parsed?.kind!=="tracking-table-v1"){openFile(entry.id);return;}
+      if(!Array.isArray(parsed.columns)||!Array.isArray(parsed.rows))throw new Error("הפריט אינו טבלת מעקב תקינה");
+      if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
       setActive(true);setSelected(d.entry);setTitle(d.entry.title);setSheet({...parsed,previousLayout:parsed.previousLayout || (parsed.columns.some((c:Column)=>!initialColumns.some(company=>company.id===c.id))?{columns:parsed.columns,rows:parsed.rows}:undefined),columns:initialColumns,rows:Array.from({length:Math.max(50,parsed.rows.length)},(_,i)=>parsed.rows[i]||{})});setDirty(false);setNotice("");
     }catch(e){setError(e instanceof Error?e.message:"לא ניתן לפתוח");}finally{setBusy(false);}
   }
@@ -50,9 +52,9 @@ export default function TrackingTables({userId,role,back}:{userId:string;role:st
     setSelected({id:d.entry.id,title,creatorId:selected?.creatorId||userId,version:selected?selected.version+1:1});setDirty(false);setNotice("המעקב נשמר");await load();
   }catch(e){setError(e instanceof Error?e.message:"השמירה נכשלה");}finally{setBusy(false);}}
   return <div className="tracking-workspace">
-    <div className="document-toolbar"><button className="button secondary" onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירת השינויים?"))back();}}>חזרה לספרייה</button><h2>מעקבים</h2>{canWrite&&<button className="button primary" disabled={busy} onClick={()=>setCreating(true)}>＋ מעקב חדש</button>}</div>
+    <div className="document-toolbar"><button className="button secondary" onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירת השינויים?"))back();}}>חזרה לספרייה</button><h2>מעקבים</h2>{canWrite&&<><button className="button secondary" disabled={busy} onClick={addFile}>הוספת קובץ סרוק / אקסל</button><button className="button primary" disabled={busy} onClick={()=>setCreating(true)}>＋ מעקב חדש</button></>}</div>
     {error&&<p className="error-banner" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
-    <div className="document-folder-grid">{entries.map(e=><button disabled={busy} key={e.id} className="document-folder-card" onClick={()=>void open(e)}><strong>{e.title}</strong><span>פתיחת טבלה</span></button>)}
+    <div className="document-folder-grid">{entries.map(e=><button disabled={busy} key={e.id} className="document-folder-card" onClick={()=>void open(e)}><strong>{e.title}</strong><span>{e.attachments?.length?`${e.attachments.length} קבצים · פתיחה והורדה`:"פתיחת טבלה"}</span>{e.attachments?.map(file=><small key={file.id}>{file.filename}</small>)}</button>)}
     {!loading&&!entries.some(e=>e.title===initialTitle)&&<button className="document-folder-card" disabled={!canWrite||busy} onClick={()=>{if(!dirty||window.confirm("להחליף את הטבלה שלא נשמרה?"))fresh(initialTitle,initialColumns);}}><strong>{initialTitle}</strong><span>טבלה מוכנה למילוי — שמירה תוסיף אותה למעקבים</span></button>}</div>
     {loading?<p role="status">טוען מעקבים…</p>:active?<section className="panel tracking-editor" aria-busy={busy}>
       <label>שם הטבלה<input value={title} maxLength={160} disabled={!editable||busy||Boolean(selected&&!manager&&selected.creatorId!==userId)} onChange={e=>{setTitle(e.target.value);setDirty(true);}} /></label>
@@ -64,7 +66,7 @@ export default function TrackingTables({userId,role,back}:{userId:string;role:st
       })}</tr>)}</tbody></table></div>
       <div className="document-toolbar">{editable&&<button className="button primary" disabled={busy||!dirty||title.trim().length<2} onClick={()=>void save()}>{busy?"שומר…":"שמירת המעקב"}</button>}</div>
       <small>המעקבים משותפים לבעלי הגישה לספרייה. העריכה לפי הרשאות הספרייה. השינויים נשמרים בלחיצה על שמירה.</small>
-    </section>:<p>בחר מעקב או צור טבלה חדשה כדי להתחיל.</p>}
+    </section>:<p>בחר טבלה או קובץ, או הוסף מעקב חדש כדי להתחיל.</p>}
     {creating&&<Modal title="מעקב חדש" close={()=>setCreating(false)}><form onSubmit={e=>{e.preventDefault();if(dirty&&!window.confirm("לעבור למעקב חדש ללא שמירת השינויים?"))return;const f=new FormData(e.currentTarget);fresh(String(f.get("title")),initialColumns);}}><label>שם הטבלה<input name="title" required minLength={2} maxLength={160}/></label><p>50 שורות עם שם וסימון ✓ או ✗. עמודה לכל פלוגה: א׳, ב׳, ג׳, ד׳, ה׳, צמ״ה ופלס״ם.</p><button className="button primary">יצירת טבלה</button></form></Modal>}
   </div>;
 }

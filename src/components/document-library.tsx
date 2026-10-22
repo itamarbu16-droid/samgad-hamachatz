@@ -73,6 +73,7 @@ export default function DocumentLibrary({
     [files, setFiles] = useState<File[]>([]);
   const uploadCache=useRef<DocumentUploadCache>(new Map());
   const [uploadProgress,setUploadProgress]=useState("");
+  const [trackingVersion,setTrackingVersion]=useState(0);
   const [folders,setFolders]=useState<DocumentFolder[]>([...documentFolders]);
   const [creatingFolder,setCreatingFolder]=useState(false);
   const requests = useRef(new Map<string, string>());
@@ -125,7 +126,7 @@ export default function DocumentLibrary({
     setQuery("");
     setNotice("");
   }
-  async function openEntry(entry: Entry) {
+  async function openEntry(entry: Pick<Entry,'id'>) {
     setBusy(true);
     setError("");
     try {
@@ -185,6 +186,7 @@ export default function DocumentLibrary({
       setFolder(body.folderId);
       setQuery("");
       await load();
+      setTrackingVersion(value=>value+1);
       setNotice("המסמך נשמר בתיקייה");
     } catch (error) {
       setError(error instanceof Error ? error.message : "המסמך לא נשמר");
@@ -194,9 +196,13 @@ export default function DocumentLibrary({
   }
   const modalOpen = creating || Boolean(selected);
   const editForm = creating || editing;
-  if (section === "library" && folder === "trackers") return <TrackingTables userId={userId} role={role} back={() => {openFolder(null);void load();}} />;
+  const tracking = section === "library" && folder === "trackers";
   return (
     <div className="document-workspace">
+      {tracking ? <TrackingTables userId={userId} role={role} refreshKey={trackingVersion}
+        back={() => {openFolder(null);void load();}}
+        addFile={()=>{setCreating(true);setSelected(null);setFiles([]);setError('');uploadCache.current.clear();}}
+        openFile={id=>void openEntry({id})} /> : <>
       {creatingFolder && <Modal title="הוספת תיקייה" close={()=>setCreatingFolder(false)}><form onSubmit={async event=>{
         event.preventDefault();const form=new FormData(event.currentTarget);setBusy(true);setError('');
         try{const response=await apiFetch('/api/documents/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.get('name'),parent:form.get('parent')||null,section,clientRequestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw Error(result.error||'לא ניתן ליצור תיקייה');await load();setCreatingFolder(false);openFolder(result.folder.id);setNotice('התיקייה נוספה');window.dispatchEvent(new Event('samgad:saved'));}catch(error){setError(error instanceof Error?error.message:'לא ניתן ליצור תיקייה');}finally{setBusy(false);}
@@ -327,6 +333,9 @@ export default function DocumentLibrary({
           </Empty>
         )}
       {loading && <p role="status">טוענים את המסמכים…</p>}
+      </>}
+      {tracking && !modalOpen && error && <p className="error-banner" role="alert">{error}</p>}
+      {tracking && notice && <p role="status">{notice}</p>}
       {modalOpen && (
         <Modal
           wide
@@ -335,11 +344,12 @@ export default function DocumentLibrary({
               ? creating
                 ? section === "records"
                   ? "הוספת סיכום ישיבה / ביקורת"
-                  : "הוספת מסמך לספרייה"
+                  : tracking ? "הוספת קובץ למעקבים" : "הוספת מסמך לספרייה"
                 : "עריכת מסמך"
               : selected!.title
           }
           close={() => {
+            if(busy)return;
             setCreating(false);
             setSelected(null);
             setEditing(false);

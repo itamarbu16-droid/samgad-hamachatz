@@ -241,3 +241,18 @@ it("lets deputies fill shared 50-row tracking sheets and preserves names and mar
   await expect(updateDocument(viewer,doc.id,{folderId:"trackers",title:"מעקב פלוגות",version:2,body:"blocked"})).rejects.toMatchObject({status:403});
   await expect(updateDocument(contributor,doc.id,{folderId:"trackers",title:"שינוי שם אסור",version:2,body:"blocked"})).rejects.toMatchObject({status:403});
 });
+
+it('stores scanned and Excel files in trackers and preserves library file permissions',async()=>{
+ const bytes=Buffer.from('isolated attachment test');
+ const doc=await createDocument(deputy,input({folderId:'trackers',title:'קבצים למעקב',body:'',attachments:[
+  {filename:'סריקה.pdf',contentBase64:bytes.toString('base64')},
+  {filename:'טבלת-מעקב.xlsx',contentBase64:bytes.toString('base64')},
+ ]}));
+ const saved=await getDocument(contributor,doc.id);
+ expect(saved.folderId).toBe('trackers');expect(saved.attachments).toHaveLength(2);
+ for(const file of saved.attachments)expect((await downloadDocument(contributor,file.id)).bytes.equals(bytes)).toBe(true);
+ await expect(updateDocument(contributor,doc.id,{folderId:'trackers',title:saved.title,version:1,body:'unauthorized edit'})).rejects.toMatchObject({status:403});
+ await updateDocument(deputy,doc.id,{folderId:'trackers',title:saved.title,version:1,body:'תיאור נוסף'});
+ expect((await getDocument(deputy,doc.id)).attachments).toHaveLength(2);
+ await expect(createDocument(viewer,input({folderId:'trackers',attachments:[{filename:'blocked.pdf',contentBase64:bytes.toString('base64')}]}))).rejects.toMatchObject({status:403});
+});
