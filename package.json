@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "db:setup": "tsx --env-file=.env.local scripts/setup.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "db:preview-rhythm": "node --import tsx scripts/migrate-rhythm-preview.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.9",
@@ -24,6 +25,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -35,6 +37,7 @@
     "@types/react-dom": "^19.3.0",
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",

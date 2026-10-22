@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/rhythm",
+      "schedule": "0 5 * * *"
+    },
+    { "path": "/api/cron/overdue?offset=winter-am", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/overdue?offset=summer-pm", "schedule": "0 15 * * *" },
+    { "path": "/api/cron/overdue?offset=winter-pm", "schedule": "0 16 * * *" }
+  ],
+  "buildCommand": "npm run db:preview-rhythm && npm run build"
+}

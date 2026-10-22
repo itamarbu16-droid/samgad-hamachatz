@@ -17,6 +17,7 @@ export async function signInThroughForm(page: Page) {
   test.setTimeout(240_000);
   if (!process.env.DEMO_PASSWORD) throw new Error('DEMO_PASSWORD is required for the isolated seeded database.');
   await page.goto('/login');
+  await page.getByRole('button', { name: 'כניסה למערכת', exact: true }).click();
   await page.getByLabel('אימייל', { exact: true }).fill(process.env.DEMO_EMAIL ?? 'demo@samgad.example');
   await page.getByLabel('סיסמה', { exact: true }).fill(process.env.DEMO_PASSWORD);
   for (let attempt = 0; attempt < 4; attempt++) {

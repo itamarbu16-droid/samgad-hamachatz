@@ -1,6 +1,22 @@
 "use client";
+import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
+import DocumentLibrary from "./document-library";
+import {isPersonalTask} from "@/lib/task-snapshot";
+import CommandDashboard from "./command-dashboard";
+import DeputiesDashboard from "./deputies-dashboard";
+import AccessSettings from "./access-settings";
+import {TaskActions,TaskActionNotice,SwipeTaskRow} from "./task-actions";
+import {TaskFilters} from "./task-filters";
+import {Schedule} from "./schedule";
+import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
+import {DeadlineRequests} from "./deadline-requests";
+import {PushSettings,PushAutoRestore} from "./push-settings";
+import PersonalRhythm from "./personal-rhythm";
+import ResponsibilitySummary from "./responsibility-summary";
+import TaskTools from "./task-tools";
+import {useTaskMutations} from "./use-rhythm";
 import { Modal, Empty, PanelHeading } from "./workspace-primitives";
 import {
   LayoutDashboard,
@@ -10,22 +26,23 @@ import {
   History,
   Plus,
   Search,
-  ArrowLeft,
   X,
   LogOut,
   Check,
-  Clock3,
   AlertCircle,
   ChevronLeft,
-  SlidersHorizontal,
   RefreshCw,
   UserRound,
   CalendarDays,
+  LibraryBig,
+  NotebookPen,
   Send,
   ShieldCheck,
   LoaderCircle,
+  Menu,
+  House,
 } from "lucide-react";
-type Person = { id: string; name: string; role: string };
+type Person = { id: string; workspaceOwnerId?:string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
 type Task = {
   id: string;
   title: string;
@@ -65,6 +82,7 @@ type Decision = {
 };
 type Data = {
   user: Person;
+  pinnedTaskKeys?: string[];
   tasks: Task[];
   decisions: Decision[];
   domains: { id: string; name: string; color: string }[];
@@ -83,11 +101,11 @@ type Data = {
   today: string;
 };
 const statuses: Record<string, string> = {
-  open: "פתוחה",
+  open: "לא בוצע",
   in_progress: "בטיפול",
-  blocked: "חסומה",
-  pending_review: "ממתינה לבדיקה",
-  completed: "הושלמה",
+  blocked: "בטיפול",
+  pending_review: "ממתין לאישור",
+  completed: "בוצע",
   cancelled: "בוטלה",
 };
 const priorities: Record<string, string> = {
@@ -103,11 +121,15 @@ const decisionStatuses: Record<string, string> = {
   rejected: "נדחתה",
 };
 const nav = [
-  ["dashboard", "סקירה כללית", LayoutDashboard],
+  ["dashboard", "ראשי", LayoutDashboard],
   ["tasks", "משימות", CheckCheck],
+  ["personal", "אישי", UserRound],
+  ["library", "ספרייה", LibraryBig],
+  ["records", "סיכומי ישיבות וביקורות", NotebookPen],
   ["decisions", "ממתין להחלטה", CircleHelp],
-  ["domains", "תחומי אחריות", Layers3],
+  ["domains", "אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
+  ["calendar", "לו״ז", CalendarDays],
 ] as const;
 const date = (s: string | null) =>
   s
@@ -145,14 +167,24 @@ export default function Workspace() {
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(""),
     [refreshed, setRefreshed] = useState("");
+  const [sort,setSort]=useState<TaskSort>("deadline_asc");
+  const [taskSelection,setTaskSelection]=useState<string[]>([]),[batchOwner,setBatchOwner]=useState("");
   const requestIds = useRef(new Map<string, string>());
   const sync = () => {
     const p = new URLSearchParams(location.search);
-    setView(p.get("view") || "dashboard");
-    setFilter(p.get("filter") || "all");
+    setView(
+      p.get("view") === "rhythm" ? "personal" : p.get("view") || "dashboard",
+    );
+    setFilter(
+      ["assigned", "blocked"].includes(p.get("filter") || "")
+        ? "all"
+        : p.get("filter") || "all",
+    );
     setDomain(p.get("domain") || "");
     setSelected(p.get("task") || "");
     setQuery(p.get("q") || "");
+    const nextSort=p.get("sort") || "deadline_asc";
+    if(Object.hasOwn(taskSorts,nextSort))setSort(nextSort as TaskSort);
   };
   useEffect(() => {
     sync();
@@ -160,24 +192,36 @@ export default function Workspace() {
     return () => window.removeEventListener("popstate", sync);
   }, []);
   function go(v: string, f = "all", d = "", task = "", q = "") {
+    setTaskSelection([]);
     const p = new URLSearchParams();
     if (v !== "dashboard") p.set("view", v);
     if (f !== "all") p.set("filter", f);
     if (d) p.set("domain", d);
     if (task) p.set("task", task);
     if (q) p.set("q", q);
-    history.pushState({}, "", `/${p.size ? "?" + p : ""}`);
-    sync();
+    if(sort!=="deadline_asc")p.set("sort",sort);
+    if(v==="tasks" && location.search.includes("tab=all"))p.set("tab","all");
+    history.pushState({}, "", `${(data?.user.permissions?.manageAccess || data?.user.permissions?.editAll) ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
   async function load() {
     try {
-      const r = await fetch("/api/workspace", { cache: "no-store" });
+      const r = await apiFetch("/api/workspace", { cache: "no-store" });
       if (r.status === 401) {
-        location.href = "/login";
+        location.href = location.pathname.startsWith("/deputies") ? "/deputies/login" : "/login";
         return;
       }
       const j = await r.json();
-      if (!r.ok) throw Error(j.error || "לא ניתן לטעון את המידע");
+      if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
+      const base = (j.user.permissions?.manageAccess || j.user.permissions?.editAll) ? '/' : '/deputies';
+      const params = new URLSearchParams(location.search);
+      if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
+        params.delete('view');
+        setView('dashboard');
+      }
+      const destination = base + (params.size ? '?' + params : '');
+      if (location.pathname !== base) { location.replace(destination); return; }
+      if (location.search !== (params.size ? '?' + params : '')) history.replaceState({}, '', destination);
       setData(j);
       setRefreshed(
         new Date().toLocaleTimeString("he-IL", {
@@ -192,6 +236,8 @@ export default function Workspace() {
       setLoading(false);
     }
   }
+  const taskActions=useTaskMutations(load);
+  useEffect(() => { const refresh = () => void load(); const visibleRefresh=()=>{if(document.visibilityState==="visible")refresh();}; const timer=setInterval(visibleRefresh,60000); window.addEventListener("samgad:saved", refresh); document.addEventListener("visibilitychange",visibleRefresh); return () => {clearInterval(timer);window.removeEventListener("samgad:saved", refresh);document.removeEventListener("visibilitychange",visibleRefresh);}; }, []);
   useEffect(() => {
     void load();
   }, []);
@@ -204,7 +250,7 @@ export default function Workspace() {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch(url, {
+      const r = await apiFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -258,6 +304,7 @@ export default function Workspace() {
         <button className="button primary" onClick={() => void load()}>
           ניסיון נוסף
         </button>
+        <a className="button secondary" href="/login">כניסה עם חשבון אחר</a>
       </main>
     );
   const person = (id: string) =>
@@ -269,70 +316,36 @@ export default function Workspace() {
     data.user.role,
   );
   const canWrite = manager || data.user.role === "contributor";
+  const guest=Boolean(data.user.permissions?.guest);
+  const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
+  const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
-  const open = data.tasks.filter(
-    (t) => !["completed", "cancelled"].includes(t.status),
-  );
-  const late = data.tasks.filter(overdue);
-  const blocked = open.filter((t) => t.status === "blocked");
+  const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.workspaceOwnerId || data.user.id):!ownerInterface||!isPersonalTask(t,data.user.workspaceOwnerId || data.user.id));
+  const late = scopedTasks.filter(overdue);
   const pending = data.decisions.filter((d) =>
     ["pending", "clarification_requested"].includes(d.status),
   );
-  const filtered = data.tasks.filter(
+  const filtered = scopedTasks.filter(
     (t) =>
       (!query ||
         `${t.title} ${t.description} ${person(t.ownerId)}`.includes(query)) &&
       (!domain || t.domainId === domain) &&
-      (filter === "all" ||
-        (filter === "mine"
-          ? t.ownerId === data.user.id
-          : filter === "assigned"
-            ? t.creatorId === data.user.id
-            : filter === "overdue"
-              ? overdue(t)
-              : filter === "urgent"
-                ? t.priority === "urgent" &&
-                  !["completed", "cancelled"].includes(t.status)
-                : filter === "active"
-                  ? !["completed", "cancelled"].includes(t.status)
-                  : t.status === filter)),
+      matchesTaskFilter({done:t.status==='completed',pending:t.status==='pending_review',cancelled:t.status==='cancelled',dueDate:t.dueDate,urgent:t.priority==='urgent',important:['high','urgent'].includes(t.priority),ownerId:t.ownerId,creatorId:t.creatorId,status:t.status},filter,data.today,data.user.id),
   );
-  const attention = [
-    ...late,
-    ...blocked.filter((t) => !late.some((x) => x.id === t.id)),
-    ...open.filter(
-      (t) =>
-        t.priority === "urgent" &&
-        !late.some((x) => x.id === t.id) &&
-        t.status !== "blocked",
-    ),
-  ];
+  filtered.sort((a,b)=>compareTasks({...a,done:a.status==="completed",pinned:data.pinnedTaskKeys?.includes("task:"+a.id)},{...b,done:b.status==="completed",pinned:data.pinnedTaskKeys?.includes("task:"+b.id)},sort));
+  const canEditTask=(t:Task)=>canWrite && (manager || t.ownerId===data!.user.id);
   function taskRow(t: Task) {
-    return (
-      <button
-        key={t.id}
-        className="task-row"
-        onClick={() => go(view, filter, domain, t.id, query)}
-      >
-        <span className={`status-dot ${t.status}`} />
-        <span className="task-main">
-          <strong>{t.title}</strong>
-          <span className="row-meta">
-            <span>{domainName(t.domainId)}</span>
-            <span>·</span>
-            <span>{person(t.ownerId)}</span>
-          </span>
-        </span>
-        <span className="task-row-end">
-          <Badge value={t.status} />
-          <span className={overdue(t) ? "date late" : "date"}>
-            {overdue(t) ? "באיחור · " : ""}
-            {date(t.dueDate)}
-          </span>
-        </span>
-        <ChevronLeft size={17} className="muted" />
+    const canAct = canEditTask(t);
+    return <SwipeTaskRow canExtendDirectly={ownerInterface} key={t.id} task={{kind:"task",id:t.id}} title={t.title} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} className={`task-row ${taskTone(t.status==="completed",t.status==="cancelled"?null:t.dueDate,data!.today)}`}>
+      {view === "tasks" && canAct && <input type="checkbox" aria-label={`בחירת ${t.title}`} checked={taskSelection.includes(t.id)} onChange={e=>setTaskSelection(ids=>e.target.checked?[...ids,t.id]:ids.filter(id=>id!==t.id))}/>}
+      <span className={`status-dot ${t.status}`} />
+      <button className="task-main task-open" onClick={() => go(view, filter, domain, t.id, query)}>
+        <strong>{data!.pinnedTaskKeys?.includes("task:"+t.id)&&<span className="task-pin-label">📌 מוצמדת · </span>}{t.title}</strong><span className="row-meta">{domainName(t.domainId)} · {person(t.ownerId)}</span>
       </button>
-    );
+      <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
+      {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
+      <TaskActions canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+    </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"]) {
     return items.length ? (
@@ -386,9 +399,10 @@ export default function Workspace() {
     )
       setModal("");
   }
-  const title = nav.find((n) => n[0] === view)?.[1] || "סקירה כללית";
+  const title = view==="access"?"הרשאות":nav.find((n) => n[0] === view)?.[1] || "ראשי";
   return (
-    <div className="app-shell">
+    <div className={`app-shell battalion-app ${view === "dashboard" ? "command-home" : ""}`} >
+      <PushAutoRestore key={data.user.id}/>
       <aside className="sidebar">
         <a
           className="brand"
@@ -402,7 +416,7 @@ export default function Workspace() {
             <Layers3 size={24} />
           </span>
           <span>
-            סמג״ד המחץ<small>מרחב ניהול מנהלתי</small>
+            {ownerInterface ? "סמג״ד המחץ" : "סגני המחץ"}<small>{ownerInterface ? "ממשק מנהל" : "מרחב בעלי התפקידים"}</small>
           </span>
         </a>
         <div className="workspace-label">
@@ -415,7 +429,7 @@ export default function Workspace() {
         </div>
         <span className="nav-caption">מרחב העבודה</span>
         <nav>
-          {nav.map(([id, label, Icon]) => (
+          {availableNav.map(([id, label, Icon]) => (
             <button
               key={id}
               className={view === id ? "nav-item active" : "nav-item"}
@@ -428,6 +442,7 @@ export default function Workspace() {
               )}
             </button>
           ))}
+          {data.user.permissions?.manageAccess && <button className={view==="access"?"nav-item active":"nav-item"} onClick={()=>go("access")}><ShieldCheck size={19}/>ניהול גישה</button>}
         </nav>
         <div className="sidebar-bottom">
           <div className="safe-note">
@@ -441,17 +456,21 @@ export default function Workspace() {
             <span className="avatar">{data.user.name.slice(0, 1)}</span>
             <span>
               <strong>{data.user.name}</strong>
-              <small>מחובר למרחב העבודה</small>
+              <small>{guest?"צפייה בלבד":"מחובר למרחב העבודה"}</small>
             </span>
             <button
               className="icon-button"
-              aria-label="יציאה מהמערכת"
+              aria-label={guest?"כניסה לחשבון":"יציאה מהמערכת"}
               onClick={async () => {
-                await fetch("/api/auth/sign-out", {
+                if(guest){location.href="/login";return;}
+                if ((await offlineStatus()).length) { setError("יש שינויים שממתינים לסנכרון. יש לסנכרן לפני יציאה"); return; }
+                const result = await fetch("/api/auth/sign-out", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: "{}",
                 });
+                if (!result.ok) { setError("היציאה לא הצליחה. יש לנסות כשיש אינטרנט"); return; }
+                await clearOffline();
                 location.href = "/login";
               }}
             >
@@ -467,6 +486,8 @@ export default function Workspace() {
             <strong>{title}</strong>
           </div>
           <div className="topbar-actions">
+            {data.user.permissions?.manageAccess && <button className="icon-button" aria-label="ניהול הרשאות" title="ניהול גישה לפי מייל" onClick={()=>go("access")}><ShieldCheck size={18}/></button>}
+            {guest && <button className="button secondary" onClick={()=>location.href="/login"}>כניסה</button>}
             {data.demo && (
               <span className="demo-label">
                 <span />
@@ -484,6 +505,8 @@ export default function Workspace() {
           </div>
         </header>
         <main className="main-content">
+          <DeadlineRequests manager={ownerInterface}/>
+          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -500,26 +523,33 @@ export default function Workspace() {
               <p>
                 {view === "dashboard"
                   ? "המשימות, ההחלטות והאנשים שדורשים את תשומת הלב שלך."
-                  : view === "tasks"
-                    ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
-                    : view === "decisions"
-                      ? "הבקשות שמחכות לכיוון שלך, וההחלטות שכבר התקבלו."
-                      : view === "domains"
-                        ? "מבט ממוקד על העבודה בכל תחום אחריות."
-                        : "כל שינוי משמעותי, מתועד במקום אחד."}
+                  : view === "personal"
+                    ? "המשימות הפרטיות והשעל״ח שלך, במקום אחד."
+                    : view === "tasks"
+                      ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
+                      : view === "decisions"
+                        ? "הבקשות שמחכות לכיוון שלך, וההחלטות שכבר התקבלו."
+                        : view === "library"
+                          ? "פקודות, בד״חים, פורמטים ונהלים מסודרים בתיקיות."
+                          : view === "records"
+                            ? "סיכומי ישיבות וביקורות, בטקסט ובקבצים."
+                            : view === "domains"
+                              ? "מבט ממוקד על העבודה בכל תחום אחריות."
+                              : "כל שינוי משמעותי, מתועד במקום אחד."}
               </p>
             </div>
-            {(manager || (view === "decisions" && canWrite)) && (
-              <button
-                className="button primary"
-                onClick={() =>
-                  setModal(view === "decisions" ? "decision" : "task")
-                }
-              >
-                <Plus size={18} />
-                {view === "decisions" ? "בקשה להחלטה" : "יצירת משימה"}
-              </button>
-            )}
+            {!["personal", "tasks", "library", "records"].includes(view) &&
+              (manager || (view === "decisions" && canWrite)) && (
+                <button
+                  className="button primary"
+                  onClick={() =>
+                    view === "decisions" ? setModal("decision") : window.dispatchEvent(new Event("samgad:capture"))
+                  }
+                >
+                  <Plus size={18} />
+                  {view === "decisions" ? "בקשה להחלטה" : "יצירת משימה"}
+                </button>
+              )}
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -533,175 +563,60 @@ export default function Workspace() {
               </button>
             </div>
           )}
-          {view === "dashboard" && (
-            <>
-              <section className="attention-strip">
-                <div className="attention-intro">
-                  <span className="eyebrow">מיקוד להיום</span>
-                  <h2>מה דורש תשומת לב?</h2>
-                  <p>
-                    עודכן בשעה <bdi>{refreshed}</bdi>
-                  </p>
-                </div>
-                {[
-                  {
-                    n: late.length,
-                    label: "משימות באיחור",
-                    text: "לבדיקת מועדים ואחריות",
-                    icon: Clock3,
-                    filter: "overdue",
-                    color: "red",
-                  },
-                  {
-                    n: blocked.length,
-                    label: "משימות חסומות",
-                    text: "להסרת חסמים",
-                    icon: AlertCircle,
-                    filter: "blocked",
-                    color: "amber",
-                  },
-                  {
-                    n: pending.length,
-                    label: "ממתינות להחלטה",
-                    text: "לעיון ולקבלת החלטה",
-                    icon: CircleHelp,
-                    filter: "decisions",
-                    color: "teal",
-                  },
-                ].map((m) => (
-                  <button
-                    key={m.filter}
-                    className={`metric ${m.color}`}
-                    onClick={() =>
-                      go(
-                        m.filter === "decisions" ? "decisions" : "tasks",
-                        m.filter === "decisions" ? "all" : m.filter,
-                      )
-                    }
-                  >
-                    <span className="metric-top">
-                      <m.icon size={19} />
-                      <ArrowLeft size={17} />
-                    </span>
-                    <strong>{m.n.toString().padStart(2, "0")}</strong>
-                    <span className="metric-label">{m.label}</span>
-                    <small>{m.text}</small>
-                  </button>
-                ))}
-              </section>
-              <div className="dashboard-grid">
-                <div>
-                  <section className="panel">
-                    <PanelHeading
-                      title="על סדר היום"
-                      count={attention.length}
-                      action="לכל המשימות"
-                      onClick={() => go("tasks")}
-                    />
-                    {attention.length ? (
-                      attention.slice(0, 5).map(taskRow)
-                    ) : (
-                      <Empty>
-                        אין משימות דחופות, חסומות או באיחור. אפשר להתמקד בהמשך
-                        העבודה.
-                      </Empty>
-                    )}
-                    <div className="panel-footer">
-                      <span className="mini-dot" />
-                      {open.length} משימות פתוחות במרחב{" "}
-                      <button onClick={() => go("tasks", "active")}>
-                        לתמונה המלאה <ArrowLeft size={14} />
-                      </button>
-                    </div>
-                  </section>
-                  <section className="panel domains-panel">
-                    <PanelHeading
-                      title="תחומי אחריות"
-                      action="לכל התחומים"
-                      onClick={() => go("domains")}
-                    />
-                    <div className="domain-grid">
-                      {data.domains.slice(0, 6).map((d, i) => {
-                        const ts = open.filter((t) => t.domainId === d.id);
-                        return (
-                          <button
-                            className="domain-card"
-                            key={d.id}
-                            onClick={() => go("tasks", "active", d.id)}
-                          >
-                            <span className={`domain-icon tone-${i % 4}`}>
-                              <Layers3 size={18} />
-                            </span>
-                            <strong>{d.name}</strong>
-                            <span>
-                              {ts.length} פתוחות{" "}
-                              <span className="muted">/</span>{" "}
-                              <span
-                                className={ts.some(overdue) ? "late" : "muted"}
-                              >
-                                {ts.filter(overdue).length} באיחור
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                </div>
-                <div>
-                  <section className="panel">
-                    <PanelHeading title="ממתין להחלטה" count={pending.length} />
-                    {pending.length ? (
-                      pending.slice(0, 3).map((d) => (
-                        <button
-                          className="decision-preview"
-                          key={d.id}
-                          onClick={() => go("decisions")}
-                        >
-                          <span className="eyebrow">
-                            {domainName(d.domainId)}
-                          </span>
-                          <strong>{d.title}</strong>
-                          <span className="row-meta">
-                            {person(d.requesterId)} · {date(d.createdAt)}
-                          </span>
-                          <span className="text-action">
-                            לעיון ולהחלטה <ArrowLeft size={14} />
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <Empty>כל ההחלטות מטופלות כרגע.</Empty>
-                    )}
-                  </section>
-                  <section className="panel">
-                    <PanelHeading
-                      title="מה התחדש"
-                      action="הכול"
-                      onClick={() => go("activity")}
-                    />
-                    {activityList(data.activity.slice(0, 4))}
-                  </section>
-                </div>
-              </div>
-            </>
+          {view === "personal" && data.user.permissions?.manageAccess && (
+            <PersonalRhythm
+              key={data.user.id}
+              userId={data.user.workspaceOwnerId || data.user.id}
+              role={data.user.role}
+              legacyTasks={data.tasks.filter(t=>isPersonalTask(t,data.user.workspaceOwnerId || data.user.id))}
+              scope="personal"
+            />
           )}
+          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
+          {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
+          {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
+          {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
+          {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
           {view === "tasks" && (
+            <PersonalRhythm
+              key={data.user.id}
+              userId={ownerInterface ? data.user.workspaceOwnerId || data.user.id : data.user.id}
+              role={data.user.role}
+              scope="assigned"
+              manageRhythm={ownerInterface}
+              canMoveToPersonal={ownerInterface}
+            />
+          )}
+          {view === "library" && (
+            <DocumentLibrary
+              section="library"
+              userId={data.user.id}
+              role={data.user.role}
+            />
+          )}
+          {view === "records" && (
+            <DocumentLibrary
+              section="records"
+              userId={data.user.id}
+              role={data.user.role}
+            />
+          )}
+          {(view === "tasks" || view==="personal" && filtered.length>0) && (
             <section className="panel tasks-panel">
               <div className="task-tabs">
                 {[
                   ["all", "כל המשימות"],
                   ["mine", "המשימות שלי"],
-                  ["assigned", "הוקצו על ידי"],
+                  ["actionable", "לביצוע"],
+                  ["due_soon", "דחוף"],
                   ["overdue", "באיחור"],
-                  ["blocked", "חסומות"],
                   ["pending_review", "לבדיקה"],
-                  ["completed", "הושלמו"],
+                  ["completed", "ארכיון משימות שבוצעו"],
                 ].map(([id, label]) => (
                   <button
                     key={id}
                     className={filter === id ? "active" : ""}
-                    onClick={() => go("tasks", id, domain, "", query)}
+                    onClick={() => go(view, id, domain, "", query)}
                   >
                     {label}
                     {id === "overdue" && late.length > 0 && (
@@ -710,8 +625,7 @@ export default function Workspace() {
                   </button>
                 ))}
               </div>
-              <div className="filters">
-                <label className="search-field">
+              <TaskFilters archived={filter==="completed"} onArchive={()=>go(view,filter==="completed"?"all":"completed")} count={filtered.length} active={Boolean(domain)||sort!=="deadline_asc"} search={<label className="search-field">
                   <Search size={17} />
                   <input
                     aria-label="חיפוש משימות"
@@ -722,17 +636,17 @@ export default function Workspace() {
                       const p = new URLSearchParams(location.search);
                       if (e.target.value) p.set("q", e.target.value);
                       else p.delete("q");
-                      history.replaceState({}, "", `/?${p}`);
+                      history.replaceState({}, "", `${location.pathname}?${p}`);
+                      window.dispatchEvent(new PopStateEvent("popstate"));
                     }}
                   />
-                </label>
+                </label>}>
                 <label className="filter-select">
-                  <SlidersHorizontal size={16} />
                   <select
                     aria-label="תחום אחריות"
                     value={domain}
                     onChange={(e) =>
-                      go("tasks", filter, e.target.value, "", query)
+                      go(view, filter, e.target.value, "", query)
                     }
                   >
                     <option value="">כל תחומי האחריות</option>
@@ -743,8 +657,10 @@ export default function Workspace() {
                     ))}
                   </select>
                 </label>
-                <span className="results-count">{filtered.length} משימות</span>
-              </div>
+                <label>מיון<select aria-label="מיון רשימת המשימות" value={sort} onChange={e=>{const p=new URLSearchParams(location.search);p.set("sort",e.target.value);history.replaceState({},"",location.pathname+"?"+p);window.dispatchEvent(new PopStateEvent("popstate"));}}>{Object.entries(taskSorts).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+              </TaskFilters>
+              <p className="task-swipe-help task-list-hint">החליקו משימה לפעולות מהירות · או לחצו על ⋯</p>
+              {taskSelection.length>0 && canWrite && <div className="bulk-toolbar"><strong>{taskSelection.length} נבחרו</strong><button className="button primary" disabled={taskActions.busy} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && !["completed","cancelled"].includes(t.status) && (manager || t.ownerId===data.user.id) && (t.status!=="pending_review" || manager)).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:manager?"completed":"pending_review"}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>ביצוע / אישור</button>{manager && <><select aria-label="אחראי למשימות הנבחרות" value={batchOwner} onChange={e=>setBatchOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.users.filter(u=>!["viewer","admin"].includes(u.role)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><button className="button secondary" disabled={taskActions.busy || !batchOwner} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && manager).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,ownerId:batchOwner}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>שינוי אחראי</button></>}<button className="button secondary" onClick={()=>setTaskSelection([])}>ניקוי בחירה</button></div>}
               {filtered.length ? (
                 filtered.map(taskRow)
               ) : (
@@ -831,50 +747,7 @@ export default function Workspace() {
               )}
             </div>
           )}
-          {view === "domains" && (
-            <div className="all-domains">
-              {data.domains.map((d, i) => {
-                const ts = data.tasks.filter((t) => t.domainId === d.id);
-                return (
-                  <button
-                    key={d.id}
-                    className="panel domain-large"
-                    onClick={() => go("tasks", "all", d.id)}
-                  >
-                    <span className={`domain-icon tone-${i % 4}`}>
-                      <Layers3 size={22} />
-                    </span>
-                    <h2>{d.name}</h2>
-                    <div className="domain-stats">
-                      <span>
-                        <strong>
-                          {
-                            ts.filter(
-                              (t) =>
-                                !["completed", "cancelled"].includes(t.status),
-                            ).length
-                          }
-                        </strong>
-                        פתוחות
-                      </span>
-                      <span>
-                        <strong>{ts.filter(overdue).length}</strong>באיחור
-                      </span>
-                      <span>
-                        <strong>
-                          {ts.filter((t) => t.status === "blocked").length}
-                        </strong>
-                        חסומות
-                      </span>
-                    </div>
-                    <span className="text-action">
-                      פתיחת המשימות בתחום <ArrowLeft size={15} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {view === "domains" && <ResponsibilitySummary tasks={data.tasks} users={data.users} workspaceOwnerId={data.user.workspaceOwnerId || data.user.id} manager={ownerInterface} today={data.today}/>}
           {view === "activity" && (
             <section className="panel">
               <PanelHeading
@@ -891,33 +764,20 @@ export default function Workspace() {
           </footer>
         </main>
       </div>
-      <nav className="mobile-nav">
-        {nav.slice(0, 4).map(([id, label, Icon]) => (
-          <button
-            key={id}
-            className={view === id ? "active" : ""}
-            onClick={() => go(id)}
-          >
-            <Icon size={20} />
-            <span>
-              {id === "dashboard"
-                ? "סקירה"
-                : id === "decisions"
-                  ? "החלטות"
-                  : id === "domains"
-                    ? "תחומים"
-                    : label}
-            </span>
-          </button>
-        ))}
+      <nav className="mobile-nav" aria-label="ניווט ראשי">
+        {[["records","סיכומי ישיבות",NotebookPen],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
       </nav>
+      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation"><PushSettings/>{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
+      <TaskActionNotice/>
+      {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
+      {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
       {notice && (
         <div className="toast" role="status">
           <Check size={18} />
           {notice}
         </div>
       )}
-      {modal && (
+      {modal && modal !== "navigation" && (
         <Modal
           title={modal === "task" ? "יצירת משימה" : "בקשה להחלטה"}
           close={() => setModal("")}
@@ -1068,13 +928,11 @@ export default function Workspace() {
           <p className="description">
             {task.description || "לא נוסף תיאור למשימה."}
           </p>
-          {task.blockerReason && (
-            <div className="blocker">
-              <AlertCircle size={17} />
-              {task.blockerReason}
-            </div>
-          )}
-          {canWrite && (
+          {canEditTask(task) && <div className="rhythm-toolbar">
+            <button className="button secondary" disabled={busy} onClick={() => void mutate(`/api/tasks/${task.id}`, "PATCH", {version:task.version, status:"in_progress"}, "המשימה סומנה לא בוצע")}>לא בוצע</button>
+            {task.status !== "completed" && (manager || task.ownerId === data.user.id) && <button className="button primary" disabled={busy} onClick={() => void mutate(`/api/tasks/${task.id}`, "PATCH", {version:task.version, status:task.ownerId !== task.creatorId && !manager ? "pending_review" : "completed"}, "מצב הביצוע נשמר")}>{task.status === "pending_review" && manager ? "אישור ביצוע" : "בוצע"}</button>}
+          </div>}
+          {canEditTask(task) && (
             <details className="edit-details" open>
               <summary>עדכון משימה</summary>
               <form
@@ -1093,15 +951,14 @@ export default function Workspace() {
                             dueDate: f.get("dueDate") || null,
                           }
                         : {
-                            status: f.get("status"),
-                            blockerReason: f.get("blockerReason"),
+                            title:f.get("title"),status: f.get("status"),priority:f.get("priority"),dueDate:manager?f.get("dueDate")||null:task.dueDate,
                           }),
                     },
                     "פרטי המשימה עודכנו",
                   );
                 }}
               >
-                {manager && (
+                {canEditTask(task) && (
                   <label>
                     כותרת המשימה
                     <input
@@ -1118,6 +975,7 @@ export default function Workspace() {
                     <select name="status" defaultValue={task.status}>
                       {Object.entries(statuses)
                         .filter(([v]) => {
+                          if (v === "blocked") return false;
                           try {
                             assertTransition(
                               {
@@ -1143,7 +1001,7 @@ export default function Workspace() {
                         ))}
                     </select>
                   </label>
-                  {manager && (
+                  {canEditTask(task) && (
                     <>
                       <label>
                         עדיפות
@@ -1155,7 +1013,7 @@ export default function Workspace() {
                           ))}
                         </select>
                       </label>
-                      <label>
+                      {manager && <label>
                         אחראי לביצוע
                         <select name="ownerId" defaultValue={task.ownerId}>
                           {data.users.map((u) => (
@@ -1164,25 +1022,19 @@ export default function Workspace() {
                             </option>
                           ))}
                         </select>
-                      </label>
+                      </label>}
                       <label>
                         מועד סיום
                         <input
                           name="dueDate"
                           type="date"
                           defaultValue={task.dueDate || ""}
+                          disabled={!manager}
                         />
                       </label>
                     </>
                   )}
                 </div>
-                <label>
-                  תיאור החסם (אם המשימה חסומה)
-                  <input
-                    name="blockerReason"
-                    defaultValue={task.blockerReason || ""}
-                  />
-                </label>
                 <div className="modal-actions">
                   <button className="button primary" disabled={busy}>
                     שמירת שינויים
@@ -1221,7 +1073,7 @@ export default function Workspace() {
             ) : (
               <p className="muted">עדיין לא נוספו עדכונים למשימה.</p>
             )}
-            {canWrite && (
+            {canEditTask(task) && (
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
