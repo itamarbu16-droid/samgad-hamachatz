@@ -2109,3 +2109,11 @@ input::-webkit-date-and-time-value {text-align:start;}
 .tracking-entry-card > .document-folder-card { width: 100%; flex: 1; }
 .tracking-company-table td input,
 .tracking-company-table td select { background: transparent !important; color: #111827 !important; box-shadow: none !important; }
+
+.tracker-draggable { -webkit-touch-callout: none; user-select: none; }
+.tracker-draggable.is-dragging { opacity: .55; outline: 2px solid #f97316; }
+.tracker-folder-over, .tracker-drop-target.is-over { outline: 3px solid #f97316 !important; background: #61330e !important; }
+.tracker-drop-tray { position: fixed; top: 80px; inset-inline: 12px; z-index: 10000; padding: 12px; border: 2px solid #f97316; border-radius: 14px; background: #181512; color: #fff; max-height: 32vh; overflow: auto; box-shadow: 0 8px 30px #0009; }
+.tracker-drop-tray > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tracker-drop-target { padding: 14px; border: 1px solid #8e7d68; border-radius: 10px; }
+.tracker-drag-ghost { position: fixed; z-index: 10001; pointer-events: none; width: 185px; padding: 12px; border-radius: 12px; background: #f97316; color: #111; box-shadow: 0 6px 25px #0008; font-weight: 700; }
