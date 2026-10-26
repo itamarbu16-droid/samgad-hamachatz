@@ -7,6 +7,7 @@ import { seedDemo } from "../src/server/seed";
 import { principalFor } from "../src/server/service";
 import {
   createDocument,
+  createDocumentFolder, duplicateDocument,
   getDocuments,
   getDocument,
   updateDocument,
@@ -255,4 +256,30 @@ it('stores scanned and Excel files in trackers and preserves library file permis
  await updateDocument(deputy,doc.id,{folderId:'trackers',title:saved.title,version:1,body:'תיאור נוסף'});
  expect((await getDocument(deputy,doc.id)).attachments).toHaveLength(2);
  await expect(createDocument(viewer,input({folderId:'trackers',attachments:[{filename:'blocked.pdf',contentBase64:bytes.toString('base64')}]}))).rejects.toMatchObject({status:403});
+});
+
+it('duplicates weekly trackers into nested folders, keeps names, optionally resets marks and protects the source',async()=>{
+ const folder=await createDocumentFolder(deputy,{name:'מעקבים שבועיים',parent:'trackers',section:'library',clientRequestId:randomUUID()});
+ const nested=await createDocumentFolder(deputy,{name:'שעות בטיחות',parent:folder.id,section:'library',clientRequestId:randomUUID()});
+ const body=JSON.stringify({kind:'tracking-table-v1',columns:[{id:'company-a',name:'א׳',type:'text'}],rows:[{'company-a':'שם לבדיקה','company-a:status':'v'},{'company-a':'שם נוסף','company-a:status':'x'}]});
+ const source=await createDocument(deputy,input({folderId:nested.id,title:'שבוע 43',body}));
+ const request={title:'שבוע 44',folderId:folder.id,resetStatuses:true,clientRequestId:randomUUID()};
+ const copy=await duplicateDocument(contributor,source.id,request);
+ expect((await duplicateDocument(contributor,source.id,request)).id).toBe(copy.id);
+ const saved=await getDocument(deputy,copy.id);expect(saved.title).toBe('שבוע 44');expect(saved.folderId).toBe(folder.id);
+ expect(JSON.parse(saved.body).rows).toEqual([{'company-a':'שם לבדיקה','company-a:status':''},{'company-a':'שם נוסף','company-a:status':''}]);
+ expect((await getDocument(deputy,source.id)).body).toBe(body);
+ await updateDocument(contributor,source.id,{folderId:nested.id,title:'שבוע 43',body,version:1});
+ const keep=await duplicateDocument(deputy,source.id,{...request,resetStatuses:false,clientRequestId:randomUUID()});
+ expect((await getDocument(deputy,keep.id)).body).toBe(body);
+ await expect(duplicateDocument(viewer,source.id,{...request,clientRequestId:randomUUID()})).rejects.toMatchObject({status:403});
+ await expect(duplicateDocument({...deputy,organizationId:'unrelated'},source.id,{...request,folderId:'trackers',clientRequestId:randomUUID()})).rejects.toMatchObject({status:404});
+});
+it('duplicates attached files without changing their bytes or the original',async()=>{
+ const bytes=Buffer.from('synthetic scan');
+ const source=await createDocument(deputy,input({folderId:'trackers',title:'סריקה שבוע 43',body:'',attachments:[{filename:'scan.pdf',contentBase64:bytes.toString('base64')}]}));
+ const copy=await duplicateDocument(deputy,source.id,{title:'סריקה שבוע 44',folderId:'trackers',clientRequestId:randomUUID()});
+ const detail=await getDocument(deputy,copy.id),original=await getDocument(deputy,source.id);
+ expect(detail.attachments[0].id).not.toBe(original.attachments[0].id);
+ expect((await downloadDocument(deputy,detail.attachments[0].id)).bytes.equals(bytes)).toBe(true);
 });

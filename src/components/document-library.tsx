@@ -196,10 +196,12 @@ export default function DocumentLibrary({
   }
   const modalOpen = creating || Boolean(selected);
   const editForm = creating || editing;
-  const tracking = section === "library" && folder === "trackers";
+  const tracking = section === "library" && (()=>{let id=folder;const seen=new Set<string>();while(id&&!seen.has(id)){if(id==='trackers')return true;seen.add(id);id=catalog.find(f=>f.id===id)?.parent??null;}return false;})();
   return (
     <div className="document-workspace">
-      {tracking ? <TrackingTables userId={userId} role={role} refreshKey={trackingVersion}
+      {tracking ? <TrackingTables key={folder} userId={userId} role={role} refreshKey={trackingVersion}
+        folderId={folder!} folders={catalog} navigate={id=>{openFolder(id);void load();}}
+        foldersChanged={()=>void load()}
         back={() => {openFolder(null);void load();}}
         addFile={()=>{setCreating(true);setSelected(null);setFiles([]);setError('');uploadCache.current.clear();}}
         openFile={id=>void openEntry({id})} /> : <>

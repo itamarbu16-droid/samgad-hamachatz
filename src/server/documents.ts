@@ -230,6 +230,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
     .strict()
     .parse(input);
   await assertDocumentFolder(p,data.folderId);
+  const trackingFolder = await isTrackingFolder(p,data.folderId);
   const db = await getDb();
   return db.transaction(async (tx) => {
     const [before] = await tx
@@ -243,7 +244,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
         ),
       );
     if (!before) throw new AppError(404, "המסמך אינו זמין לך");
-    if (before.creatorId !== p.userId && !isManager(p) && !(before.folderId === "trackers" && data.folderId === "trackers" && !data.archived && data.title === before.title && isTrackingTable(before.body) && isTrackingTable(data.body)))
+    if (before.creatorId !== p.userId && !isManager(p) && !(trackingFolder && before.folderId === data.folderId && !data.archived && data.title === before.title && isTrackingTable(before.body) && isTrackingTable(data.body)))
       throw new AppError(403, "רק יוצר המסמך או מנהל יכולים לערוך אותו");
     const existingFiles = await tx
       .select({ id: s.documentAttachments.id })
@@ -309,10 +310,46 @@ export async function createDocumentFolder(p:Principal,input:unknown){
  if(!canEditAll(p))throw new AppError(403,'יצירת תיקייה דורשת הרשאת מנהל');
  const data=z.object({name:z.string().trim().min(1).max(120),parent:z.string().max(160).nullable().default(null),section:z.enum(['library','records']),clientRequestId:z.string().uuid()}).strict().parse(input);
  const folders=await getDocumentFolders(p);
- if(data.parent&&!folders.some(f=>f.id===data.parent&&f.section===data.section&&f.id!=='trackers'))throw new AppError(422,'תיקיית האב אינה קיימת במרחב שנבחר');
+ if(data.parent&&!folders.some(f=>f.id===data.parent&&f.section===data.section))throw new AppError(422,'תיקיית האב אינה קיימת במרחב שנבחר');
  const db=await getDb();const [existing]=await db.select().from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.organizationId,p.organizationId),eq(s.customDocumentFolders.clientRequestId,data.clientRequestId)));
  if(existing){if(existing.name!==data.name||existing.parent!==data.parent||existing.section!==data.section)throw new AppError(409,'מזהה הבקשה כבר שימש לתיקייה אחרת');return existing;}
  const [folder]=await db.insert(s.customDocumentFolders).values({...data,id:randomUUID(),organizationId:p.organizationId}).onConflictDoNothing().returning();
  if(!folder) return (await db.select().from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.organizationId,p.organizationId),eq(s.customDocumentFolders.clientRequestId,data.clientRequestId))))[0];
  return folder;
+}
+
+export async function isTrackingFolder(p:Principal,id:string){
+ const folders=await getDocumentFolders(p);const visited=new Set<string>();
+ let current:string|null=id;
+ while(current&&!visited.has(current)){if(current==='trackers')return true;visited.add(current);current=folders.find(f=>f.id===current)?.parent??null;}
+ return false;
+}
+export async function duplicateDocument(p:Principal,id:string,input:unknown){
+ assertWrite(p);
+ const data=z.object({title:z.string().trim().min(2).max(160),folderId:z.string().min(1).max(160),resetStatuses:z.boolean().default(true),clientRequestId:z.string().uuid()}).strict().parse(input);
+ await assertDocumentFolder(p,data.folderId);
+ if(!await isTrackingFolder(p,data.folderId))throw new AppError(422,'יש לבחור תיקייה במעקבים');
+ const original=await getDocument(p,id);
+ if(!await isTrackingFolder(p,original.folderId))throw new AppError(422,'ניתן לשכפל פריטים מתוך המעקבים');
+ const db=await getDb();
+ return db.transaction(async tx=>{
+  const [source]=await tx.select().from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.id,id),eq(s.documentEntries.archived,false)));
+  if(!source)throw new AppError(404,'המסמך אינו זמין לך');
+  if(source.folderId!==original.folderId)throw new AppError(409,'המסמך הועבר. יש לרענן ולנסות שוב');
+  const key=`${p.organizationId}:${p.userId}:duplicate-document:${data.clientRequestId}`;
+  const fingerprint=createHash('sha256').update(JSON.stringify({id,...data})).digest('hex');
+  const receipt=await tx.insert(s.mutationReceipts).values({key,fingerprint}).onConflictDoNothing().returning();
+  if(!receipt.length){const [previous]=await tx.select().from(s.mutationReceipts).where(eq(s.mutationReceipts.key,key));if(previous.fingerprint!==fingerprint)throw new AppError(409,'מזהה הבקשה כבר שימש להעתקה אחרת');return previous.result as {id:string};}
+  let body=source.body;
+  if(data.resetStatuses&&isTrackingTable(body)){
+   const table=JSON.parse(body);
+   table.rows=table.rows.map((row:Record<string,string>)=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,key.endsWith(':status')?'':value])));
+   body=JSON.stringify(table);
+  }
+  const [entry]=await tx.insert(s.documentEntries).values({id:randomUUID(),organizationId:p.organizationId,creatorId:p.userId,folderId:data.folderId,title:data.title,body,documentDate:null}).returning({id:s.documentEntries.id});
+  const files=await tx.select().from(s.documentAttachments).where(eq(s.documentAttachments.entryId,id));
+  if(files.length)await tx.insert(s.documentAttachments).values(files.map(file=>({id:randomUUID(),entryId:entry.id,filename:file.filename,contentType:file.contentType,byteSize:file.byteSize,contentBase64:file.contentBase64})));
+  await tx.update(s.mutationReceipts).set({result:entry}).where(eq(s.mutationReceipts.key,key));
+  return entry;
+ });
 }
