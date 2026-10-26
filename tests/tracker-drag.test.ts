@@ -30,3 +30,9 @@ it('leaves the document unopened on a long hold released outside a folder',()=>{
  drag.startTouch({touches:[{identifier:7,clientX:10,clientY:10}]} as never,['bike'],'bike');
  vi.advanceTimersByTime(500);touch('touchend',10,10);expect(drop).not.toHaveBeenCalled();expect(drag.consumeClick()).toBe(true);
 });
+
+it('opens file actions when a held touch is released without dropping on a folder',()=>{
+ Object.assign(doc,{elementFromPoint:()=>null});const drop=vi.fn(),hold=vi.fn(),drag=useTrackerDrag(drop,hold);
+ drag.startTouch({touches:[{identifier:7,clientX:10,clientY:10}]} as never,['bike'],'bike');
+ vi.advanceTimersByTime(500);touch('touchend',10,10);expect(drop).not.toHaveBeenCalled();expect(hold).toHaveBeenCalledExactlyOnceWith(['bike']);
+});

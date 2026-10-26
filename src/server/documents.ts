@@ -353,3 +353,34 @@ export async function duplicateDocument(p:Principal,id:string,input:unknown){
   return entry;
  });
 }
+
+export async function getTrackerTrash(p:Principal){
+ const folders=await getDocumentFolders(p);
+ const trackingIds=new Set<string>(['trackers']);let changed=true;
+ while(changed){changed=false;for(const f of folders)if(f.parent&&trackingIds.has(f.parent)&&!trackingIds.has(f.id)){trackingIds.add(f.id);changed=true;}}
+ return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,[...trackingIds])))).filter(row=>isManager(p)||row.creatorId===p.userId);
+}
+export async function manageTrackers(p:Principal,input:unknown){
+ assertWrite(p);
+ const data=z.object({action:z.enum(['move','trash','restore']),items:z.array(z.object({id:z.string().min(1),version:z.number().int().positive()}).strict()).min(1).max(100),folderId:z.string().min(1).max(160).optional()}).strict().parse(input);
+ if(new Set(data.items.map(item=>item.id)).size!==data.items.length)throw new AppError(422,'פריט נבחר יותר מפעם אחת');
+ if(data.action==='move'&&(!data.folderId||!await isTrackingFolder(p,data.folderId)))throw new AppError(422,'יש לבחור תיקייה במעקבים');
+ const folders=await getDocumentFolders(p);const trackingIds=new Set<string>(['trackers']);let changed=true;
+ while(changed){changed=false;for(const f of folders)if(f.parent&&trackingIds.has(f.parent)&&!trackingIds.has(f.id)){trackingIds.add(f.id);changed=true;}}
+ const db=await getDb();
+ return db.transaction(async tx=>{
+  const rows=await tx.select({id:s.documentEntries.id,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId,archived:s.documentEntries.archived}).from(s.documentEntries).where(and(scope(p),inArray(s.documentEntries.id,data.items.map(i=>i.id))));
+  if(rows.length!==data.items.length)throw new AppError(404,'אחד המעקבים אינו זמין לך');
+  const results=[];
+  for(const item of data.items){
+   const row=rows.find(row=>row.id===item.id)!;
+   if(!trackingIds.has(row.folderId))throw new AppError(422,'הפעולה זמינה למעקבים בלבד');
+   if(!isManager(p)&&row.creatorId!==p.userId)throw new AppError(403,'רק יוצר המעקב או מנהל רשאים להעביר ולמחוק אותו');
+   if(row.version!==item.version||row.archived!==(data.action==='restore'))throw new AppError(409,'המעקב השתנה. יש לרענן ולנסות שוב');
+   const [updated]=await tx.update(s.documentEntries).set({...(data.action==='move'?{folderId:data.folderId!}:{archived:data.action==='trash'}),version:row.version+1,updatedAt:new Date()}).where(and(scope(p),eq(s.documentEntries.id,row.id),eq(s.documentEntries.version,item.version),eq(s.documentEntries.archived,row.archived))).returning({id:s.documentEntries.id,version:s.documentEntries.version});
+   if(!updated)throw new AppError(409,'המעקב השתנה. יש לרענן ולנסות שוב');
+   results.push(updated);
+  }
+  return {items:results};
+ });
+}

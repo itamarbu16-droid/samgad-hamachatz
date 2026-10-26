@@ -7,7 +7,7 @@ import { seedDemo } from "../src/server/seed";
 import { principalFor } from "../src/server/service";
 import {
   createDocument,
-  createDocumentFolder, duplicateDocument,
+  createDocumentFolder, duplicateDocument, manageTrackers, getTrackerTrash,
   getDocuments,
   getDocument,
   updateDocument,
@@ -282,4 +282,29 @@ it('duplicates attached files without changing their bytes or the original',asyn
  const detail=await getDocument(deputy,copy.id),original=await getDocument(deputy,source.id);
  expect(detail.attachments[0].id).not.toBe(original.attachments[0].id);
  expect((await downloadDocument(deputy,detail.attachments[0].id)).bytes.equals(bytes)).toBe(true);
+});
+
+it('moves a tracker without duplicating it and supports trash and restore with unchanged file bytes',async()=>{
+ const folder=await createDocumentFolder(deputy,{name:'בטיחות בדרכים',parent:'trackers',section:'library',clientRequestId:randomUUID()});
+ const bytes=Buffer.from('synthetic road safety scan');
+ const doc=await createDocument(deputy,input({folderId:'trackers',title:'מעקב רכב',body:'שמות וסימונים',attachments:[{filename:'scan.pdf',contentBase64:bytes.toString('base64')}]}));
+ const file=(await getDocument(deputy,doc.id)).attachments[0];
+ await manageTrackers(deputy,{action:'move',folderId:folder.id,items:[{id:doc.id,version:1}]});
+ const moved=await getDocument(deputy,doc.id);expect(moved.folderId).toBe(folder.id);expect(moved.body).toBe('שמות וסימונים');expect(moved.attachments[0].id).toBe(file.id);
+ expect((await getDocuments(deputy)).entries.filter(e=>e.id===doc.id)).toHaveLength(1);
+ await expect(manageTrackers(deputy,{action:'trash',items:[{id:doc.id,version:1}]})).rejects.toMatchObject({status:409});
+ await manageTrackers(deputy,{action:'trash',items:[{id:doc.id,version:2}]});
+ expect((await getDocuments(deputy)).entries.some(e=>e.id===doc.id)).toBe(false);await expect(downloadDocument(deputy,file.id)).rejects.toMatchObject({status:404});
+ expect((await getTrackerTrash(deputy)).some(e=>e.id===doc.id)).toBe(true);
+ await manageTrackers(deputy,{action:'restore',items:[{id:doc.id,version:3}]});
+ expect((await getDocument(deputy,doc.id)).folderId).toBe(folder.id);expect((await downloadDocument(deputy,file.id)).bytes.equals(bytes)).toBe(true);
+});
+it('rejects unauthorized moves and deletes, and rolls back a batch when any version conflicts',async()=>{
+ const a=await createDocument(deputy,input({folderId:'trackers',title:'בדיקת רכב א'})),b=await createDocument(deputy,input({folderId:'trackers',title:'בדיקת רכב ב'}));
+ await expect(manageTrackers(contributor,{action:'trash',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:403});
+ await expect(manageTrackers(viewer,{action:'move',folderId:'trackers',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:403});
+ await expect(manageTrackers({...deputy,organizationId:'another'}, {action:'trash',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:404});
+ await expect(manageTrackers(deputy,{action:'move',folderId:'orders',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:422});
+ await expect(manageTrackers(deputy,{action:'trash',items:[{id:a.id,version:1},{id:b.id,version:9}]})).rejects.toMatchObject({status:409});
+ expect((await getDocument(deputy,a.id)).version).toBe(1);
 });

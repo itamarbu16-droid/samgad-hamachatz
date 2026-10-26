@@ -4,12 +4,12 @@ import type {PointerEvent as ReactPointerEvent,TouchEvent as ReactTouchEvent} fr
 
 type Drag = {ids:string[];title:string;x:number;y:number;target:string|null};
 type Pending = {ids:string[];title:string;x:number;y:number;touchId:number|null};
-export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void){
+export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void,onHold?:(ids:string[])=>void){
  const [drag,setDrag]=useState<Drag|null>(null);
  const active=useRef<Drag|null>(null),pending=useRef<Pending|null>(null);
  const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
- const suppressClick=useRef(false),drop=useRef(onDrop);
- drop.current=onDrop;
+ const suppressClick=useRef(false),drop=useRef(onDrop),hold=useRef(onHold);
+ drop.current=onDrop;hold.current=onHold;
  function clearTimer(){if(timer.current)clearTimeout(timer.current);timer.current=null;}
  function begin(ids:string[],title:string,x:number,y:number,touchId:number|null){
   clearTimer();suppressClick.current=false;pending.current={ids,title,x,y,touchId};
@@ -27,8 +27,8 @@ export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void){
    active.current={...active.current,x,y,target:targetAt(x,y)};setDrag(active.current);
   }
   function finish(cancelled=false){
-   clearTimer();const current=active.current;pending.current=null;active.current=null;setDrag(null);
-   if(current&&!cancelled){const target=targetAt(current.x,current.y);if(target)drop.current(current.ids,target);}
+   clearTimer();const current=active.current;const origin=pending.current;pending.current=null;active.current=null;setDrag(null);
+   if(current&&!cancelled){const target=origin&&Math.hypot(current.x-origin.x,current.y-origin.y)>10?targetAt(current.x,current.y):null;if(target)drop.current(current.ids,target);else hold.current?.(current.ids);}
   }
   const mouseMove=(e:PointerEvent)=>{if(e.pointerType==='mouse')move(e.clientX,e.clientY,e);};
   const mouseEnd=(e:PointerEvent)=>{if(e.pointerType==='mouse')finish();};

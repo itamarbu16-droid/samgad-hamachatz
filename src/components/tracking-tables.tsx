@@ -32,29 +32,33 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   const copyRequest=useRef("");
   const [marked,setMarked]=useState<string[]>([]);
   const [organizing,setOrganizing]=useState<Entry[]|null>(null);
-  const [copyProgress,setCopyProgress]=useState("");
-  const organizationRequests=useRef(new Map<string,string>());
   function organize(items:Entry[]){
-    if(dirty&&!window.confirm("ההעתקה תשתמש בגרסה השמורה. להמשיך?"))return;
-    organizationRequests.current.clear();setError("");setOrganizing(items);
+    if(dirty&&!window.confirm("הפעולה תשתמש בגרסה השמורה. להמשיך?"))return;
+    setError("");setOrganizing(items);
   }
   function destinationPath(id:string){const names:string[]=[];const seen=new Set<string>();let current:string|null=id;while(current&&!seen.has(current)){seen.add(current);const f=folders.find(f=>f.id===current);if(!f)break;names.unshift(f.name);current=f.parent;}return names.join(' / ');}
 
-  const dragDrop=useTrackerDrag((ids,target)=>{void copyIntoFolder(entries.filter(e=>ids.includes(e.id)),target);});
-  async function copyIntoFolder(items:Entry[],target:string){
-    if(busy||!canWrite)return;
-    if(dirty&&!window.confirm('ההעתקה תשתמש בגרסה השמורה. להמשיך?'))return;
-    organizationRequests.current.clear();setBusy(true);setError('');let completed=0;
+  const [actionItems,setActionItems]=useState<Entry[]|null>(null);
+  const [trashItems,setTrashItems]=useState<Entry[]|null>(null);
+  const dragDrop=useTrackerDrag((ids,target)=>{void manage(entries.filter(e=>ids.includes(e.id)),'move',target);},ids=>setActionItems(entries.filter(e=>ids.includes(e.id))));
+  function mayManage(entry:Entry){return manager||entry.creatorId===userId;}
+  async function manage(items:Entry[],action:'move'|'trash'|'restore',target?:string){
+    if(busy||!canWrite||!items.length)return;
+    if(dirty&&!window.confirm('יש שינויים שלא נשמרו. להמשיך עם הגרסה השמורה?'))return;
+    if(action==='trash'&&!window.confirm(`למחוק ${items.length===1?'את '+items[0].title:items.length+' מעקבים'}? אפשר לשחזר מתוך ״נמחקו לאחרונה״.`))return;
+    setBusy(true);setError('');
     try{
-      for(const entry of items){
-        setCopyProgress(`מעתיק ${completed+1} מתוך ${items.length}…`);
-        const id=crypto.randomUUID();organizationRequests.current.set(entry.id+':'+target,id);
-        const r=await apiFetch(`/api/documents/${entry.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:entry.title,folderId:target,resetStatuses:false,clientRequestId:id})});
-        const d=await r.json();if(!r.ok)throw Error(d.error||'ההעתקה נכשלה');completed++;
-      }
-      setMarked([]);setNotice(`${completed} מעקבים הועתקו לתיקייה ${destinationPath(target)}`);await load();window.dispatchEvent(new Event('samgad:saved'));
-    }catch(e){setError(`${completed} מתוך ${items.length} הועתקו. ${e instanceof Error?e.message:'ההעתקה נכשלה'}`);setOrganizing(items);}
-    finally{setBusy(false);setCopyProgress('');}
+      const r=await apiFetch('/api/documents/manage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,items:items.map(({id,version})=>({id,version})),...(target?{folderId:target}:{})})});
+      const d=await r.json();if(!r.ok)throw Error(d.error||'הפעולה נכשלה');
+      setMarked([]);setActionItems(null);setOrganizing(null);
+      if(selected&&items.some(e=>e.id===selected.id)){setActive(false);setSelected(null);setDirty(false);}
+      setNotice(action==='move'?`${items.length} מעקבים הועברו לתיקייה ${destinationPath(target!)}`:action==='trash'?'המעקבים נמחקו. ניתן לשחזר מתוך ״נמחקו לאחרונה״.':'המעקבים שוחזרו לתיקייה המקורית');
+      await load();if(trashItems!==null)await loadTrash();window.dispatchEvent(new Event('samgad:saved'));
+    }catch(e){setError(e instanceof Error?e.message:'הפעולה נכשלה');await load();}
+    finally{setBusy(false);}
+  }
+  async function loadTrash(){
+    const r=await apiFetch('/api/documents/manage',{cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'לא ניתן לטעון מחיקות');setTrashItems(d.entries);
   }
   function dragIds(entry:Entry){return marked.includes(entry.id)?marked:[entry.id];}
   const folderRequest=useRef("");
@@ -62,7 +66,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   const subfolders=folders.filter(f=>f.parent===folderId);
   function trackingDestination(id:string){const seen=new Set<string>();let current:string|null=id;while(current&&!seen.has(current)){if(current==='trackers')return true;seen.add(current);current=folders.find(f=>f.id===current)?.parent??null;}return false;}
   const destinations=folders.filter(f=>trackingDestination(f.id));
-  function askCopy(entry:Entry){if(dirty&&!window.confirm("יש שינויים שלא נשמרו. ההעתקה תשתמש בגרסה השמורה. להמשיך?"))return;copyRequest.current=crypto.randomUUID();setError("");setCopy(entry);}
+  function askCopy(entry:Entry){if(dirty&&!window.confirm("יש שינויים שלא נשמרו. הפעולה תשתמש בגרסה השמורה. להמשיך?"))return;copyRequest.current=crypto.randomUUID();setError("");setCopy(entry);}
 
   const [active,setActive]=useState(false);
   async function load() {
@@ -91,13 +95,12 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     setSelected({id:d.entry.id,title,creatorId:selected?.creatorId||userId,version:selected?selected.version+1:1});setDirty(false);setNotice("המעקב נשמר");await load();
   }catch(e){setError(e instanceof Error?e.message:"השמירה נכשלה");}finally{setBusy(false);}}
   return <div className="tracking-workspace">
-    <div className="document-toolbar"><button className="button secondary" onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירת השינויים?"))back();}}>חזרה לספרייה</button><h2>{currentFolder?.name||"מעקבים"}</h2>{folderId!=="trackers"&&<button className="button secondary" disabled={busy} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(currentFolder?.parent||"trackers");}}>חזרה לתיקייה הקודמת</button>}{manager&&<button className="button secondary" disabled={busy} onClick={()=>{folderRequest.current=crypto.randomUUID();setCreatingFolder(true);}}>＋ תיקייה חדשה</button>}{canWrite&&<><button className="button secondary" disabled={busy} onClick={addFile}>הוספת קובץ סרוק / אקסל</button><button className="button primary" disabled={busy} onClick={()=>setCreating(true)}>＋ מעקב חדש</button></>}</div>
+    <div className="document-toolbar"><button className="button secondary" onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירת השינויים?"))back();}}>חזרה לספרייה</button><h2>{currentFolder?.name||"מעקבים"}</h2>{canWrite&&<button className="button secondary" disabled={busy} onClick={()=>void loadTrash().catch(e=>setError(e.message))}>נמחקו לאחרונה</button>}{folderId!=="trackers"&&<button className="button secondary" disabled={busy} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(currentFolder?.parent||"trackers");}}>חזרה לתיקייה הקודמת</button>}{manager&&<button className="button secondary" disabled={busy} onClick={()=>{folderRequest.current=crypto.randomUUID();setCreatingFolder(true);}}>＋ תיקייה חדשה</button>}{canWrite&&<><button className="button secondary" disabled={busy} onClick={addFile}>הוספת קובץ סרוק / אקסל</button><button className="button primary" disabled={busy} onClick={()=>setCreating(true)}>＋ מעקב חדש</button></>}</div>
     {error&&<p className="error-banner" role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
-    {canWrite&&<p className="muted">לחיצה ארוכה על מעקב וגרירה לתיקייה תיצור בתוכה עותק עם כל התוכן והסימונים.</p>}
-    {copyProgress&&!organizing&&<p role="status">{copyProgress}</p>}
-    {dragDrop.drag&&<><div className="tracker-drop-tray" aria-label="תיקיות להעתקה"><strong role="status">גרור לתיקייה ושחרר כדי להעתיק</strong><div>{destinations.filter(f=>f.id!==folderId).map(f=><div key={f.id} data-tracker-drop={f.id} className={`tracker-drop-target ${dragDrop.drag?.target===f.id?'is-over':''}`}>📁 {destinationPath(f.id)}</div>)}</div></div><div className="tracker-drag-ghost" style={{left:Math.min(dragDrop.drag.x+12,window.innerWidth-200),top:Math.min(dragDrop.drag.y+16,window.innerHeight-70)}}>{dragDrop.drag.ids.length>1?`${dragDrop.drag.ids.length} מעקבים`:dragDrop.drag.title}</div></>}
-    {canWrite&&entries.length>0&&<div className="document-toolbar"><button className="button secondary" disabled={busy} onClick={()=>setMarked(marked.length===entries.length?[]:entries.map(e=>e.id))}>{marked.length===entries.length?'ביטול בחירה':'בחירת הכול'}</button><span>{marked.length} נבחרו</span><button className="button primary" disabled={busy||!marked.length} onClick={()=>organize(entries.filter(e=>marked.includes(e.id)))}>העתקה לתיקייה</button></div>}
-    <div className="document-folder-grid">{subfolders.map(f=><button className={`document-folder-card ${dragDrop.drag?.target===f.id?"tracker-folder-over":""}`} data-tracker-drop={f.id} key={f.id} disabled={busy} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(f.id);}}><strong>📁 {f.name}</strong><span>פתיחת תיקייה</span></button>)}{entries.map(e=><div key={e.id} className="tracking-entry-card">{canWrite&&<label><input type="checkbox" disabled={busy} checked={marked.includes(e.id)} onChange={event=>setMarked(ids=>event.target.checked?[...ids,e.id]:ids.filter(id=>id!==e.id))}/> בחירת {e.title}</label>}<button disabled={busy} key={e.id} className={`document-folder-card tracker-draggable ${dragDrop.drag?.ids.includes(e.id)?'is-dragging':''}`} onPointerDown={event=>{if(canWrite&&!busy)dragDrop.startMouse(event,dragIds(e),e.title);}} onTouchStart={event=>{if(canWrite&&!busy)dragDrop.startTouch(event,dragIds(e),e.title);}} onContextMenu={event=>{if(canWrite)event.preventDefault();}} onDragStart={event=>event.preventDefault()} onClick={()=>{if(!dragDrop.consumeClick())void open(e);}}><strong>{e.title}</strong><span>{e.attachments?.length?`${e.attachments.length} קבצים · פתיחה והורדה`:"פתיחת טבלה"}</span>{e.attachments?.map(file=><small key={file.id}>{file.filename}</small>)}</button>{canWrite&&<><button className="button secondary" disabled={busy} onClick={()=>organize([e])}>העתקה לתיקייה</button><button className="button secondary" disabled={busy} onClick={()=>askCopy(e)}>שכפול / שבוע נוסף</button></>}</div>)}
+    {canWrite&&<p className="muted">לחיצה ארוכה על מעקב וגרירה לתיקייה תעביר אותו לתוכה. לחיצה ארוכה ושחרור יפתחו תפריט פעולות.</p>}
+    {dragDrop.drag&&<><div className="tracker-drop-tray" aria-label="תיקיות להעברה"><strong role="status">גרור לתיקייה ושחרר כדי להעביר</strong><div>{destinations.filter(f=>f.id!==folderId).map(f=><div key={f.id} data-tracker-drop={f.id} className={`tracker-drop-target ${dragDrop.drag?.target===f.id?'is-over':''}`}>📁 {destinationPath(f.id)}</div>)}</div></div><div className="tracker-drag-ghost" style={{left:Math.min(dragDrop.drag.x+12,window.innerWidth-200),top:Math.min(dragDrop.drag.y+16,window.innerHeight-70)}}>{dragDrop.drag.ids.length>1?`${dragDrop.drag.ids.length} מעקבים`:dragDrop.drag.title}</div></>}
+    {canWrite&&entries.length>0&&<div className="document-toolbar"><button className="button secondary" disabled={busy} onClick={()=>setMarked(marked.length===entries.filter(mayManage).length?[]:entries.filter(mayManage).map(e=>e.id))}>{marked.length===entries.filter(mayManage).length?'ביטול בחירה':'בחירת הכול'}</button><span>{marked.length} נבחרו</span><button className="button primary" disabled={busy||!marked.length} onClick={()=>organize(entries.filter(e=>marked.includes(e.id)))}>העברה לתיקייה</button><button className="button secondary tracker-delete" disabled={busy||!marked.length} onClick={()=>void manage(entries.filter(e=>marked.includes(e.id)),'trash')}>מחיקה</button></div>}
+    <div className="document-folder-grid">{subfolders.map(f=><button className={`document-folder-card ${dragDrop.drag?.target===f.id?"tracker-folder-over":""}`} data-tracker-drop={f.id} key={f.id} disabled={busy} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(f.id);}}><strong>📁 {f.name}</strong><span>פתיחת תיקייה</span></button>)}{entries.map(e=><div key={e.id} className="tracking-entry-card">{canWrite&&mayManage(e)&&<label><input type="checkbox" disabled={busy} checked={marked.includes(e.id)} onChange={event=>setMarked(ids=>event.target.checked?[...ids,e.id]:ids.filter(id=>id!==e.id))}/> בחירת {e.title}</label>}<button disabled={busy} key={e.id} className={`document-folder-card tracker-draggable ${dragDrop.drag?.ids.includes(e.id)?'is-dragging':''}`} onPointerDown={event=>{if(canWrite&&mayManage(e)&&!busy)dragDrop.startMouse(event,dragIds(e),e.title);}} onTouchStart={event=>{if(canWrite&&mayManage(e)&&!busy)dragDrop.startTouch(event,dragIds(e),e.title);}} onContextMenu={event=>{if(canWrite){event.preventDefault();}}} onDragStart={event=>event.preventDefault()} onClick={()=>{if(!dragDrop.consumeClick())void open(e);}}><strong>{e.title}</strong><span>{e.attachments?.length?`${e.attachments.length} קבצים · פתיחה והורדה`:"פתיחת טבלה"}</span>{e.attachments?.map(file=><small key={file.id}>{file.filename}</small>)}</button>{canWrite&&<><button className="button secondary" disabled={busy||!mayManage(e)} onClick={()=>setActionItems([e])} aria-label={`פעולות עבור ${e.title}`}>••• פעולות</button><button className="button secondary" disabled={busy} onClick={()=>askCopy(e)}>שכפול / שבוע נוסף</button></>}</div>)}
     {folderId==="trackers"&&!loading&&!entries.some(e=>e.title===initialTitle)&&<button className="document-folder-card" disabled={!canWrite||busy} onClick={()=>{if(!dirty||window.confirm("להחליף את הטבלה שלא נשמרה?"))fresh(initialTitle,initialColumns);}}><strong>{initialTitle}</strong><span>טבלה מוכנה למילוי — שמירה תוסיף אותה למעקבים</span></button>}</div>
     {loading?<p role="status">טוען מעקבים…</p>:active?<section className="panel tracking-editor" aria-busy={busy}>
       <label>שם הטבלה<input value={title} maxLength={160} disabled={!editable||busy||Boolean(selected&&!manager&&selected.creatorId!==userId)} onChange={e=>{setTitle(e.target.value);setDirty(true);}} /></label>
@@ -110,20 +113,9 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       <div className="document-toolbar">{selected&&editable&&<button className="button secondary" disabled={busy} onClick={()=>askCopy(selected)}>שכפול לשבוע נוסף</button>}{editable&&<button className="button primary" disabled={busy||!dirty||title.trim().length<2} onClick={()=>void save()}>{busy?"שומר…":"שמירת המעקב"}</button>}</div>
       <small>המעקבים משותפים לבעלי הגישה לספרייה. העריכה לפי הרשאות הספרייה. השינויים נשמרים בלחיצה על שמירה.</small>
     </section>:<p>בחר טבלה או קובץ, או הוסף מעקב חדש כדי להתחיל.</p>}
-    {organizing&&<Modal title="העתקת מעקבים לתיקייה" close={()=>{if(!busy)setOrganizing(null);}}><form onSubmit={async e=>{
-      e.preventDefault();const form=new FormData(e.currentTarget);const target=String(form.get('folderId'));setBusy(true);setError('');
-      let completed=0;
-      try{
-        for(const entry of organizing){
-          setCopyProgress(`מעתיק ${completed+1} מתוך ${organizing.length}…`);
-          const key=entry.id+':'+target;let id=organizationRequests.current.get(key);if(!id){id=crypto.randomUUID();organizationRequests.current.set(key,id);}
-          const r=await apiFetch(`/api/documents/${entry.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:entry.title,folderId:target,resetStatuses:false,clientRequestId:id})});
-          const d=await r.json();if(!r.ok)throw Error(d.error||'ההעתקה נכשלה');completed++;
-        }
-        setOrganizing(null);setMarked([]);setNotice(`${completed} מעקבים הועתקו לתיקייה ${destinationPath(target)}`);await load();window.dispatchEvent(new Event('samgad:saved'));
-      }catch(e){setError(`${completed} מתוך ${organizing.length} הועתקו. ${e instanceof Error?e.message:'ההעתקה נכשלה'}. אפשר לנסות שוב ללא יצירת כפילויות באותה תיקייה.`);}
-      finally{setBusy(false);setCopyProgress('');}
-    }}><p>{organizing.length} מעקבים נבחרו. השמות, הקבצים וסימוני הביצוע יישמרו גם בעותקים. המקור יישאר במקומו.</p><ul>{organizing.map(e=><li key={e.id}>{e.title}</li>)}</ul><label>תיקיית יעד<select name="folderId" required disabled={busy} defaultValue=""><option value="" disabled>בחירת תיקייה</option>{destinations.map(f=><option key={f.id} value={f.id}>{destinationPath(f.id)}</option>)}</select></label>{copyProgress&&<p role="status">{copyProgress}</p>}{error&&<p role="alert">{error}</p>}<button className="button primary" disabled={busy}>{busy?'מעתיק…':'העתקה לתיקייה'}</button></form></Modal>}
+    {actionItems&&<Modal title={actionItems.length===1?actionItems[0].title:`${actionItems.length} מעקבים נבחרו`} close={()=>{if(!busy)setActionItems(null);}}><div className="tracker-action-menu"><button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);organize(actionItems);}}>העברה לתיקייה</button>{actionItems.length===1&&<button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);askCopy(actionItems[0]);}}>שכפול לשבוע נוסף</button>}<button className="button secondary tracker-delete" disabled={busy} onClick={()=>void manage(actionItems,'trash')}>מחיקה</button><button className="button secondary" disabled={busy} onClick={()=>setActionItems(null)}>ביטול</button></div></Modal>}
+    {organizing&&<Modal title="העברת מעקבים לתיקייה" close={()=>{if(!busy)setOrganizing(null);}}><form onSubmit={e=>{e.preventDefault();const target=String(new FormData(e.currentTarget).get('folderId'));void manage(organizing,'move',target);}}><p>{organizing.length} מעקבים יועברו עם כל השמות, הקבצים והסימונים.</p><label>תיקיית יעד<select name="folderId" required disabled={busy} defaultValue=""><option value="" disabled>בחירת תיקייה</option>{destinations.filter(f=>f.id!==folderId).map(f=><option key={f.id} value={f.id}>{destinationPath(f.id)}</option>)}</select></label>{error&&<p role="alert">{error}</p>}<button className="button primary" disabled={busy}>{busy?'מעביר…':'העברה לכאן'}</button></form></Modal>}
+    {trashItems!==null&&<Modal title="נמחקו לאחרונה" close={()=>{if(!busy)setTrashItems(null);}}><p>המעקבים נשמרים כאן עד לשחזור. המחיקה אינה מוחקת את הקבצים לצמיתות.</p>{error&&<p role="alert">{error}</p>}{trashItems.length===0?<p>אין מעקבים שנמחקו.</p>:trashItems.map(e=><div key={e.id} className="document-toolbar"><strong>{e.title}</strong><button className="button secondary" disabled={busy} onClick={()=>void manage([e],'restore')}>שחזור</button></div>)}</Modal>}
     {creatingFolder&&<Modal title="תיקייה חדשה במעקבים" close={()=>{if(!busy)setCreatingFolder(false);}}><form onSubmit={async e=>{
       e.preventDefault();const form=new FormData(e.currentTarget);setBusy(true);setError("");
       try{const r=await apiFetch('/api/documents/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.get('name'),parent:folderId,section:'library',clientRequestId:folderRequest.current})});const d=await r.json();if(!r.ok)throw Error(d.error);setCreatingFolder(false);setNotice('התיקייה נוספה');foldersChanged();}
