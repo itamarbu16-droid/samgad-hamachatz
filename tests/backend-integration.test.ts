@@ -6,6 +6,7 @@ import { seedDemo } from '../src/server/seed';
 import { getAuth } from '../src/server/auth';
 import { createTask,updateTask,addComment,createDecision,updateDecision,getWorkspace,principalFor } from '../src/server/service';
 import * as s from '../src/server/schema';
+import {undoRhythm} from '../src/server/rhythm';
 import type { Principal } from '../src/server/policy';
 
 let deputy:Principal,company:Principal,contributor:Principal,viewer:Principal;
@@ -20,7 +21,7 @@ afterAll(closeDb);
 describe('persistent domain workflows',()=>{
   it('seeds real persisted counts and isolates every collection',async()=>{
     const all=await getWorkspace(deputy), scoped=await getWorkspace(company), assigned=await getWorkspace(contributor);
-    expect(all.metrics.overdue).toBe(3);expect(all.metrics.blocked).toBe(1);expect(all.decisions.filter(d=>d.status==='pending')).toHaveLength(2);
+    expect(all.metrics.overdue).toBe(3);expect(all.metrics.blocked).toBe(0);expect(all.decisions.filter(d=>d.status==='pending')).toHaveLength(2);
     expect(scoped.tasks.every(t=>t.companyId==='company-a')).toBe(true);
     expect(scoped.decisions.every(d=>d.companyId==='company-a')).toBe(true);
     const ids=new Set([...scoped.tasks.map(t=>t.id),...scoped.decisions.map(d=>d.id)]);expect(scoped.activity.every(a=>ids.has(a.entityId))).toBe(true);
@@ -30,7 +31,9 @@ describe('persistent domain workflows',()=>{
     const input={title:'בדיקת תהליך מלא',description:'תיאור שנשמר',ownerId:company.userId,domainId:'safety',companyId:'company-a',clientRequestId:randomUUID()};
     const created=await createTask(deputy,input),retry=await createTask(deputy,input);expect(retry.id).toBe(created.id);
     await expect(createTask(deputy,{...input,title:'תוכן שונה'})).rejects.toMatchObject({status:409});
-    const running=await updateTask(deputy,created.id,{version:created.version,status:'in_progress'});expect(running.description).toBe(input.description);
+    const retryPatch={version:created.version,status:'in_progress',clientRequestId:randomUUID()};
+    const running=await updateTask(deputy,created.id,retryPatch);expect(running.description).toBe(input.description);
+    const retriedPatch=await updateTask(deputy,created.id,retryPatch);expect(retriedPatch.version).toBe(running.version);expect(retriedPatch.undoToken).toBe(running.undoToken);
     await expect(updateTask(deputy,created.id,{version:created.version,status:'blocked',blockerReason:'חסום'})).rejects.toMatchObject({status:409});
     await addComment(company,created.id,{body:'התקדמות נשמרה'});
     const completed=await updateTask(deputy,created.id,{version:running.version,status:'completed'});expect(completed.completedBy).toBe(deputy.userId);expect(completed.completedAt).toBeInstanceOf(Date);
@@ -45,7 +48,8 @@ describe('persistent domain workflows',()=>{
   it('rechecks current scope before replaying an earlier mutation response',async()=>{
     const input={title:'בדיקת הרשאות בחזרה על בקשה',ownerId:company.userId,domainId:'safety',companyId:'company-a',clientRequestId:randomUUID()};
     const task=await createTask(company,input);
-    await updateTask(deputy,task.id,{version:task.version,companyId:'company-b',ownerId:deputy.userId});
+    // Simulate an external permission/scope change; a manager cannot open another user's private task.
+    await (await getDb()).update(s.tasks).set({companyId:'company-b',ownerId:deputy.userId}).where(eq(s.tasks.id,task.id));
     await expect(createTask(company,input)).rejects.toMatchObject({status:404});
   });
   it('contributor can update own status but not ownership or a review-required completion',async()=>{
@@ -73,5 +77,16 @@ describe('persistent domain workflows',()=>{
     const auth=await getAuth();const session=await auth.api.signInEmail({body:{email:'demo@samgad.example',password:process.env.DEMO_PASSWORD!}});expect(session.token).toBeTruthy();
     await expect(auth.api.signInEmail({body:{email:'demo@samgad.example',password:'incorrect-password'}})).rejects.toThrow();
     await expect(auth.api.signUpEmail({body:{email:'unauthorized@samgad.example',name:'Unauthorized',password:'unapproved-password'}})).rejects.toThrow();
+  });
+});
+
+describe('ordinary task undo',()=>{
+  it('restores completion without overwriting newer edits',async()=>{
+    const task=await createTask(deputy,{title:'בדיקת ביטול רגילה',ownerId:deputy.userId,domainId:'safety'});
+    const done=await updateTask(deputy,task.id,{version:1,status:'completed'});
+    await undoRhythm(deputy,{token:done.undoToken});
+    const restored=(await getWorkspace(deputy)).tasks.find(t=>t.id===task.id)!;
+    expect(restored.status).toBe('open');expect(restored.completedAt).toBeNull();
+    await expect(undoRhythm(deputy,{token:done.undoToken})).rejects.toMatchObject({status:409});
   });
 });

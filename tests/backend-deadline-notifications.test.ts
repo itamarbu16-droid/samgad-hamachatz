@@ -1,0 +1,44 @@
+import {beforeAll,afterAll,it,expect,vi} from 'vitest';
+import {randomUUID,createECDH,createPublicKey,verify} from 'node:crypto';
+import {eq} from 'drizzle-orm';
+import {seedDemo} from '../src/server/seed';
+import {getDb,closeDb} from '../src/server/db';
+import {principalFor,createTask,updateTask,getWorkspace} from '../src/server/service';
+import {createRhythmItem,getRhythm,editRhythmItem,completeRhythm} from '../src/server/rhythm';
+import {actOnTask} from '../src/server/task-actions';
+import {requestDeadline,resolveDeadline,listDeadlineRequests} from '../src/server/deadline-requests';
+import {purgeCompletedTasks} from '../src/server/task-archive';
+import {subscribePush,pushKey,vapidAuthorization,validPushEndpoint,flushPush} from '../src/server/notifications';
+import {localDate,type Principal} from '../src/server/policy';
+import {addDays} from '../src/lib/rhythm';
+import * as s from '../src/server/schema';
+let owner:Principal,deputy:Principal;const today=localDate();
+beforeAll(async()=>{process.env.DEMO_MODE='true';process.env.PGLITE_DATA_DIR='memory://';delete process.env.DATABASE_URL;delete process.env.VERCEL;process.env.BETTER_AUTH_URL='http://localhost:3000';process.env.BETTER_AUTH_SECRET='isolated-test-secret-12345678901234567890';process.env.DEMO_PASSWORD='isolated-password-12345';process.env.DEMO_EMAIL='demo@samgad.example';await seedDemo();const users=await (await getDb()).select().from(s.user);const p=(email:string)=>{const u=users.find(u=>u.email===email)!;return principalFor(u.id,u.name);};owner=await p('demo@samgad.example');deputy=await p('company.a@samgad.example');},60000);
+afterAll(async()=>{vi.unstubAllGlobals();await closeDb();});
+const assigned=()=>createTask(owner,{title:'בדיקת בקשת הארכה',ownerId:deputy.userId,domainId:'safety',companyId:'company-a',dueDate:today});
+it('blocks direct deadline edits and leaves the original date until manager approval',async()=>{
+ const t=await assigned();
+ await expect(updateTask(deputy,t.id,{version:1,dueDate:addDays(today,2)})).rejects.toMatchObject({status:403});
+ await expect(actOnTask(deputy,{kind:'task',id:t.id,version:1,action:'extend',date:addDays(today,2)})).rejects.toMatchObject({status:403});
+ const request=await requestDeadline(deputy,{kind:'task',id:t.id,date:addDays(today,2),reason:'נדרש זמן לתיקון'});
+ expect((await getWorkspace(owner)).tasks.find(row=>row.id===t.id)?.dueDate).toBe(today);
+ await expect(resolveDeadline(deputy,{id:request.id,approve:true})).rejects.toMatchObject({status:403});
+ await resolveDeadline(owner,{id:request.id,approve:true});expect((await getWorkspace(owner)).tasks.find(row=>row.id===t.id)?.dueDate).toBe(addDays(today,2));
+ await expect(resolveDeadline(owner,{id:request.id,approve:false})).rejects.toMatchObject({status:409});
+});
+it('rejection preserves the original deadline and duplicate pending requests are rejected',async()=>{const t=await assigned();const input={kind:'task',id:t.id,date:addDays(today,1),reason:'ממתין לציוד'};const request=await requestDeadline(deputy,input);await expect(requestDeadline(deputy,input)).rejects.toMatchObject({status:409});await resolveDeadline(owner,{id:request.id,approve:false});expect((await getWorkspace(owner)).tasks.find(row=>row.id===t.id)?.dueDate).toBe(today);expect((await listDeadlineRequests(deputy)).find(r=>r.id===request.id)?.status).toBe('rejected');});
+it('blocks alternate recurring item edits and extends only the approved occurrence',async()=>{const item=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'בדיקת מופע',frequency:'daily',startDate:today,endDate:addDays(today,2),recipientIds:[deputy.userId]});await expect(editRhythmItem(deputy,item.id,{version:1,hasDeadline:false})).rejects.toMatchObject({status:403});const before=(await getRhythm(owner)).occurrences.filter(o=>o.itemId===item.id),row=before[0];const request=await requestDeadline(deputy,{kind:'rhythm',id:item.id,occurrenceId:row.id,date:addDays(row.dueDate,2),reason:'נדרש תיאום'});await resolveDeadline(owner,{id:request.id,approve:true});const after=(await getRhythm(owner)).occurrences.filter(o=>o.itemId===item.id);expect(after).toHaveLength(before.length);expect(after.find(o=>o.id===row.id)?.dueDate).toBe(addDays(row.dueDate,2));});
+it('purges old one-off completions but retains recurring history and pending review',async()=>{const db=await getDb(),t=await assigned(),pending=await assigned();await updateTask(owner,t.id,{version:1,status:'completed'});await updateTask(deputy,pending.id,{version:1,status:'pending_review'});const old=new Date();old.setUTCMonth(old.getUTCMonth()-2);await db.update(s.tasks).set({completedAt:old}).where(eq(s.tasks.id,t.id));const item=await createRhythmItem(owner,{clientRequestId:randomUUID(),title:'מחיקת מופע ישן',frequency:'daily',startDate:today,endDate:addDays(today,2),recipientIds:[owner.userId]});const row=(await getRhythm(owner)).occurrences.find(o=>o.itemId===item.id)!;await completeRhythm(owner,row.id,{version:row.version,recipientId:owner.userId,done:true});await db.update(s.rhythmOccurrences).set({completedAt:old}).where(eq(s.rhythmOccurrences.id,row.id));await purgeCompletedTasks(owner.organizationId);const data=await getRhythm(owner);expect(data.occurrences.find(o=>o.id===row.id)?.done).toBe(true);expect(data.occurrences.filter(o=>o.itemId===item.id)).toHaveLength(3);const tasks=(await getWorkspace(owner)).tasks;expect(tasks.some(t2=>t2.id===t.id)).toBe(false);expect(tasks.find(t2=>t2.id===pending.id)?.status).toBe('pending_review');});
+it('uses valid VAPID signatures, rejects arbitrary endpoints, and queues assignment notifications',async()=>{expect(validPushEndpoint('https://localhost/api')).toBe(false);expect(validPushEndpoint('https://web.push.apple.com/Q/test')).toBe(true);const key=await pushKey(owner);expect(key.encryptedPrivateKey).not.toContain('key');const ecdh=createECDH('prime256v1');ecdh.generateKeys();const pub=ecdh.getPublicKey(),authorization=vapidAuthorization('https://web.push.apple.com/Q/test',pub.toString('base64url'),ecdh.getPrivateKey().toString('base64url'));const jwt=authorization.split('t=')[1].split(',')[0],parts=jwt.split('.');const publicKey=createPublicKey({key:{kty:'EC',crv:'P-256',x:pub.subarray(1,33).toString('base64url'),y:pub.subarray(33).toString('base64url')},format:'jwk'});expect(verify('sha256',Buffer.from(parts[0]+'.'+parts[1]),{key:publicKey,dsaEncoding:'ieee-p1363'},Buffer.from(parts[2],'base64url'))).toBe(true);await assigned();expect((await (await getDb()).select().from(s.pushEvents)).some(e=>e.recipientId===deputy.userId&&e.title.includes('חדשה'))).toBe(true);await expect(subscribePush(deputy,{endpoint:'https://localhost/private',keys:{p256dh:pub.toString('base64url'),auth:Buffer.alloc(16).toString('base64url')}})).rejects.toMatchObject({status:422});});
+
+it('sends authenticated wake-up pushes and removes expired device subscriptions',async()=>{
+ const ecdh=createECDH('prime256v1');ecdh.generateKeys();
+ const endpoint='https://web.push.apple.com/Q/isolated-test';
+ await subscribePush(deputy,{endpoint,keys:{p256dh:ecdh.getPublicKey().toString('base64url'),auth:Buffer.alloc(16).toString('base64url')}});
+ const deliver=vi.fn(async()=>new Response(null,{status:201}));vi.stubGlobal('fetch',deliver);
+ await assigned();await flushPush();expect(deliver).toHaveBeenCalled();
+ const [url,options]=deliver.mock.calls[0] as unknown as [string,RequestInit];expect(url).toBe(endpoint);expect((options.headers as Record<string,string>).Authorization).toMatch(/^vapid t=/);expect(options.body).toBeUndefined();
+ deliver.mockImplementation(async()=>new Response(null,{status:410}));await assigned();await flushPush();
+ expect((await (await getDb()).select().from(s.pushSubscriptions)).some(row=>row.endpoint===endpoint)).toBe(false);
+ vi.unstubAllGlobals();
+});

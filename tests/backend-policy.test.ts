@@ -18,8 +18,9 @@ describe('scope policy',()=>{
   });
 });
 describe('task lifecycle',()=>{
-  it('requires progress before completion and review when configured',()=>{
-    expect(()=>assertTransition(manager,{status:'open',requiresReview:false},'completed')).toThrow();
+  it('allows direct completion and requires review when configured',()=>{
+    expect(()=>assertTransition(manager,{status:'open',requiresReview:false},'completed')).not.toThrow();
+    expect(()=>assertTransition(manager,{status:'pending_review',requiresReview:false,creatorId:'another',ownerId:'u1'},'completed')).toThrow();
     expect(()=>assertTransition(manager,{status:'in_progress',requiresReview:true},'completed')).toThrow();
     expect(()=>assertTransition(manager,{status:'pending_review',requiresReview:true},'completed')).not.toThrow();
     expect(()=>assertTransition({...manager,role:'contributor'},{status:'pending_review',requiresReview:true},'completed')).toThrow();
