@@ -1,3 +1,5 @@
+import {calendarPeriodEnd} from "../lib/rhythm-periods";
+import {ensureOwnerShaalach} from "./shaalach-template";
 import {authorizedMember} from "./access";
 import {expandRoleGroups,roleName} from "../lib/unit-roles";
 import {purgeCompletedTasks} from "./task-archive";
@@ -185,11 +187,11 @@ async function materialize(
         .values(
           dates
             .slice(index, index + 100)
-            .map((dueDate) => ({ id: randomUUID(), itemId: item.id, dueDate, scheduledDate:dueDate })),
+            .map((dueDate) => ({ id: randomUUID(), itemId: item.id, dueDate:item.id.startsWith("shaalach-605:")?calendarPeriodEnd(dueDate,item.frequency as Frequency):dueDate, scheduledDate:dueDate })),
         )
         .onConflictDoNothing()
         .returning();
-      const messages = (item.category === "point" ? [] : inserted).flatMap((row) =>
+      const messages = (item.category === "point" || item.id.startsWith("shaalach-605:") ? [] : inserted).flatMap((row) =>
         item.assigneeIds.map((recipientId) => ({
           id: randomUUID(),
           occurrenceId: row.id,
@@ -425,6 +427,7 @@ export async function getRhythm(p: Principal, month = localDate().slice(0, 7)) {
   )
     throw new AppError(422, "יש לבחור חודש בטווח המותר");
   await ensureUnitRoleGroups(p);
+  await ensureOwnerShaalach(p);
   const db = await getDb();
   const items = await db.select().from(s.rhythmItems).where(rhythmScope(p));
   const today = localDate();

@@ -1,6 +1,7 @@
 "use client";
 
 
+import {RhythmGantt} from "./rhythm-gantt";
 import {WeeklySchedule} from "./weekly-schedule";
 import { useState, useEffect } from "react";
 import { Plus, CheckCheck, CalendarDays, Users, NotebookPen } from "lucide-react";
@@ -32,7 +33,7 @@ export default function PersonalRhythm({
     [tab, setTab] = useState("tasks"),
     [filter, setFilter] = useState("all"),
     [query, setQuery] = useState("");
-  const [sort,setSort]=useState<TaskSort>("deadline_asc"),[frequency,setFrequency]=useState("all");
+  const [sort,setSort]=useState<TaskSort>("deadline_asc"),[frequency,setFrequency]=useState("all"),[rhythmLayout,setRhythmLayout]=useState("gantt");
   const [modal, setModal] = useState(""),
     [editing, setEditing] = useState<Item>(),
     [selection, setSelection] = useState<string[]>([]),
@@ -68,6 +69,12 @@ export default function PersonalRhythm({
     sync(); window.addEventListener('popstate',sync);
     return () => window.removeEventListener('popstate',sync);
   }, [manageRhythm,scope,manager]);
+  useEffect(() => {
+    const rollover = () => { if (!new URLSearchParams(location.search).has('month')) setMonth(currentMonth()); };
+    const timer = setInterval(rollover, 60000);
+    document.addEventListener('visibilitychange', rollover);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', rollover); };
+  }, []);
   useEffect(() => {
     if (!data) return;
     const id = new URLSearchParams(window.location.search).get("occurrence");
@@ -175,6 +182,7 @@ export default function PersonalRhythm({
         }}><I size={17} />{String(label)}</button>;
       })}
     </div>
+    {tab === "rhythm" && <div className="rhythm-tabs"><button className={rhythmLayout==="gantt"?"button primary":"button secondary"} onClick={()=>setRhythmLayout("gantt")}>טבלת גאנט</button><button className={rhythmLayout==="list"?"button primary":"button secondary"} onClick={()=>setRhythmLayout("list")}>עריכת משימות ברשימה</button></div>}
     {tab === "rhythm" && <div className="frequency-tabs" role="group" aria-label="תדירות שעל״ח"><button type="button" aria-pressed={frequency==="all"} className={frequency==="all"?"button primary":"button secondary"} onClick={()=>setFrequency("all")}>כל התדירויות</button>{Object.entries(frequencies).filter(([id])=>id!=="once").map(([id,label])=><button type="button" key={id} aria-pressed={frequency===id} className={frequency===id?"button primary":"button secondary"} onClick={()=>setFrequency(id)}>{label}</button>)}</div>}
     {tab === "tasks" && <p className="rhythm-info">{manageRhythm ? "משימות חד־פעמיות שהוספת. תג״ב הוא לבחירתך; המשימות החוזרות נמצאות בנפרד בשעל״ח." : "המשימות שלך במקום אחד. סימון ביצוע מועבר לאישור המנהל."}</p>}
     <p className="task-swipe-help">החלק ימינה: הצמדה או מחיקה · החלק שמאלה: תג״ב או יומן · כל הפעולות גם בכפתור ⋯</p>
@@ -226,7 +234,7 @@ export default function PersonalRhythm({
       </div>
       {tab === "points" && <p className="rhythm-info">מקום פרטי לנושאים שתרצה לקדם. אפשר להוסיף נקודה בלי מועד, ובהמשך להפוך אותה למשימה ולבחור אחראי.</p>}
       {selection.length > 0 && canWrite && <div className="bulk-toolbar" role="group" aria-label="פעולות על משימות נבחרות"><strong>{selection.length} נבחרו</strong><button className="button primary" disabled={actions.busy} onClick={() => void batch("done")}>סימון בוצע</button>{manager && <><button className="button secondary" disabled={actions.busy} onClick={() => void batch("approve")}>אישור דיווחים</button><select aria-label="אחראי למשימות הנבחרות" value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="button secondary" disabled={actions.busy || !bulkOwner} onClick={() => void batch("assign")}>שינוי אחראי</button></>}<button className="button secondary" onClick={() => setSelection([])}>ניקוי בחירה</button></div>}
-      <section className="rhythm-card-list" aria-label="רשימת משימות"><div className="rhythm-list-heading">{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}{canWrite && <label className="rhythm-select-all"><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} /><span>בחירת הכול</span></label>}</div><div className="rhythm-cards">
+      {tab === "rhythm" && rhythmLayout === "gantt" ? <RhythmGantt items={data.items.filter(item=>(scope==="personal"?isPersonalItem(item,userId):!isPersonalItem(item,userId))&&(frequency==="all"||item.frequency===frequency)&&(!query||`${item.title} ${item.description}`.toLowerCase().includes(query.toLowerCase())))} occurrences={data.occurrences} month={month} today={data.today} filter={filter} canWrite={canWrite} busy={actions.busy} onEdit={item=>{setEditing(item);setModal("create");}} onToggle={(item,row)=>void actions.run([{url:`/api/rhythm/occurrences/${row.id}`,method:"PATCH",body:{version:row.version,recipientIds:item.assigneeIds,done:!row.done}}])}/> : <section className="rhythm-card-list" aria-label="רשימת משימות"><div className="rhythm-list-heading">{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}{canWrite && <label className="rhythm-select-all"><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} /><span>בחירת הכול</span></label>}</div><div className="rhythm-cards">
         {visible.map(({
               item,
               occurrence
@@ -249,7 +257,7 @@ export default function PersonalRhythm({
                     archived: true
                   })])}>ארכוב</button>}</div>}</TaskActions></div>
         </SwipeTaskRow>)}
-      </div>{!visible.length && <Empty>אין פריטים בתצוגה הזו. אפשר להוסיף חדש או לשנות סינון.</Empty>}</section>
+      </div>{!visible.length && <Empty>אין פריטים בתצוגה הזו. אפשר להוסיף חדש או לשנות סינון.</Empty>}</section>}
       {canWrite && <details><summary>ארכיון</summary>{data.items.filter(item => item.archived && (scope === "personal" ? isPersonalItem(item, userId) : !manageRhythm || !isPersonalItem(item, userId)) && item.creatorId === userId).map(item => <p key={item.id}>{item.title} <button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([patch(item, {
             archived: false
           })])}>שחזור</button></p>)}</details>}

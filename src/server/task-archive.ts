@@ -12,7 +12,7 @@ export async function purgeCompletedTasks(organizationId?:string,now=new Date())
    await tx.update(s.decisions).set({taskId:null}).where(inArray(s.decisions.taskId,ids));
    await tx.delete(s.tasks).where(and(inArray(s.tasks.id,ids),eq(s.tasks.status,'completed'),lt(s.tasks.completedAt,cutoff)));
   }
-  const rows=await tx.select({occurrence:s.rhythmOccurrences,item:s.rhythmItems}).from(s.rhythmOccurrences).innerJoin(s.rhythmItems,eq(s.rhythmItems.id,s.rhythmOccurrences.itemId)).where(and(lt(s.rhythmOccurrences.completedAt,cutoff),organizationId?eq(s.rhythmItems.organizationId,organizationId):undefined)).for('update');
+  const rows=await tx.select({occurrence:s.rhythmOccurrences,item:s.rhythmItems}).from(s.rhythmOccurrences).innerJoin(s.rhythmItems,eq(s.rhythmItems.id,s.rhythmOccurrences.itemId)).where(and(eq(s.rhythmItems.frequency,'once'),lt(s.rhythmOccurrences.completedAt,cutoff),organizationId?eq(s.rhythmItems.organizationId,organizationId):undefined)).for('update');
   for(const {occurrence,item} of rows){
    await tx.insert(s.expiredTaskRecords).values({taskKey:`${item.id}:${occurrence.scheduledDate||occurrence.dueDate}`}).onConflictDoNothing();
    await tx.delete(s.rhythmMail).where(eq(s.rhythmMail.occurrenceId,occurrence.id));

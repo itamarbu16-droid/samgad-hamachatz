@@ -28,6 +28,7 @@ export type Occurrence = {
   id: string;
   itemId: string;
   dueDate: string;
+  scheduledDate?: string | null;
   done: boolean;
   urgent: boolean;
   version: number;

@@ -433,3 +433,20 @@ it('replays uncertain offline completion and item edits idempotently',async()=>{
   const repeated=await editRhythmItem(deputy,item.id,edit);
   expect(repeated.version).toBe(edited.version);
 });
+
+describe('private checklist import',()=>{
+ it('imports only for the configured workspace owner and remains idempotent',async()=>{
+  process.env.SHAALACH_IMPORT_JSON=JSON.stringify({ownerEmail:'demo@samgad.example',items:[{title:'Synthetic monthly checklist',frequency:'monthly'}]});
+  try{
+   const unrelated=await getRhythm(companyA);
+   expect(unrelated.items.some(item=>item.title==='Synthetic monthly checklist')).toBe(false);
+   const first=await getRhythm(deputy),second=await getRhythm(deputy);
+   const imported=second.items.filter(item=>item.title==='Synthetic monthly checklist');
+   expect(imported).toHaveLength(1);
+   expect(imported[0].startDate).toBe(today.slice(0,7)+'-01');
+   expect(imported[0].assigneeIds).toEqual([deputy.userId]);
+   expect(first.occurrences.find(row=>row.itemId===imported[0].id)?.id).toBe(second.occurrences.find(row=>row.itemId===imported[0].id)?.id);
+   expect((await getRhythm(companyA)).items.some(item=>item.id===imported[0].id)).toBe(false);
+  }finally{delete process.env.SHAALACH_IMPORT_JSON;}
+ });
+});
