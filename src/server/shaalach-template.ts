@@ -6,7 +6,7 @@ import {canEditAll,localDate,type Principal} from './policy';
 import {periodAnchor} from '../lib/rhythm-periods';
 import type {Frequency} from '../lib/rhythm';
 import {z} from 'zod';
-const importSchema=z.object({ownerEmail:z.string().email(),items:z.array(z.object({title:z.string().min(1).max(300),frequency:z.enum(['daily','weekly','fortnightly','monthly','quarterly','semiannual','annual'])})).max(200)});
+const importSchema=z.object({ownerEmail:z.string().email().optional(),organizationId:z.string().min(1).optional(),items:z.array(z.object({title:z.string().min(1).max(300),frequency:z.enum(['daily','weekly','fortnightly','monthly','quarterly','semiannual','annual'])})).max(200)});
 // Owner-supplied checklist lives in private deployment configuration, never in source.
 export async function ensureOwnerShaalach(p:Principal){
  if(!canEditAll(p)||!process.env.SHAALACH_IMPORT_JSON)return;
@@ -14,7 +14,9 @@ export async function ensureOwnerShaalach(p:Principal){
  if(!parsed.success)throw new Error('Invalid recurring checklist import configuration');
  const db=await getDb(),owner=p.workspaceOwnerId||p.userId;
  const [account]=await db.select({email:s.user.email}).from(s.user).where(eq(s.user.id,owner));
- if(account?.email.toLowerCase()!==parsed.data.ownerEmail.toLowerCase())return;
+ if(parsed.data.organizationId ? p.organizationId!==parsed.data.organizationId : !parsed.data.ownerEmail || account?.email.toLowerCase()!==parsed.data.ownerEmail.toLowerCase())return;
+ const [workspace]=await db.select({ownerId:s.workspaceSettings.ownerId}).from(s.workspaceSettings).where(eq(s.workspaceSettings.organizationId,p.organizationId));
+ if(workspace?.ownerId!==owner)return;
  const today=localDate();
  const existing=await db.select({title:s.rhythmItems.title,frequency:s.rhythmItems.frequency}).from(s.rhythmItems).where(and(eq(s.rhythmItems.organizationId,p.organizationId),eq(s.rhythmItems.creatorId,owner)));
  const values=parsed.data.items.filter(({title,frequency})=>!existing.some(item=>item.title===title&&item.frequency===frequency)).map(({title,frequency})=>({
