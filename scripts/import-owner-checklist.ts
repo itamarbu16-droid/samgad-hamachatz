@@ -7,7 +7,8 @@ import {materialize} from '../src/server/rhythm';
 import {localDate,type Principal} from '../src/server/policy';
 import {monthEnd} from '../src/lib/rhythm';
 async function run(){
- if(process.env.VERCEL_PROJECT_ID!=='prj_pktl4SKuEO9E443R77FFe1p95N3M'||process.env.VERCEL_ENV!=='preview'||process.env.VERCEL_GIT_COMMIT_REF!=='feature/personal-rhythm')throw Error('Checklist import is restricted to the owner-approved active application');
+ if(!process.env.SHAALACH_IMPORT_JSON)return;
+ if(process.env.VERCEL_PROJECT_ID!=='prj_pktl4SKuEO9E443R77FFe1p95N3M'||process.env.VERCEL_ENV!=='preview'||process.env.VERCEL_GIT_COMMIT_REF!=='feature/personal-rhythm')return;
  const config=JSON.parse(process.env.SHAALACH_IMPORT_JSON||'{}') as {organizationId?:string;items?:{title:string;frequency:string}[]};
  if(!config.organizationId||!config.items?.length)throw Error('Missing approved checklist configuration');
  const db=await getDb();
