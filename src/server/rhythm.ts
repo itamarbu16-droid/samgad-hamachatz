@@ -1,4 +1,4 @@
-import {calendarPeriodEnd} from "../lib/rhythm-periods";
+import {calendarPeriodEnd,periodSegments} from "../lib/rhythm-periods";
 import {ensureOwnerShaalach} from "./shaalach-template";
 import {authorizedMember} from "./access";
 import {expandRoleGroups,roleName} from "../lib/unit-roles";
@@ -166,7 +166,7 @@ async function receipt<T>(
     .where(eq(s.mutationReceipts.key, key));
   return result;
 }
-async function materialize(
+export async function materialize(
   db: Database | Tx,
   items: Item[],
   through: string,
@@ -514,6 +514,7 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       clientRequestId:z.string().uuid().optional(),
       version: z.number().int().positive(),
       done: z.boolean(),
+      performedOn: dateInput.optional(),
       recipientId: z.string().optional(),
       recipientIds: z.array(z.string().min(1)).min(1).max(100).optional(),
       review: z.enum(["approve", "reject"]).optional(),
@@ -532,6 +533,14 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
       .where(and(rhythmScope(p), eq(s.rhythmOccurrences.id, id)));
     if (!record) throw new AppError(404, "המשימה אינה זמינה לך");
     const { item, occurrence } = record;
+    const performedOn=data.performedOn;
+    if(performedOn){
+      if(item.frequency==='once'||!data.done||data.review)throw new AppError(422,'תאריך ביצוע מיועד לסימון שעל״ח בלבד');
+      const scheduled=occurrence.scheduledDate||occurrence.dueDate;
+      const period=periodSegments(item as Item & {frequency:Frequency},scheduled.slice(0,7)).find(p=>p.start===scheduled);
+      if(!period||performedOn<period.start||performedOn>period.end||performedOn>localDate())throw new AppError(422,'יש לבחור יום שחל בתקופת המשימה ועד היום');
+    }
+    const executionStamp=performedOn?performedOn+'T12:00:00+02:00':new Date().toISOString();
     const reports = { ...occurrence.reports };
     const completions = { ...occurrence.completions };
     for (const recipientId of [...new Set(data.recipientIds || [data.recipientId || p.userId])]) {
@@ -552,13 +561,13 @@ export async function completeRhythm(p: Principal, id: string, input: unknown) {
         throw new AppError(403, "רק מקצה המשימה רשאי לאשר ביצוע");
       if (!reports[recipientId] || completions[recipientId])
         throw new AppError(409, "אין דיווח הממתין לאישור");
-      if (data.review === "approve") completions[recipientId] = new Date().toISOString();
+      if (data.review === "approve") completions[recipientId] = reports[recipientId];
       else { delete reports[recipientId]; delete completions[recipientId]; }
     } else if (assigned) {
-      if (data.done) reports[recipientId] = new Date().toISOString();
+      if (data.done) reports[recipientId] = executionStamp;
       else { delete reports[recipientId]; delete completions[recipientId]; }
     } else {
-      if (data.done) completions[recipientId] = new Date().toISOString();
+      if (data.done) completions[recipientId] = executionStamp;
       else delete completions[recipientId];
     }
     }

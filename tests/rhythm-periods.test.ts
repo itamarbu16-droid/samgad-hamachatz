@@ -39,4 +39,17 @@ describe('period checklist boundaries',()=>{
   expect(periods[0]).toMatchObject({to:'2026-10-12',days:12});
   expect(periodSegments({...item('monthly'),endDate:'2026-10-12'},'2026-11')).toHaveLength(0);
  });
+ it('keeps the final quarter boundary consistent across all visible months',()=>{
+  const finalQuarter={...item('quarterly'),endDate:'2026-12-31'};
+  for(const month of ['2026-10','2026-11','2026-12']){
+   expect(periodSegments(finalQuarter,month)[0]).toMatchObject({start:'2026-10-01',end:'2026-12-31'});
+  }
+  expect(periodSegments(finalQuarter,'2027-01')).toHaveLength(0);
+ });
+ it('clips the final long period to termination without losing later execution days',()=>{
+  const finalYear={...item('annual'),endDate:'2026-11-15'};
+  expect(periodSegments(finalYear,'2026-01')[0]).toMatchObject({start:'2026-01-01',end:'2026-11-15'});
+  expect(periodSegments(finalYear,'2026-11')[0]).toMatchObject({start:'2026-01-01',end:'2026-11-15',to:'2026-11-15',days:15});
+  expect(periodSegments(finalYear,'2026-12')).toHaveLength(0);
+ });
 });

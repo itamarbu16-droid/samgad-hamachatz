@@ -42,7 +42,7 @@ it('reads the shared calendar and expands collective titles without leaking othe
  const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
  await db.insert(s.calendarConnections).values({id,userId:owner.userId,organizationId:owner.organizationId,encryptedTokens:seal({access_token:'test-token',expiresAt:Date.now()+3600000,scheduleCalendarId:'shared-test'})});
  const event=(id:string,summary:string)=>({id,summary,start:{dateTime:new Date().toISOString()},end:{dateTime:new Date(Date.now()+3600000).toISOString()}});
- const fetchMock=vi.fn(async(_input:string|URL)=>new Response(JSON.stringify({items:[event('a','שיחה סמ״פ א׳'),event('b','שיחה סמ״פ ב׳'),event('all','דיון סמ״פים'),event('staff','מטה 2'),event('prefix','סמ״פ אב'),{...event('cancelled','סמ״פים'),status:'cancelled'}]}),{status:200}));vi.stubGlobal('fetch',fetchMock);
+ const fetchMock=vi.fn<(input:string|URL)=>Promise<Response>>(async()=>new Response(JSON.stringify({items:[event('a','שיחה סמ״פ א׳'),event('b','שיחה סמ״פ ב׳'),event('all','דיון סמ״פים'),event('staff','מטה 2'),event('prefix','סמ״פ אב'),{...event('cancelled','סמ״פים'),status:'cancelled'}]}),{status:200}));vi.stubGlobal('fetch',fetchMock);
  const mine=await workspaceSchedule(a);
  expect(mine.events.map(e=>e.id)).toEqual(['a','all','staff']);
  expect(mine.events.every(e=>!('groupIds' in e))).toBe(true);

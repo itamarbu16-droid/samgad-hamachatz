@@ -30,7 +30,19 @@ import {
 import {prepareDocumentFiles,validateDocumentFiles,type DocumentUploadCache} from "@/lib/document-uploads";
 import { Modal, Empty } from "./workspace-primitives";
 
-type Attachment = { id: string; filename: string; byteSize: number };
+type Attachment = { id: string; filename: string; byteSize: number; contentType?: string };
+const previewTypes = new Set(["application/pdf", "image/png", "image/jpeg"]);
+export function DocumentAttachmentPreview({file}: {file: Attachment}) {
+  if (!file.contentType || !previewTypes.has(file.contentType)) return null;
+  const source = `/api/documents/files/${encodeURIComponent(file.id)}?preview=1`;
+  return <section aria-label={`תצוגה מקדימה: ${file.filename}`} style={{width:"100%",marginBlock:16}}>
+    {file.contentType === "application/pdf"
+      ? <iframe src={source} title={file.filename} style={{width:"100%",height:"65vh",border:0}} />
+      : <img src={source} alt={file.filename} style={{display:"block",maxWidth:"100%",maxHeight:"65vh",objectFit:"contain",marginInline:"auto"}} />}
+    <a className="button secondary" href={source} target="_blank" rel="noopener noreferrer">פתיחה במסך מלא</a>
+    <small>אם התצוגה אינה זמינה במכשיר, ניתן לפתוח במסך מלא או להוריד את הקובץ.</small>
+  </section>;
+}
 type Entry = {
   id: string;
   title: string;
@@ -465,6 +477,7 @@ export default function DocumentLibrary({
                 {selected.body && (
                   <div className="document-body">{selected.body}</div>
                 )}
+                {selected.attachments.length === 1 && <DocumentAttachmentPreview file={selected.attachments[0]} />}
                 <div className="document-attachments">
                   {selected.attachments.map((file) => (
                     <a

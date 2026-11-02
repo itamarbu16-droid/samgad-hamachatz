@@ -26,3 +26,9 @@ describe('offline state projection preserves the approval workflow',()=>{
   expect(result.tasks[0].status).toBe('pending_review');
  });
 });
+it('retains the selected checklist execution day while a save is queued',()=>{
+ const base=snapshot();base.items[0].assigneeIds=['manager'];
+ const result=project(base,[op('/api/rhythm/occurrences/occ',{version:1,done:true,performedOn:'2026-10-05'})],user);
+ expect(result.occurrences[0].done).toBe(true);
+ expect(result.occurrences[0].completions.manager).toBe('2026-10-05T12:00:00+02:00');
+});

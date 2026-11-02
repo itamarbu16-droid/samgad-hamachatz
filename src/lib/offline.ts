@@ -72,8 +72,8 @@ export function project(snapshot: Row, queue: Pending[], user: Row): Row {
       if (!row || !item) continue;
       for (const recipient of b.recipientIds || [b.recipientId || user.id]) {
         if (b.review === 'reject' || !b.done) { delete row.reports[recipient]; delete row.completions[recipient]; }
-        else if (b.review === 'approve' || recipient === item.creatorId) row.completions[recipient] = now;
-        else row.reports[recipient] = now;
+        else if (b.review === 'approve' || recipient === item.creatorId) row.completions[recipient] = b.review === 'approve' ? row.reports[recipient] || now : typeof b.performedOn === 'string' ? b.performedOn + 'T12:00:00+02:00' : now;
+        else row.reports[recipient] = typeof b.performedOn === 'string' ? b.performedOn + 'T12:00:00+02:00' : now;
       }
       row.done = item.completionMode === 'shared' ? item.assigneeIds.some((x: string) => row.completions[x]) : item.assigneeIds.every((x: string) => row.completions[x]);
       row.version = b.version + 1;

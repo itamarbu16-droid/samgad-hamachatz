@@ -450,3 +450,31 @@ describe('private checklist import',()=>{
   }finally{delete process.env.SHAALACH_IMPORT_JSON;}
  });
 });
+
+describe('execution-day checklist marks',()=>{
+ it('allows a later-month execution in a terminated annual period and preserves its history',async()=>{
+  const year=Number(today.slice(0,4))-1;
+  const start=`${year}-01-01`,end=`${year}-12-31`,performedOn=`${year}-11-05`;
+  const item=await createRhythmItem(deputy,input({title:'Synthetic final annual period',frequency:'annual',startDate:start,endDate:end}));
+  const row=(await getRhythm(deputy,`${year}-11`)).occurrences.find(r=>r.itemId===item.id)!;
+  const saved=await completeRhythm(deputy,row.id,{version:row.version,done:true,performedOn});
+  expect(saved.completions[deputy.userId].slice(0,10)).toBe(performedOn);
+  const december=(await getRhythm(deputy,`${year}-12`)).occurrences.find(r=>r.itemId===item.id)!;
+  expect(december.id).toBe(row.id);
+  expect(december.done).toBe(true);
+ });
+ it('persists a monthly mark on the chosen day and leaves next month unchecked',async()=>{
+  const start=today.slice(0,7)+'-01';
+  const item=await createRhythmItem(deputy,input({title:'Synthetic execution date',frequency:'monthly',startDate:start}));
+  const row=(await getRhythm(deputy)).occurrences.find(r=>r.itemId===item.id)!;
+  const saved=await completeRhythm(deputy,row.id,{version:row.version,done:true,performedOn:start});
+  expect(saved.completions[deputy.userId].slice(0,10)).toBe(start);
+  expect(saved.completedAt).toBeTruthy();
+  const nextMonth=addDays(new Date(new Date(start+'T12:00:00Z').getUTCFullYear(),new Date(start+'T12:00:00Z').getUTCMonth()+1,1,12).toISOString().slice(0,10),0).slice(0,7);
+  const next=(await getRhythm(deputy,nextMonth)).occurrences.find(r=>r.itemId===item.id&&r.scheduledDate?.startsWith(nextMonth));
+  expect(next?.done).toBe(false);
+  await expect(completeRhythm(deputy,row.id,{version:saved.version,done:true,performedOn:addDays(start,-1)})).rejects.toMatchObject({status:422});
+  await expect(completeRhythm(deputy,row.id,{version:saved.version,done:true,performedOn:addDays(today,1)})).rejects.toMatchObject({status:422});
+ });
+
+});

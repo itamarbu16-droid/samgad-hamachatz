@@ -14,6 +14,7 @@ import { Modal, Empty } from "./workspace-primitives";
 import { TaskComposer, type Item, type Occurrence } from "./task-composer";
 import { useRhythm, useTaskMutations, currentMonth } from "./use-rhythm";
 import TaskSnapshot from "./task-snapshot";
+import { personalSnapshotTasks } from "@/lib/task-snapshot";
 export default function PersonalRhythm({
   userId,
   role,
@@ -169,10 +170,7 @@ export default function PersonalRhythm({
     occurrence
   }) => item.creatorId === userId && Object.keys(occurrence.reports).some(id => !occurrence.completions[id])).length;
   return <div className="rhythm-workspace">
-    {scope==="personal" && <TaskSnapshot today={data.today} tasks={[
-      ...records.filter(r=>!r.item.archived&&r.item.category!=="point").map(r=>({done:r.occurrence.done,dueDate:r.item.hasDeadline?r.occurrence.dueDate:null})),
-      ...legacyTasks.filter(t=>t.status!=="cancelled").map(t=>({done:t.status==="completed",dueDate:t.dueDate}))
-    ]} onFilter={filter=>updateView({tab:"all",filter})}/>}
+    {scope==="personal" && <TaskSnapshot today={data.today} tasks={personalSnapshotTasks(records,legacyTasks)} onFilter={filter=>updateView({tab:"tasks",filter})}/>}
     <div className="rhythm-tabs" role="group" aria-label="תצוגת המרחב האישי">
       {[["tasks", scope === "personal" ? "משימות אישיות עם תג״ב" : "שיוכים וביצוע", CheckCheck], ...(manageRhythm ? [["all", "כל המשימות", CheckCheck], ["rhythm", "שעל״ח — שעון לחימה", CalendarDays]] : []), ...(scope === "personal" ? [["points", "נקודות לעיסוק", NotebookPen]] : manageRhythm && manager ? [["groups", "בעלי תפקידים וקבוצות", Users]] : [])].map(([id, label, Icon]) => {
         const I = Icon as typeof Plus;
@@ -234,7 +232,7 @@ export default function PersonalRhythm({
       </div>
       {tab === "points" && <p className="rhythm-info">מקום פרטי לנושאים שתרצה לקדם. אפשר להוסיף נקודה בלי מועד, ובהמשך להפוך אותה למשימה ולבחור אחראי.</p>}
       {selection.length > 0 && canWrite && <div className="bulk-toolbar" role="group" aria-label="פעולות על משימות נבחרות"><strong>{selection.length} נבחרו</strong><button className="button primary" disabled={actions.busy} onClick={() => void batch("done")}>סימון בוצע</button>{manager && <><button className="button secondary" disabled={actions.busy} onClick={() => void batch("approve")}>אישור דיווחים</button><select aria-label="אחראי למשימות הנבחרות" value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="button secondary" disabled={actions.busy || !bulkOwner} onClick={() => void batch("assign")}>שינוי אחראי</button></>}<button className="button secondary" onClick={() => setSelection([])}>ניקוי בחירה</button></div>}
-      {tab === "rhythm" && rhythmLayout === "gantt" ? <RhythmGantt items={data.items.filter(item=>(scope==="personal"?isPersonalItem(item,userId):!isPersonalItem(item,userId))&&(frequency==="all"||item.frequency===frequency)&&(!query||`${item.title} ${item.description}`.toLowerCase().includes(query.toLowerCase())))} occurrences={data.occurrences} month={month} today={data.today} filter={filter} canWrite={canWrite} busy={actions.busy} onEdit={item=>{setEditing(item);setModal("create");}} onToggle={(item,row)=>void actions.run([{url:`/api/rhythm/occurrences/${row.id}`,method:"PATCH",body:{version:row.version,recipientIds:item.assigneeIds,done:!row.done}}])}/> : <section className="rhythm-card-list" aria-label="רשימת משימות"><div className="rhythm-list-heading">{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}{canWrite && <label className="rhythm-select-all"><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} /><span>בחירת הכול</span></label>}</div><div className="rhythm-cards">
+      {tab === "rhythm" && rhythmLayout === "gantt" ? <RhythmGantt items={data.items.filter(item=>(scope==="personal"?isPersonalItem(item,userId):!isPersonalItem(item,userId))&&(frequency==="all"||item.frequency===frequency)&&(!query||`${item.title} ${item.description}`.toLowerCase().includes(query.toLowerCase())))} occurrences={data.occurrences} month={month} today={data.today} filter={filter} canWrite={canWrite} busy={actions.busy} onEdit={item=>{setEditing(item);setModal("create");}} onToggle={(item,row,day,checked)=>void actions.run([{url:`/api/rhythm/occurrences/${row.id}`,method:"PATCH",body:{version:row.version,recipientIds:item.assigneeIds,done:!checked,...(!checked?{performedOn:day}:{})}}])}/> : <section className="rhythm-card-list" aria-label="רשימת משימות"><div className="rhythm-list-heading">{tab === "points" ? "נקודות לעיסוק" : tab === "rhythm" ? `שעון לחימה — ${month}` : "משימות וביצוע"}{canWrite && <label className="rhythm-select-all"><input type="checkbox" aria-label="בחירת כל המשימות המוצגות" checked={visible.length > 0 && visible.every(r => selection.includes(r.occurrence.id))} onChange={e => setSelection(e.target.checked ? visible.filter(r=>manager || r.item.assigneeIds.includes(userId)).map(r => r.occurrence.id) : [])} /><span>בחירת הכול</span></label>}</div><div className="rhythm-cards">
         {visible.map(({
               item,
               occurrence

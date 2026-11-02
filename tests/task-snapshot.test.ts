@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {isPersonalTask,summarizeTasks} from '../src/lib/task-snapshot';
+import {isPersonalTask,summarizeTasks,personalSnapshotTasks} from '../src/lib/task-snapshot';
 import {isPersonalItem} from '../src/lib/unit-roles';
 import {matchesTaskFilter} from '../src/lib/task-display';
 it('keeps personal work separate even when the manager owns a shared task',()=>{
@@ -9,6 +9,34 @@ it('keeps personal work separate even when the manager owns a shared task',()=>{
  const modern=[{creatorId:'me',assigneeIds:['me']},{creatorId:'me',assigneeIds:['me','deputy']},{creatorId:'other',assigneeIds:['me']}];
  expect(modern.filter(t=>isPersonalItem(t,'me'))).toHaveLength(1);
  expect(modern.filter(t=>!isPersonalItem(t,'me'))).toHaveLength(2);
+});
+it('excludes every recurring frequency from all personal overview cards without changing history',()=>{
+ const once=(dueDate:string,done=false)=>({item:{frequency:'once',archived:false,category:'task',hasDeadline:true},occurrence:{dueDate,done}});
+ const personal=[once('2026-11-01'),once('2026-11-02'),once('2026-11-03'),once('2026-10-01',true)];
+ const recurring=['daily','weekly','fortnightly','monthly','quarterly','semiannual','annual'].flatMap(frequency=>[
+  {...once('2026-10-01'),item:{...once('').item,frequency}},
+  {...once('2026-11-02'),item:{...once('').item,frequency}},
+  {...once('2026-11-03',true),item:{...once('').item,frequency}}
+ ]);
+ const rows=[...personal,...recurring];const before=structuredClone(rows);
+ const tasks=personalSnapshotTasks(rows,[]);
+ expect(summarizeTasks(tasks,'2026-11-02')).toEqual({total:4,completed:1,urgent:2,overdue:1});
+ expect(rows).toEqual(before);
+ expect(personalSnapshotTasks(recurring,[])).toEqual([]);
+});
+it('excludes points and archived/cancelled tasks, includes undated and completed personal one-offs',()=>{
+ const row={item:{frequency:'once',archived:false,category:'task',hasDeadline:false},occurrence:{done:false,dueDate:'2026-10-01'}};
+ const records=[row,{...row,item:{...row.item,category:'point'}},{...row,item:{...row.item,archived:true}}];
+ const tasks=personalSnapshotTasks(records,[{status:'completed',dueDate:'2026-10-01'},{status:'cancelled',dueDate:'2026-10-01'},{status:'open',dueDate:null}]);
+ expect(summarizeTasks(tasks,'2026-11-02')).toEqual({total:3,completed:1,urgent:0,overdue:0});
+ expect(tasks[0].dueDate).toBeNull();
+});
+it('does not add shared work back after ownership filtering or collapse distinct tasks by date',()=>{
+ const row={item:{frequency:'once',archived:false,category:'task',hasDeadline:true,creatorId:'owner',assigneeIds:['owner']},occurrence:{done:false,dueDate:'2026-11-02'}};
+ const shared={...row,item:{...row.item,assigneeIds:['owner','other']}};
+ const delegated={...row,item:{...row.item,creatorId:'other'}};
+ const records=[row,{...row},shared,delegated].filter(r=>isPersonalItem(r.item,'owner'));
+ expect(personalSnapshotTasks(records,[])).toHaveLength(2);
 });
 it('counts undated tasks and completed work and separates urgent from overdue',()=>{
  const tasks=[{done:false,dueDate:null},{done:false,dueDate:'2026-10-16'},{done:false,dueDate:'2026-10-17'},{done:false,dueDate:'2026-10-18'},{done:false,dueDate:'2026-10-19'},{done:true,dueDate:'2026-10-16'}];

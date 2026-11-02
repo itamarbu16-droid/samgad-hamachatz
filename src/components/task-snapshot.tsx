@@ -8,5 +8,5 @@ export default function TaskSnapshot({tasks,today,onFilter}:{tasks:SnapshotTask[
   {n:counts.completed,label:'בוצעו',tone:'green',filter:'completed'},
   {n:counts.urgent,label:'דחוף',tone:'orange',filter:'due_soon'},
   {n:counts.overdue,label:'באיחור',tone:'red',filter:'overdue'},
- ].map(s=><button type="button" key={s.label} className={s.tone} onClick={()=>onFilter(s.filter)}><strong>{s.n}</strong><span>{s.label}</span></button>)}</div><small className="snapshot-note">המשימות האישיות שלך בלבד · כולל שעל״ח לחודש שנבחר · ללא נקודות לעיסוק</small></section>;
+ ].map(s=><button type="button" key={s.label} className={s.tone} onClick={()=>onFilter(s.filter)}><strong>{s.n}</strong><span>{s.label}</span></button>)}</div><small className="snapshot-note">משימות אישיות חד־פעמיות בלבד · ללא שעל״ח וללא נקודות לעיסוק</small></section>;
 }
