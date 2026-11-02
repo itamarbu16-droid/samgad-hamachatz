@@ -3,7 +3,7 @@
 
 import {RhythmGantt} from "./rhythm-gantt";
 import {WeeklySchedule} from "./weekly-schedule";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, CheckCheck, CalendarDays, Users, NotebookPen } from "lucide-react";
 import { isPersonalItem } from "@/lib/unit-roles";
 import { hasPendingReport,matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
@@ -14,7 +14,7 @@ import { Modal, Empty } from "./workspace-primitives";
 import { TaskComposer, type Item, type Occurrence } from "./task-composer";
 import { useRhythm, useTaskMutations, currentMonth } from "./use-rhythm";
 import TaskSnapshot from "./task-snapshot";
-import { personalSnapshotTasks } from "@/lib/task-snapshot";
+import { personalSnapshotTasks, personalItemInTab } from "@/lib/task-snapshot";
 export default function PersonalRhythm({
   userId,
   role,
@@ -30,6 +30,7 @@ export default function PersonalRhythm({
   manageRhythm?: boolean;
   canMoveToPersonal?: boolean;
 }) {
+  const lastOccurrenceLink = useRef<string | null>(null);
   const [month, setMonth] = useState(currentMonth),
     [tab, setTab] = useState("tasks"),
     [filter, setFilter] = useState("all"),
@@ -63,7 +64,7 @@ export default function PersonalRhythm({
       const nextSort=params.get('sort') || 'deadline_asc';
       if(Object.hasOwn(taskSorts,nextSort)) setSort(nextSort as TaskSort);
       const nextTab=params.get('tab') || 'tasks';
-      if(['tasks',...(manageRhythm?['all','rhythm',...(scope==='personal'?['points']:manager?['groups']:[])]:[])].includes(nextTab)) setTab(nextTab);
+      if(['tasks',...(manageRhythm?['all','rhythm',...(scope==='personal'?['points']:manager?['groups']:[])]:[])].includes(nextTab)) { setTab(nextTab); const target=params.get('occurrence'); if(nextTab==='rhythm'&&target&&target!==lastOccurrenceLink.current) setRhythmLayout('list'); lastOccurrenceLink.current=target; }
       const nextMonth=params.get('month');
       if(nextMonth && /^\d{4}-\d{2}$/.test(nextMonth)) setMonth(nextMonth);
     };
@@ -85,7 +86,7 @@ export default function PersonalRhythm({
       }), 0);
       return () => clearTimeout(timer);
     }
-  }, [data, filter]);
+  }, [data, filter, tab, rhythmLayout]);
   if (!data) return <section className="panel"><p>{error || "טוענים…"}</p><button className="button secondary" onClick={() => void load()}>רענון</button></section>;
   const person = (id: string) => data.people.find(p => p.id === id)?.name || "בעל תפקיד";
   const records = data.occurrences.map(occurrence => ({
@@ -102,6 +103,7 @@ export default function PersonalRhythm({
     item,
     occurrence
   }) => {
+    if (scope === "personal" && !personalItemInTab(item,tab)) return false;
     if (item.archived || (tab === "points" ? item.category !== "point" : item.category === "point")) return false;
     if (tab === "tasks" && manageRhythm && item.frequency !== "once") return false;
     if (tab === "rhythm" && (item.frequency === "once" || !occurrence.dueDate.startsWith(month) || frequency !== "all" && item.frequency !== frequency)) return false;
@@ -172,7 +174,7 @@ export default function PersonalRhythm({
   return <div className="rhythm-workspace">
     {scope==="personal" && <TaskSnapshot today={data.today} tasks={personalSnapshotTasks(records,legacyTasks)} onFilter={filter=>updateView({tab:"tasks",filter})}/>}
     <div className="rhythm-tabs" role="group" aria-label="תצוגת המרחב האישי">
-      {[["tasks", scope === "personal" ? "משימות אישיות עם תג״ב" : "שיוכים וביצוע", CheckCheck], ...(manageRhythm ? [["all", "כל המשימות", CheckCheck], ["rhythm", "שעל״ח — שעון לחימה", CalendarDays]] : []), ...(scope === "personal" ? [["points", "נקודות לעיסוק", NotebookPen]] : manageRhythm && manager ? [["groups", "בעלי תפקידים וקבוצות", Users]] : [])].map(([id, label, Icon]) => {
+      {[["tasks", scope === "personal" ? "משימות אישיות עם תג״ב" : "שיוכים וביצוע", CheckCheck], ...(manageRhythm ? [["all", scope === "personal" ? "כל המשימות האישיות" : "כל המשימות", CheckCheck], ["rhythm", "שעל״ח — שעון לחימה", CalendarDays]] : []), ...(scope === "personal" ? [["points", "נקודות לעיסוק", NotebookPen]] : manageRhythm && manager ? [["groups", "בעלי תפקידים וקבוצות", Users]] : [])].map(([id, label, Icon]) => {
         const I = Icon as typeof Plus;
         return <button key={String(id)} className={tab === id ? "button primary" : "button secondary"} onClick={() => {
           updateView({tab:String(id),filter:"all"});

@@ -405,6 +405,20 @@ describe("quick task entry, optional dates and undo", () => {
     const restored=(await getRhythm(deputy)).occurrences.find(r=>r.id===row.id)!;
     expect(restored.done).toBe(false);expect(Object.keys(restored.reports)).toHaveLength(2);expect(restored.completions).toEqual({});
   });
+  it("routes personal checklist search results only to their dedicated checklist month", async () => {
+    const item=await createRhythmItem(deputy,input({title:'checklist-routing-regression',frequency:'daily'}));
+    const before=await getRhythm(deputy);
+    const found=await searchWorkspace(deputy,'checklist-routing-regression');
+    const result=found.results.find(r=>r.id===item.id)!;
+    const link=new URL(result.href,'http://localhost');
+    expect(result.kind).toBe('שעל״ח');
+    expect(link.searchParams.get('view')).toBe('personal');
+    expect(link.searchParams.get('tab')).toBe('rhythm');
+    const occurrence=before.occurrences.find(r=>r.id===link.searchParams.get('occurrence'))!;
+    expect(link.searchParams.get('month')).toBe(occurrence.dueDate.slice(0,7));
+    const after=await getRhythm(deputy);
+    expect(after.occurrences.filter(r=>r.itemId===item.id)).toEqual(before.occurrences.filter(r=>r.itemId===item.id));
+  });
   it("searches full document text and private points without leaking another person's private work", async () => {
     const marker="synthetic-search-focus-unique";
     const doc=await createDocument(deputy,{clientRequestId:request(),title:"מסמך לבדיקה",folderId:"orders",body:"a".repeat(400)+marker});

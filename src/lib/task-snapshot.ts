@@ -4,11 +4,22 @@ type PersonalRecord = {
  item: {frequency:string;archived:boolean;category:string;hasDeadline:boolean};
  occurrence: {done:boolean;dueDate:string};
 };
+/** Personal task lists and overview cards share the same one-off boundary.
+ * Recurring records remain available only in their dedicated checklist view. */
+export const isPersonalOneOff = (item:{frequency:string}) => item.frequency==='once';
+export function personalItemTab(item:{frequency:string;category:string}) {
+ return !isPersonalOneOff(item)?'rhythm':item.category==='point'?'points':'tasks';
+}
+export function personalItemInTab(item:{frequency:string;category:string;archived:boolean},tab:string) {
+ if(item.archived)return false;
+ if(tab==='rhythm')return !isPersonalOneOff(item)&&item.category!=='point';
+ return isPersonalOneOff(item)&&(tab==='points'?item.category==='point':item.category!=='point');
+}
 /** The personal overview contains one-off tasks only. Recurring checklist
  * periods retain their own independent tracker and completion history. */
 export function personalSnapshotTasks(records:PersonalRecord[],legacyTasks:{status:string;dueDate:string|null}[]):SnapshotTask[]{
  return [
-  ...records.filter(({item})=>item.frequency==='once'&&!item.archived&&item.category!=='point').map(({item,occurrence})=>({done:occurrence.done,dueDate:item.hasDeadline?occurrence.dueDate:null})),
+  ...records.filter(({item})=>personalItemInTab(item,'tasks')).map(({item,occurrence})=>({done:occurrence.done,dueDate:item.hasDeadline?occurrence.dueDate:null})),
   ...legacyTasks.filter(task=>task.status!=='cancelled').map(task=>({done:task.status==='completed',dueDate:task.dueDate}))
  ];
 }

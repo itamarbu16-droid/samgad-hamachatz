@@ -29,3 +29,15 @@ it('summarizes original items once, preserves points, and resolves renamed peopl
  expect(rows.find(r=>r.id==='rhythm:note')?.href).toContain('view=personal&tab=points');
  expect(rows.find(r=>r.id==='rhythm:repair')).toMatchObject({domainIds:['maintenance'],dueDate:'2026-10-20'});
 });
+
+it('opens personal recurring responsibility entries in checklist, never the all-tasks list',()=>{
+ const item:Item={id:'checklist',title:'Check',category:'task',assigneeIds:['owner'],creatorId:'owner',description:'',hasDeadline:true,frequency:'monthly',startDate:'2026-10-01',endDate:null,completionMode:'individual',important:false,manualUrgent:false,archived:false,version:1};
+ const data:RhythmData={today:'2026-11-02',month:'2026-11',groups:[],people:[],items:[item],occurrences:[{id:'october',itemId:item.id,dueDate:'2026-10-31',done:false,urgent:false,version:1,completions:{},reports:{},completedAt:null,completedBy:null}]};
+ const before=structuredClone(data);
+ const row=buildResponsibilityEntries([],data,'owner')[0];
+ const url=new URL(row.href,'https://example.test');
+ expect(url.searchParams.get('tab')).toBe('rhythm');
+ expect(url.searchParams.get('month')).toBe('2026-10');
+ expect(url.searchParams.get('occurrence')).toBe('october');
+ expect(data).toEqual(before);
+});

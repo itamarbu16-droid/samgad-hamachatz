@@ -1,7 +1,7 @@
 import {responsibilityDomains} from './responsibility-domains';
 import {compareTasks} from './task-display';
 import {isPersonalItem} from './unit-roles';
-import {isPersonalTask} from './task-snapshot';
+import {isPersonalTask,personalItemTab} from './task-snapshot';
 import type {RhythmData} from '../components/task-composer';
 export type ResponsibilityEntry={id:string;title:string;description:string;kind:'task'|'point';dueDate:string|null;done:boolean;owner:string;href:string;domainIds:string[]};
 type LegacyTask={id:string;title:string;description:string;status:string;dueDate:string|null;creatorId:string;ownerId:string;domainId:string};
@@ -44,7 +44,7 @@ export function buildResponsibilityEntries(tasks:LegacyTask[],rhythm:RhythmData,
   entries.push({id:'rhythm:'+item.id,title:item.title,description:item.description,kind:item.category==='point'?'point':'task',
    dueDate:item.category!=='point'&&item.hasDeadline?(occurrence?.dueDate||item.startDate):null,done:rows.length>0&&rows.every(o=>o.done),
    owner:item.assigneeIds.map(id=>people.get(id)?.name||'').filter(Boolean).join(', '),domainIds:classifyResponsibility(item.title,item.description,roles(item.assigneeIds)),
-   href:`/?view=${personal?'personal':'tasks'}&tab=${item.category==='point'?'points':'all'}&filter=all${occurrence?`&occurrence=${encodeURIComponent(occurrence.id)}`:''}`,
+   href:`/?view=${personal?'personal':'tasks'}&tab=${personal?personalItemTab(item):item.category==='point'?'points':'all'}&filter=all${personal&&item.frequency!=='once'?`&month=${(occurrence?.dueDate||item.startDate).slice(0,7)}`:''}${occurrence?`&occurrence=${encodeURIComponent(occurrence.id)}`:''}`,
   });
  }
  return entries.sort((a,b)=>compareTasks(a,b,'deadline_asc'));

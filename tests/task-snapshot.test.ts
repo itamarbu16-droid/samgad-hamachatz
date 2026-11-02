@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {isPersonalTask,summarizeTasks,personalSnapshotTasks} from '../src/lib/task-snapshot';
+import {isPersonalTask,summarizeTasks,personalSnapshotTasks,personalItemInTab,personalItemTab} from '../src/lib/task-snapshot';
 import {isPersonalItem} from '../src/lib/unit-roles';
 import {matchesTaskFilter} from '../src/lib/task-display';
 it('keeps personal work separate even when the manager owns a shared task',()=>{
@@ -43,4 +43,20 @@ it('counts undated tasks and completed work and separates urgent from overdue',(
  expect(summarizeTasks(tasks,'2026-10-17')).toEqual({total:6,completed:1,urgent:2,overdue:1});
  expect(tasks.filter(t=>matchesTaskFilter(t,'due_soon','2026-10-17'))).toHaveLength(2);
  expect(summarizeTasks([],'2026-10-17')).toEqual({total:0,completed:0,urgent:0,overdue:0});
+});
+
+it('keeps checklist out of personal tasks and historical all links, including list counts under every status filter',()=>{
+ const records=['once','daily','weekly','fortnightly','monthly','quarterly','semiannual','annual'].flatMap(frequency=>[false,true].map(done=>({item:{frequency,archived:false,category:'task',hasDeadline:true},occurrence:{done,dueDate:'2026-11-01'}})));
+ const before=structuredClone(records);
+ for(const tab of ['tasks','all'])for(const filter of ['all','open','completed','overdue','due_soon']){
+  const visible=records.filter(r=>personalItemInTab(r.item,tab)&&matchesTaskFilter(r.occurrence,filter,'2026-11-02'));
+  expect(visible.every(r=>r.item.frequency==='once')).toBe(true);
+  expect(visible).toHaveLength(records.filter(r=>r.item.frequency==='once'&&matchesTaskFilter(r.occurrence,filter,'2026-11-02')).length);
+ }
+ const checklist=records.filter(r=>personalItemInTab(r.item,'rhythm'));
+ expect(checklist).toHaveLength(14);
+ expect(checklist.every(r=>personalItemTab(r.item)==='rhythm')).toBe(true);
+ expect(personalItemTab({frequency:'once',category:'point'})).toBe('points');
+ expect(personalItemInTab({frequency:'once',category:'point',archived:false},'tasks')).toBe(false);
+ expect(records).toEqual(before);
 });
