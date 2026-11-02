@@ -2,8 +2,11 @@ import { addDays, monthEnd, occurrenceDates, type Frequency } from './rhythm';
 export type PeriodItem = {startDate:string;endDate:string|null;frequency:Frequency};
 export function periodSegments(item:PeriodItem,month:string){
  const first=month+'-01',last=monthEnd(month);
- const starts=occurrenceDates(item.startDate,item.frequency,addDays(last,370),item.endDate);
+ // Include the next recurrence even after termination, so the final period
+ // keeps its real boundary rather than ending at the visible month's edge.
+ const starts=occurrenceDates(item.startDate,item.frequency,addDays(last,370));
  return starts.flatMap((start,index)=>{
+  if(item.endDate&&start>item.endDate)return [];
   let end=starts[index+1]?addDays(starts[index+1],-1):last;
   if(item.endDate&&end>item.endDate)end=item.endDate;
   if(end<first||start>last)return [];

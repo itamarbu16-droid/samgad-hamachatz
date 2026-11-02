@@ -10,7 +10,12 @@ const config: NextConfig = {
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }
-    ] }];
+    ] }, {
+      // Authenticated attachment previews may be framed only by this application.
+      // Keep this after the global DENY rule: Next uses the last matching value.
+      source: '/api/documents/files/:id',
+      headers: [{ key: 'X-Frame-Options', value: 'SAMEORIGIN' }]
+    }];
   }
 };
 export default config;

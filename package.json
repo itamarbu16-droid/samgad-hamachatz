@@ -21,12 +21,11 @@
     "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.4",
     "lucide-react": "^1.56.0",
-    "next": "^16.4.0",
+    "next": "^16.4.3",
     "pg": "^8.23.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
-    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@ import { getWorkspace } from "./service";
 import { getRhythm } from "./rhythm";
 import { getDocuments } from "./documents";
 
+import { personalItemTab } from "../lib/task-snapshot";
 import { isPersonalItem } from "../lib/unit-roles";
 export async function searchWorkspace(p: Principal, query: unknown) {
   const q = z.string().trim().min(1).max(200).parse(query).toLowerCase();
@@ -24,11 +25,12 @@ export async function searchWorkspace(p: Principal, query: unknown) {
     href: `/?view=tasks&task=${encodeURIComponent(t.id)}`
   })), ...rhythm.items.filter(t => !t.archived && matches(`${t.title} ${t.description}`)).map(t => {
     const row = rhythm.occurrences.find(r => r.itemId === t.id);
+    const personal=isPersonalItem(t, p.workspaceOwnerId || p.userId);
     return {
       id: t.id,
       title: t.title,
-      kind: t.category === "point" ? "נקודה לעיסוק" : "משימה",
-      href: `/?view=${isPersonalItem(t, p.workspaceOwnerId || p.userId) ? "personal" : "tasks"}&rhythmFilter=all${t.category === "point" ? "&tab=points" : ""}${row ? `&occurrence=${encodeURIComponent(row.id)}` : ""}`
+      kind: t.frequency !== "once" ? "שעל״ח" : t.category === "point" ? "נקודה לעיסוק" : "משימה",
+      href: `/?view=${personal ? "personal" : "tasks"}&rhythmFilter=all${personal ? `&tab=${personalItemTab(t)}${t.frequency!=="once"?`&month=${(row?.dueDate||t.startDate).slice(0,7)}`:""}` : t.category === "point" ? "&tab=points" : ""}${row ? `&occurrence=${encodeURIComponent(row.id)}` : ""}`
     };
   }), ...documents.entries.filter(t => ids.has(t.id) || matches(`${t.title} ${t.preview} ${t.attachments.map(f => f.filename).join(" ")}`)).map(t => {
     const folder = documents.folders.find(f => f.id === t.folderId);
