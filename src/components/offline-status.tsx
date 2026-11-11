@@ -1,4 +1,5 @@
 "use client";
+import AppUpdate from "./app-update";
 import { useEffect, useState } from 'react';
 import { discardPending, offlineStatus, syncPending, type Pending } from '@/lib/offline';
 export default function OfflineStatus() {
@@ -29,10 +30,10 @@ export default function OfflineStatus() {
   }, []);
   if (typeof window !== 'undefined' && window.location.pathname.endsWith('/login')) return null;
   const message = error || pending.find(q => q.error)?.error;
-  return <aside className={`offline-status ${!online || pending.length || message ? 'offline-pending' : ''}`} aria-label="מצב סנכרון">
+  return <><AppUpdate/><aside className={`offline-status ${!online || pending.length || message ? 'offline-pending' : ''}`} aria-label="מצב סנכרון">
     <div role="status" aria-live="polite">{!online ? 'ללא אינטרנט · ' : ''}{pending.length ? `נשמר במכשיר · ${pending.length} שינויים ממתינים לסנכרון` : online ? `מסונכרן${ready ? ' · מוכן לפתיחה אופליין' : ''}` : 'מציג מידע שנשמר במכשיר'}</div>
     {message && <p role="alert">{message}</p>}
     {pending.length > 0 && <><button type="button" onClick={() => setExpanded(!expanded)}>הצגת שינויים שמורים</button><button type="button" disabled={!online || busy} onClick={async () => { setBusy(true); try { await syncPending(); } finally { setBusy(false); } }}>{busy ? 'מסנכרן…' : 'נסה לסנכרן'}</button></>}
     {expanded && pending.length > 0 && <div><ul>{pending.map(op => <li key={op.id}><strong>{op.title}</strong>{op.error && <p>{op.error}</p>}<details><summary>פרטי השינוי שנשמר</summary><pre dir="ltr">{JSON.stringify(op.body, null, 2)}</pre></details></li>)}</ul><button type="button" onClick={() => { if (confirm('למחוק את כל השינויים שטרם סונכרנו ולחזור למידע מהשרת? פעולה זו מוחקת את השינויים המקומיים האלה.')) void discardPending(); }}>ביטול השינויים המקומיים</button></div>}
-  </aside>;
+  </aside></>;
 }

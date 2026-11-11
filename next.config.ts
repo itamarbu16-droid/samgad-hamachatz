@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  env: { NEXT_PUBLIC_APP_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA || "2026-11-11-home-actions-v1" },
   serverExternalPackages: ['@electric-sql/pglite', 'pg'],
   outputFileTracingExcludes: { '/*': ['.env*', '.data/**/*', 'test-results/**/*', 'playwright-report/**/*'] },
   outputFileTracingIncludes: { '/api/*': ['./migrations/*.sql'] },

@@ -560,7 +560,7 @@ export default function Workspace() {
               scope="personal"
             />
           )}
-          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} onActivityChanged={load} go={go}/> }
+          {view === "dashboard" && ownerInterface && <CommandDashboard canWrite={canWrite} manager={manager} ownerInterface={ownerInterface} key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} onActivityChanged={load} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
           {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}

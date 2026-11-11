@@ -20,7 +20,7 @@ export default function ActivityFeed({items,removed=false,onSaved,readOnly=false
   {items.length?<div className="activity-list">{items.map(item=><div className="activity-item activity-manage-row" key={item.id}>
    <span className="activity-icon"><History size={16}/></span>
    <div className="activity-copy"><strong>{item.summary||item.action}</strong><p>{item.actorName&&`${item.actorName} · `}<time>{new Date(item.createdAt).toLocaleDateString('he-IL')}</time></p></div>
-   {!readOnly&&<button className="icon-button" type="button" aria-label={`${removed?'שחזור':'מחיקה מהרשימה'}: ${item.summary}`} title={removed?'שחזור עדכון':'מחיקה מהרשימה שלי'} disabled={busy} onClick={()=>removed?void change(item,false):setSelected(item)}>{removed?<Undo2 size={18}/>:<Trash2 size={18}/>}</button>}
+   {!readOnly&&<button className="activity-remove" type="button" aria-label={`${removed?'שחזור':'מחיקה מהרשימה'}: ${item.summary}`} title={removed?'שחזור עדכון':'מחיקה מהרשימה שלי'} disabled={busy} onClick={()=>removed?void change(item,false):setSelected(item)}>{removed?<Undo2 size={18}/>:<Trash2 size={18}/>}<span>{removed?"שחזור":"מחיקה"}</span></button>}
   </div>)}</div>:<Empty>{removed?'אין עדכונים שנמחקו מהרשימה.':'אין עדכונים חדשים להצגה.'}</Empty>}
   {selected&&<Modal title="מחיקת עדכון מהרשימה" close={()=>{if(!busy){setSelected(null);setError('');}}}>
    <p>{selected.summary}</p><p className="muted">העדכון יוסר מהרשימה שלך בלבד. המשימה והיסטוריית הפעילות יישמרו. ניתן להחזיר אותו דרך ״עדכונים שהוסרו״.</p>
