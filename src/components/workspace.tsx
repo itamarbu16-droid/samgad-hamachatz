@@ -2,6 +2,7 @@
 import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
+import ActivityFeed from "./activity-feed";
 import DocumentLibrary from "./document-library";
 import {isPersonalTask} from "@/lib/task-snapshot";
 import CommandDashboard from "./command-dashboard";
@@ -97,6 +98,7 @@ type Data = {
     createdAt: string;
     summary: string;
   }[];
+  dismissedActivity?: Data["activity"];
   demo: boolean;
   today: string;
 };
@@ -348,26 +350,8 @@ export default function Workspace() {
       <TaskActions canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
   }
-  function activityList(items: Data["activity"]) {
-    return items.length ? (
-      <div className="activity-list">
-        {items.map((a) => (
-          <div className="activity-item" key={a.id}>
-            <span className="activity-icon">
-              <History size={14} />
-            </span>
-            <div>
-              <strong>{a.summary || a.action}</strong>
-              <p>
-                {a.actorName} <span>· {date(a.createdAt)}</span>
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <Empty>עדכונים יופיעו כאן לאחר הפעולה הראשונה.</Empty>
-    );
+  function activityList(items: Data["activity"], readOnly = false) {
+    return <ActivityFeed items={items} onSaved={load} readOnly={readOnly}/>;
   }
   async function submitTask(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -576,7 +560,7 @@ export default function Workspace() {
               scope="personal"
             />
           )}
-          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} go={go}/> }
+          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} onActivityChanged={load} go={go}/> }
           {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
           {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
@@ -761,6 +745,7 @@ export default function Workspace() {
                 count={data.activity.length}
               />
               {activityList(data.activity)}
+              <details className="removed-updates"><summary>עדכונים שהוסרו ({data.dismissedActivity?.length || 0})</summary><ActivityFeed items={data.dismissedActivity || []} removed onSaved={load}/></details>
             </section>
           )}
           <footer className="page-footer">
@@ -1113,7 +1098,7 @@ export default function Workspace() {
           </section>
           <section>
             <h3>היסטוריית המשימה</h3>
-            {activityList(data.activity.filter((a) => a.entityId === task.id))}
+            {activityList([...data.activity, ...(data.dismissedActivity || [])].filter((a) => a.entityId === task.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)), true)}
           </section>
         </Modal>
       )}

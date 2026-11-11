@@ -6,6 +6,8 @@ import { getDb, isDemo, type Database } from './db';
 import * as s from './schema';
 import { AppError, assertTransition, assertWrite, assertOwnTask, canEditAll, canRead, isManager, calculateMetrics, localDate, type Principal } from './policy';
 import { initializeWorkspace,ensureResponsibilityDomains,authorizedMember } from './access';
+import {ensureActivityDismissals} from './activity-dismissals';
+import { z } from 'zod';
 import {getPins} from './task-pins';
 import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
@@ -87,7 +89,10 @@ export async function getWorkspace(p: Principal) {
   const entityFilters: SQL[] = [];
   if (taskIds.length) entityFilters.push(and(eq(s.auditEvents.entityType, 'task'), inArray(s.auditEvents.entityId, taskIds))!);
   if (decisionIds.length) entityFilters.push(and(eq(s.auditEvents.entityType, 'decision'), inArray(s.auditEvents.entityId, decisionIds))!);
-  const activity = entityFilters.length ? await db.select({ id: s.auditEvents.id, entityType: s.auditEvents.entityType, entityId: s.auditEvents.entityId, action: s.auditEvents.action, summary: s.auditEvents.summary, actorName: s.user.name, createdAt: s.auditEvents.createdAt }).from(s.auditEvents).innerJoin(s.user, eq(s.auditEvents.actorId, s.user.id)).where(and(eq(s.auditEvents.organizationId, p.organizationId), or(...entityFilters))).orderBy(desc(s.auditEvents.createdAt)).limit(100) : [];
+  await ensureActivityDismissals();
+  const dismissed = sql`EXISTS (SELECT 1 FROM activity_dismissals ad WHERE ad.organization_id=${p.organizationId} AND ad.user_id=${p.userId} AND ad.event_id=${s.auditEvents.id})`;
+  const activity = entityFilters.length ? await db.select({ id: s.auditEvents.id, entityType: s.auditEvents.entityType, entityId: s.auditEvents.entityId, action: s.auditEvents.action, summary: s.auditEvents.summary, actorName: s.user.name, createdAt: s.auditEvents.createdAt }).from(s.auditEvents).innerJoin(s.user, eq(s.auditEvents.actorId, s.user.id)).where(and(eq(s.auditEvents.organizationId, p.organizationId), or(...entityFilters),sql`NOT ${dismissed}`)).orderBy(desc(s.auditEvents.createdAt)).limit(100) : [];
+  const dismissedActivity = entityFilters.length ? await db.select({ id: s.auditEvents.id, entityType: s.auditEvents.entityType, entityId: s.auditEvents.entityId, action: s.auditEvents.action, summary: s.auditEvents.summary, actorName: s.user.name, createdAt: s.auditEvents.createdAt }).from(s.auditEvents).innerJoin(s.user, eq(s.auditEvents.actorId, s.user.id)).where(and(eq(s.auditEvents.organizationId, p.organizationId), or(...entityFilters),dismissed)).orderBy(desc(s.auditEvents.createdAt)).limit(100) : [];
   const domainRows = await db.select({ id: s.domains.id, name: s.domains.name, color: s.domains.color }).from(s.domains).where(and(eq(s.domains.organizationId, p.organizationId), p.domainId ? eq(s.domains.id, p.domainId) : undefined));
   const companyRows = await db.select({ id: s.companies.id, name: s.companies.name }).from(s.companies).where(and(eq(s.companies.organizationId, p.organizationId), p.companyId ? eq(s.companies.id, p.companyId) : undefined));
   const userRows = await db.select({ id: s.user.id, name: s.user.name, role: s.memberships.role, companyId: s.memberships.companyId, domainId: s.memberships.domainId }).from(s.memberships).innerJoin(s.user, eq(s.memberships.userId, s.user.id)).where(and(eq(s.memberships.organizationId, p.organizationId), eq(s.memberships.active, true), authorizedMember(p.organizationId)));
@@ -95,7 +100,7 @@ export async function getWorkspace(p: Principal) {
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
   const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));
   const normalizedTasks=taskRows.map(t=>({...t,domainId:['safety','people'].includes(t.domainId)?`${p.organizationId}:deputies`:t.domainId}));
-  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, workspaceOwnerId:p.workspaceOwnerId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
+  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, workspaceOwnerId:p.workspaceOwnerId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, dismissedActivity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
 }
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();
@@ -174,4 +179,19 @@ export async function deleteTask(p:Principal,id:string,version:number){
   const undoToken=randomUUID();await tx.insert(s.rhythmUndo).values({id:undoToken,organizationId:p.organizationId,actorId:p.userId,kind:'task',entityId:id,snapshot:{task:before,occurrences:[]},expectedVersion:updated.version,expiresAt:new Date(Date.now()+60000)});
   return {...updated,undoToken};
  });
+}
+
+export async function dismissActivity(p: Principal, id: string, input: unknown) {
+  const {dismissed} = z.object({dismissed:z.boolean()}).strict().parse(input);
+  const db = await ensureActivityDismissals();
+  const [event] = await db.select().from(s.auditEvents).where(and(eq(s.auditEvents.organizationId,p.organizationId),eq(s.auditEvents.id,id))).limit(1);
+  if (!event) throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
+  if(event.entityType==='task') await findTask(db,p,event.entityId);
+  else if(event.entityType==='decision') {
+    const rows=await db.select({id:s.decisions.id}).from(s.decisions).where(and(decisionScope(p),eq(s.decisions.id,event.entityId))).limit(1);
+    if(!rows.length) throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
+  } else throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
+  if(dismissed) await db.insert(s.activityDismissals).values({organizationId:p.organizationId,userId:p.userId,eventId:id}).onConflictDoNothing();
+  else await db.delete(s.activityDismissals).where(and(eq(s.activityDismissals.organizationId,p.organizationId),eq(s.activityDismissals.userId,p.userId),eq(s.activityDismissals.eventId,id)));
+  return {dismissed};
 }

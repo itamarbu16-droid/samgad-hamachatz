@@ -151,3 +151,9 @@ export const quickPointKeys = pgTable('quick_point_keys', {
   windowStartedAt: timestamp('window_started_at', { withTimezone: true }).notNull().defaultNow(),
   windowCount: integer('window_count').notNull().default(0),
 });
+
+// Personal inbox state. Underlying audit events are never deleted.
+export const activityDismissals = pgTable('activity_dismissals', {
+  organizationId: text('organization_id').notNull(), userId: text('user_id').notNull(),
+  eventId: text('event_id').notNull(), dismissedAt: timestamp('dismissed_at', {withTimezone:true}).notNull().defaultNow(),
+}, t => [uniqueIndex('activity_dismissals_user_event').on(t.organizationId,t.userId,t.eventId)]);
