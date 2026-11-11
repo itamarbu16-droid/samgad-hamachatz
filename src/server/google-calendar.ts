@@ -27,7 +27,9 @@ export async function calendarStatus(p:Principal){
  const members=await db.select({id:s.user.id,email:s.user.email,name:s.user.name}).from(s.memberships).innerJoin(s.user,eq(s.user.id,s.memberships.userId)).where(and(eq(s.memberships.organizationId,p.organizationId),eq(s.memberships.active,true),authorizedMember(p.organizationId)));
  const rawGroups=await db.select().from(s.rhythmGroups).where(and(eq(s.rhythmGroups.organizationId,p.organizationId),eq(s.rhythmGroups.archived,false),eq(s.rhythmGroups.creatorId,p.workspaceOwnerId || p.userId)));
  const groups=expandRoleGroups(rawGroups,members);
- return {configured:calendarConfigured(),connected:Boolean(await saved(p)),invitees:members.filter(m=>m.id!==p.userId).map(m=>({...m,roles:groups.filter(g=>g.emails.some(email=>email.toLowerCase()===m.email.toLowerCase())).map(g=>g.name)}))};
+ const row=await saved(p);let reconnectRequired=false;
+ if(row){try{const tokens=unseal<Tokens>(row.encryptedTokens);reconnectRequired=!tokens.access_token||(!tokens.refresh_token&&tokens.expiresAt<=Date.now());}catch{reconnectRequired=true;}}
+ return {configured:calendarConfigured(),connected:Boolean(row)&&!reconnectRequired,reconnectRequired,invitees:members.filter(m=>m.id!==p.userId).map(m=>({...m,roles:groups.filter(g=>g.emails.some(email=>email.toLowerCase()===m.email.toLowerCase())).map(g=>g.name)}))};
 }
 async function tokenRequest(body:Record<string,string>){
  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body),signal:AbortSignal.timeout(15000)});
@@ -163,7 +165,9 @@ export async function workspaceSchedule(p:Principal){
  const roles=groups.filter(group=>group.emails.some(email=>email.toLowerCase()===viewer?.email.toLowerCase())).map(group=>group.name.replace(/\s*\(קבוצה\)\s*$/,''));
  const connection=await saved(source);
  const tokens=unseal<Tokens>(connection!.encryptedTokens);
- const selectedCalendar=tokens.scheduleCalendarId||'primary';
+ // Never expose the personal primary calendar before the owner explicitly chooses a source.
+ if(!tokens.scheduleCalendarId)return {connected:true,selectionRequired:true,events:[]};
+ const selectedCalendar=tokens.scheduleCalendarId;
  const today=localDate(); const weekStart=addDays(today,-new Date(today+'T12:00:00Z').getUTCDay());
  const timeMin=new Date(zonedTime(weekStart,'00:00')).toISOString(),timeMax=new Date(Date.now()+90*86400000).toISOString();
  const events:Array<{id:string;title:string;start:string;end:string;allDay:boolean;location:string;groupIds?:string[]}>=[];
@@ -190,11 +194,11 @@ export async function scheduleCalendars(p:Principal){
  p=calendarPrincipal(p);
  if(!p.manageAccess)throw new AppError(403,'רק בעל המרחב רשאי לבחור את יומן הלו״ז');
  const row=await saved(p);if(!row)return {calendars:[],selected:''};
- const tokens=unseal<Tokens>(row.encryptedTokens),calendars:Array<{id:string;name:string}>=[];let page='';
+ const tokens=unseal<Tokens>(row.encryptedTokens),calendars:Array<{id:string;name:string;canWrite:boolean}>=[];let page='';
  do{const result=await google(p,'users/me/calendarList?maxResults=250'+(page?'&pageToken='+encodeURIComponent(page):''));
- for(const calendar of result.items||[])if(!calendar.deleted&&['owner','writer','reader'].includes(calendar.accessRole))calendars.push({id:calendar.id,name:calendar.summary||calendar.id});
+ for(const calendar of result.items||[])if(!calendar.deleted&&['owner','writer','reader'].includes(calendar.accessRole))calendars.push({id:calendar.id,name:calendar.summary||calendar.id,canWrite:['owner','writer'].includes(calendar.accessRole)});
  page=result.nextPageToken||'';}while(page);
- return {calendars,selected:tokens.scheduleCalendarId||tokens.calendarId||''};
+ return {calendars,selected:tokens.scheduleCalendarId||''};
 }
 export async function selectScheduleCalendar(p:Principal,input:unknown){
  p=calendarPrincipal(p);

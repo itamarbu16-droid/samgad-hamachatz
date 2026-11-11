@@ -198,3 +198,28 @@ it('moves recurring tasks without recreating occurrences or leaking reminders',a
  const mail=await (await getDb()).select().from(s.rhythmMail);
  expect(mail.filter(m=>rows.some(o=>o.id===m.occurrenceId)&&m.recipientId!==owner.userId)).toHaveLength(0);
 });
+
+it('does not read or select the primary calendar implicitly when the account first connects',async()=>{
+ const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
+ await (await getDb()).update(s.calendarConnections).set({encryptedTokens:seal({access_token:'test',expiresAt:Date.now()+3600000,calendarId:'personal'})}).where(eq(s.calendarConnections.id,id));
+ const fetchMock=vi.fn(async()=>Response.json({items:[{id:'personal',summary:'Personal',accessRole:'owner'},{id:'battalion',summary:'לו״ז סמג״ד',accessRole:'reader'}]}));vi.stubGlobal('fetch',fetchMock);
+ try{
+  expect(await workspaceSchedule(owner)).toEqual({connected:true,selectionRequired:true,events:[]});
+  expect(await workspaceSchedule(deputy)).toEqual({connected:true,selectionRequired:true,events:[]});
+  expect(fetchMock).not.toHaveBeenCalled();
+  const source=await scheduleCalendars(owner);expect(source.selected).toBe('');
+  expect(source.calendars.find(c=>c.id==='battalion')?.canWrite).toBe(false);
+  expect(source.calendars.find(c=>c.id==='personal')?.canWrite).toBe(true);
+ }finally{vi.unstubAllGlobals();}
+});
+
+it('identifies broken or expired unrefreshable saved calendar connections without exposing credentials',async()=>{
+ const id=createHash('sha256').update(`${owner.organizationId}:${owner.userId}`).digest('hex');
+ const db=await getDb();
+ for(const encryptedTokens of ['broken-value',seal({access_token:'expired-test-token',expiresAt:Date.now()-1000})]){
+  await db.update(s.calendarConnections).set({encryptedTokens}).where(eq(s.calendarConnections.id,id));
+  const status=await calendarStatus(owner);expect(status.connected).toBe(false);expect(status.reconnectRequired).toBe(true);
+  expect(JSON.stringify(status)).not.toContain('expired-test-token');
+ }
+ await connect();expect((await calendarStatus(owner)).connected).toBe(true);
+});

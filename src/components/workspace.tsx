@@ -590,6 +590,7 @@ export default function Workspace() {
           {view === "library" && (
             <DocumentLibrary
               section="library"
+              editAll={data.user.permissions?.editAll}
               userId={data.user.id}
               role={data.user.role}
             />
@@ -597,6 +598,7 @@ export default function Workspace() {
           {view === "records" && (
             <DocumentLibrary
               section="records"
+              editAll={data.user.permissions?.editAll}
               userId={data.user.id}
               role={data.user.role}
             />

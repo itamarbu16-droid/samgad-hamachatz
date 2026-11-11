@@ -360,21 +360,26 @@ export async function getTrackerTrash(p:Principal){
  while(changed){changed=false;for(const f of folders)if(f.parent&&trackingIds.has(f.parent)&&!trackingIds.has(f.id)){trackingIds.add(f.id);changed=true;}}
  return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,[...trackingIds])))).filter(row=>isManager(p)||row.creatorId===p.userId);
 }
-export async function manageTrackers(p:Principal,input:unknown){
+export async function manageDocuments(p:Principal,input:unknown,trackersOnly=false){
  assertWrite(p);
  const data=z.object({action:z.enum(['move','trash','restore']),items:z.array(z.object({id:z.string().min(1),version:z.number().int().positive()}).strict()).min(1).max(100),folderId:z.string().min(1).max(160).optional()}).strict().parse(input);
  if(new Set(data.items.map(item=>item.id)).size!==data.items.length)throw new AppError(422,'פריט נבחר יותר מפעם אחת');
- if(data.action==='move'&&(!data.folderId||!await isTrackingFolder(p,data.folderId)))throw new AppError(422,'יש לבחור תיקייה במעקבים');
+ if(data.action==='move'){
+  if(!data.folderId)throw new AppError(422,'יש לבחור תיקיית יעד');
+  await assertDocumentFolder(p,data.folderId);
+  if(trackersOnly&&!await isTrackingFolder(p,data.folderId))throw new AppError(422,'יש לבחור תיקייה במעקבים');
+ }
  const folders=await getDocumentFolders(p);const trackingIds=new Set<string>(['trackers']);let changed=true;
  while(changed){changed=false;for(const f of folders)if(f.parent&&trackingIds.has(f.parent)&&!trackingIds.has(f.id)){trackingIds.add(f.id);changed=true;}}
  const db=await getDb();
  return db.transaction(async tx=>{
-  const rows=await tx.select({id:s.documentEntries.id,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId,archived:s.documentEntries.archived}).from(s.documentEntries).where(and(scope(p),inArray(s.documentEntries.id,data.items.map(i=>i.id))));
+  const rows=await tx.select({id:s.documentEntries.id,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId,archived:s.documentEntries.archived,body:s.documentEntries.body}).from(s.documentEntries).where(and(scope(p),inArray(s.documentEntries.id,data.items.map(i=>i.id))));
   if(rows.length!==data.items.length)throw new AppError(404,'אחד המעקבים אינו זמין לך');
   const results=[];
   for(const item of data.items){
    const row=rows.find(row=>row.id===item.id)!;
-   if(!trackingIds.has(row.folderId))throw new AppError(422,'הפעולה זמינה למעקבים בלבד');
+   if(trackersOnly&&!trackingIds.has(row.folderId))throw new AppError(422,'הפעולה זמינה למעקבים בלבד');
+   if(data.action==='move'&&isTrackingTable(row.body)&&!trackingIds.has(data.folderId!))throw new AppError(422,'טבלת מעקב נשארת במרחב המעקבים');
    if(!isManager(p)&&row.creatorId!==p.userId)throw new AppError(403,'רק יוצר המעקב או מנהל רשאים להעביר ולמחוק אותו');
    if(row.version!==item.version||row.archived!==(data.action==='restore'))throw new AppError(409,'המעקב השתנה. יש לרענן ולנסות שוב');
    const [updated]=await tx.update(s.documentEntries).set({...(data.action==='move'?{folderId:data.folderId!}:{archived:data.action==='trash'}),version:row.version+1,updatedAt:new Date()}).where(and(scope(p),eq(s.documentEntries.id,row.id),eq(s.documentEntries.version,item.version),eq(s.documentEntries.archived,row.archived))).returning({id:s.documentEntries.id,version:s.documentEntries.version});
@@ -382,5 +387,52 @@ export async function manageTrackers(p:Principal,input:unknown){
    results.push(updated);
   }
   return {items:results};
+ });
+}
+
+// Keep the tracker-specific service contract for existing callers.
+export async function manageTrackers(p:Principal,input:unknown){return manageDocuments(p,input,true);}
+export async function getDocumentTrash(p:Principal,section:string){
+ if(!['library','records','all'].includes(section))throw new AppError(422,'מרחב מסמכים לא תקין');
+ const folders=await getDocumentFolders(p);
+ const ids=folders.filter(f=>section==='all'||f.section===section).map(f=>f.id);
+ return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,ids)))).filter(row=>isManager(p)||row.creatorId===p.userId);
+}
+export async function updateDocumentFolder(p:Principal,input:unknown){
+ if(!canEditAll(p))throw new AppError(403,'עריכת תיקייה דורשת הרשאת מנהל');
+ const data=z.object({id:z.string().min(1),name:z.string().trim().min(1).max(120).optional(),parent:z.string().min(1).max(160).nullable().optional()}).strict().parse(input);
+ const db=await getDb();
+ return db.transaction(async tx=>{
+  // Serialize hierarchy changes, preventing concurrent moves from creating a cycle.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${p.organizationId + ':document-folders'}))`);
+  const custom=await tx.select().from(s.customDocumentFolders).where(eq(s.customDocumentFolders.organizationId,p.organizationId));
+  const folder=custom.find(f=>f.id===data.id);
+  if(!folder)throw new AppError(422,'תיקיות המערכת קבועות; ניתן לערוך תיקיות שיצרת');
+  const folders=[...documentFolders,...custom];
+  const parent=data.parent===undefined?folder.parent:data.parent;
+  if(parent){
+   const target=folders.find(f=>f.id===parent);
+   if(!target||target.section!==folder.section)throw new AppError(422,'יש לבחור תיקייה באותו מרחב');
+   const seen=new Set<string>([folder.id]);let cursor:string|null=parent;
+   while(cursor){if(seen.has(cursor))throw new AppError(422,'לא ניתן להעביר תיקייה לתוך עצמה או לתיקייה שבתוכה');seen.add(cursor);cursor=folders.find(f=>f.id===cursor)?.parent??null;}
+  }
+  const isTracker=(id:string|null)=>{const seen=new Set<string>();while(id&&!seen.has(id)){if(id==='trackers')return true;seen.add(id);id=folders.find(f=>f.id===id)?.parent??null;}return false;};
+  if(isTracker(folder.id)!==isTracker(parent))throw new AppError(422,'תיקיות מעקבים מועברות בתוך המעקבים בלבד');
+  const [updated]=await tx.update(s.customDocumentFolders).set({name:data.name??folder.name,parent}).where(and(eq(s.customDocumentFolders.id,folder.id),eq(s.customDocumentFolders.organizationId,p.organizationId))).returning();
+  return updated;
+ });
+}
+export async function deleteDocumentFolder(p:Principal,input:unknown){
+ if(!canEditAll(p))throw new AppError(403,'מחיקת תיקייה דורשת הרשאת מנהל');
+ const {id}=z.object({id:z.string().min(1)}).strict().parse(input);const db=await getDb();
+ return db.transaction(async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${p.organizationId + ':document-folders'}))`);
+  const [folder]=await tx.select().from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.id,id),eq(s.customDocumentFolders.organizationId,p.organizationId)));
+  if(!folder)throw new AppError(422,'תיקיות המערכת קבועות; ניתן למחוק רק תיקייה שיצרת');
+  const children=await tx.select({id:s.customDocumentFolders.id}).from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.parent,id),eq(s.customDocumentFolders.organizationId,p.organizationId)));
+  const documents=await tx.select({id:s.documentEntries.id}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.folderId,id)));
+  if(children.length||documents.length)throw new AppError(409,'התיקייה אינה ריקה. יש להעביר קודם את הפריטים ותיקיות המשנה, כולל פריטים בסל המחזור');
+  await tx.delete(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.id,id),eq(s.customDocumentFolders.organizationId,p.organizationId)));
+  return {id};
  });
 }

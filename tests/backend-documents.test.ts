@@ -7,7 +7,7 @@ import { seedDemo } from "../src/server/seed";
 import { principalFor } from "../src/server/service";
 import {
   createDocument,
-  createDocumentFolder, duplicateDocument, manageTrackers, getTrackerTrash,
+  createDocumentFolder, duplicateDocument, manageTrackers, getTrackerTrash, manageDocuments, getDocumentTrash, updateDocumentFolder, deleteDocumentFolder,
   getDocuments,
   getDocument,
   updateDocument,
@@ -307,4 +307,49 @@ it('rejects unauthorized moves and deletes, and rolls back a batch when any vers
  await expect(manageTrackers(deputy,{action:'move',folderId:'orders',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:422});
  await expect(manageTrackers(deputy,{action:'trash',items:[{id:a.id,version:1},{id:b.id,version:9}]})).rejects.toMatchObject({status:409});
  expect((await getDocument(deputy,a.id)).version).toBe(1);
+});
+
+
+it('moves and safely trashes meeting summaries across sections with attachment preservation', async()=>{
+ const bytes=Buffer.from('meeting attachment');
+ const doc=await createDocument(deputy,input({attachments:[{filename:'meeting.pdf',contentBase64:bytes.toString('base64')}]}));
+ const file=(await getDocument(deputy,doc.id)).attachments[0];
+ await manageDocuments(deputy,{action:'move',folderId:'orders',items:[{id:doc.id,version:1}]});
+ expect((await getDocument(deputy,doc.id)).folderId).toBe('orders');
+ await manageDocuments(deputy,{action:'trash',items:[{id:doc.id,version:2}]});
+ expect((await getDocumentTrash(deputy,'library')).some(d=>d.id===doc.id)).toBe(true);
+ expect((await getDocumentTrash(deputy,'records')).some(d=>d.id===doc.id)).toBe(false);
+ await expect(getDocument(deputy,doc.id)).rejects.toMatchObject({status:404});
+ await manageDocuments(deputy,{action:'restore',items:[{id:doc.id,version:3}]});
+ expect((await downloadDocument(deputy,file.id)).bytes.equals(bytes)).toBe(true);
+});
+it('protects meeting management permissions, invalid destinations, and atomic stale batches',async()=>{
+ const a=await createDocument(deputy,input()),b=await createDocument(deputy,input());
+ await expect(manageDocuments(contributor,{action:'trash',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:403});
+ await expect(manageDocuments(viewer,{action:'trash',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:403});
+ await expect(manageDocuments(deputy,{action:'move',folderId:'missing',items:[{id:a.id,version:1}]})).rejects.toMatchObject({status:422});
+ await expect(manageDocuments(deputy,{action:'trash',items:[{id:a.id,version:1},{id:b.id,version:99}]})).rejects.toMatchObject({status:409});
+ expect((await getDocument(deputy,a.id)).version).toBe(1);
+ const own=await createDocument(contributor,input());
+ await manageDocuments(contributor,{action:'trash',items:[{id:own.id,version:1}]});
+ expect((await getDocumentTrash(contributor,'records')).some(d=>d.id===own.id)).toBe(true);
+ expect((await getDocumentTrash({...deputy,organizationId:'other'},'all'))).toEqual([]);
+});
+it('renames and moves custom folders, preventing cycles and protecting populated folders',async()=>{
+ const a=await createDocumentFolder(deputy,{name:'תיקיית בדיקה',section:'records',parent:'meetings',clientRequestId:randomUUID()});
+ const b=await createDocumentFolder(deputy,{name:'תיקיית משנה',section:'records',parent:a.id,clientRequestId:randomUUID()});
+ await updateDocumentFolder(deputy,{id:a.id,name:'שם חדש',parent:'inspections'});
+ expect((await getDocuments(deputy)).folders.find(f=>f.id===a.id)).toMatchObject({name:'שם חדש',parent:'inspections'});
+ await expect(updateDocumentFolder(deputy,{id:a.id,parent:b.id})).rejects.toMatchObject({status:422});
+ await expect(updateDocumentFolder(contributor,{id:a.id,name:'אסור'})).rejects.toMatchObject({status:403});
+ await expect(updateDocumentFolder(deputy,{id:'meetings',name:'אסור'})).rejects.toMatchObject({status:422});
+ await expect(deleteDocumentFolder(deputy,{id:a.id})).rejects.toMatchObject({status:409});
+ const doc=await createDocument(deputy,input({folderId:b.id}));
+ await manageDocuments(deputy,{action:'trash',items:[{id:doc.id,version:1}]});
+ await expect(deleteDocumentFolder(deputy,{id:b.id})).rejects.toMatchObject({status:409});
+ await manageDocuments(deputy,{action:'restore',items:[{id:doc.id,version:2}]});
+ await manageDocuments(deputy,{action:'move',folderId:'meeting-safety',items:[{id:doc.id,version:3}]});
+ await deleteDocumentFolder(deputy,{id:b.id});
+ await deleteDocumentFolder(deputy,{id:a.id});
+ expect((await getDocuments(deputy)).folders.some(f=>f.id===a.id)).toBe(false);
 });

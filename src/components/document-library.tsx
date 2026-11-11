@@ -1,5 +1,6 @@
 "use client";
 import TrackingTables from "./tracking-tables";
+import {useDocumentOrganizer} from "./document-organizer";
 import { apiFetch } from "@/lib/offline";
 import {
   useCallback,
@@ -67,10 +68,12 @@ export default function DocumentLibrary({
   section,
   userId,
   role,
+  editAll = false,
 }: {
   section: DocumentSection;
   userId: string;
   role: string;
+  editAll?: boolean;
 }) {
   const [entries, setEntries] = useState<Entry[]>([]),
     [folder, setFolder] = useState<string | null>(null),
@@ -89,7 +92,7 @@ export default function DocumentLibrary({
   const [folders,setFolders]=useState<DocumentFolder[]>([...documentFolders]);
   const [creatingFolder,setCreatingFolder]=useState(false);
   const requests = useRef(new Map<string, string>());
-  const manager = ["deputy", "staff", "company_commander"].includes(role),
+  const manager = editAll || ["deputy", "staff", "company_commander"].includes(role),
     canWrite = manager || role === "contributor";
   const rootName = section === "library" ? "ספרייה" : "סיכומי ישיבות וביקורות";
   const catalog = folders.filter((item) => item.section === section);
@@ -138,7 +141,7 @@ export default function DocumentLibrary({
     setQuery("");
     setNotice("");
   }
-  async function openEntry(entry: Pick<Entry,'id'>) {
+  async function openEntry(entry: Pick<Entry,'id'>, edit = false) {
     setBusy(true);
     setError("");
     try {
@@ -148,7 +151,7 @@ export default function DocumentLibrary({
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || "המסמך אינו זמין");
       setSelected(value.entry);
-      setEditing(false);
+      setEditing(edit);
       setFiles([]);
     } catch (error) {
       setError(error instanceof Error ? error.message : "שגיאה בטעינה");
@@ -206,12 +209,17 @@ export default function DocumentLibrary({
       setBusy(false);setUploadProgress("");
     }
   }
+  const organizer = useDocumentOrganizer({folders,folder,section,canWrite,manager,userId,refresh:async()=>{await load();setTrackingVersion(value=>value+1);},navigate:openFolder,closeDocument:()=>{setSelected(null);setEditing(false);},edit:entry=>void openEntry(entry,true)});
   const modalOpen = creating || Boolean(selected);
   const editForm = creating || editing;
   const tracking = section === "library" && (()=>{let id=folder;const seen=new Set<string>();while(id&&!seen.has(id)){if(id==='trackers')return true;seen.add(id);id=catalog.find(f=>f.id===id)?.parent??null;}return false;})();
   return (
     <div className="document-workspace">
-      {tracking ? <TrackingTables key={folder} userId={userId} role={role} refreshKey={trackingVersion}
+      {organizer.toolbar}
+      {organizer.feedback}
+      {organizer.dialogs}
+      {tracking ? <TrackingTables key={folder} userId={userId} role={role} editAll={editAll}
+        folderActions={organizer.folderAction} cutEntry={entry=>organizer.cutEntry({...entry,folderId:folder!})} refreshKey={trackingVersion}
         folderId={folder!} folders={catalog} navigate={id=>{openFolder(id);void load();}}
         foldersChanged={()=>void load()}
         back={() => {openFolder(null);void load();}}
@@ -282,9 +290,10 @@ export default function DocumentLibrary({
                 children.includes(entry.folderId),
               ).length;
             return (
+              <div className="document-folder-shell" key={item.id}>
+              {organizer.folderAction(item)}
               <button
                 className="document-folder-card"
-                key={item.id}
                 onClick={() => openFolder(item.id)}
               >
                 <Folder size={40} />
@@ -300,6 +309,7 @@ export default function DocumentLibrary({
                   </small>
                 )}
               </button>
+              </div>
             );
           })}
         </div>
@@ -315,9 +325,9 @@ export default function DocumentLibrary({
       )}
       <div className="document-entry-list" aria-busy={loading}>
         {visibleEntries.map((entry) => (
+          <div className="document-entry-shell" key={entry.id}>
           <button
             className="panel document-entry"
-            key={entry.id}
             onClick={() => void openEntry(entry)}
             disabled={busy}
           >
@@ -335,6 +345,8 @@ export default function DocumentLibrary({
             </div>
             <ChevronLeft size={18} />
           </button>
+          {organizer.rowAction(entry)}
+          </div>
         ))}
       </div>
       {!loading &&
@@ -496,6 +508,7 @@ export default function DocumentLibrary({
                 </div>
                 {canWrite && (manager || selected.creatorId === userId) && (
                   <div className="modal-actions">
+                    <button className="button secondary" onClick={()=>organizer.showActions(selected)}>פעולות נוספות · העברה / מחיקה</button>
                     <button
                       className="button primary"
                       onClick={() => {
