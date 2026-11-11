@@ -193,6 +193,7 @@ export default function Workspace() {
   }, []);
   function go(v: string, f = "all", d = "", task = "", q = "") {
     setTaskSelection([]);
+    if (v !== view) window.scrollTo({ top: 0, behavior: "instant" });
     const p = new URLSearchParams();
     if (v !== "dashboard") p.set("view", v);
     if (f !== "all") p.set("filter", f);
@@ -402,6 +403,7 @@ export default function Workspace() {
   const title = view==="access"?"הרשאות":nav.find((n) => n[0] === view)?.[1] || "ראשי";
   return (
     <div className={`app-shell battalion-app ${view === "dashboard" ? "command-home" : ""}`} >
+      <a className="skip-link" href="#main-content">דילוג לתוכן</a>
       <PushAutoRestore key={data.user.id}/>
       <aside className="sidebar">
         <a
@@ -428,11 +430,12 @@ export default function Workspace() {
           <span className="workspace-dot" />
         </div>
         <span className="nav-caption">מרחב העבודה</span>
-        <nav>
+        <nav aria-label="ניווט ראשי במחשב">
           {availableNav.map(([id, label, Icon]) => (
             <button
               key={id}
               className={view === id ? "nav-item active" : "nav-item"}
+              aria-current={view === id ? "page" : undefined}
               onClick={() => go(id)}
             >
               <Icon size={19} />
@@ -486,6 +489,7 @@ export default function Workspace() {
             <strong>{title}</strong>
           </div>
           <div className="topbar-actions">
+            <button className="icon-button" aria-label="חיפוש בכל האפליקציה" onClick={() => window.dispatchEvent(new Event("samgad:search"))}><Search size={20}/></button>
             {data.user.permissions?.manageAccess && <button className="icon-button" aria-label="ניהול הרשאות" title="ניהול גישה לפי מייל" onClick={()=>go("access")}><ShieldCheck size={18}/></button>}
             {guest && <button className="button secondary" onClick={()=>location.href="/login"}>כניסה</button>}
             {data.demo && (
@@ -504,9 +508,9 @@ export default function Workspace() {
             <span className="avatar small">{data.user.name.slice(0, 1)}</span>
           </div>
         </header>
-        <main className="main-content">
+        <main id="main-content" className="main-content" tabIndex={-1}>
           <DeadlineRequests manager={ownerInterface}/>
-          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} onSaved={load} />
+          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} showCapture={!["personal", "tasks", "library", "records"].includes(view)} onSaved={load} />
           <div className="page-heading">
             <div>
               <span className="eyebrow">
@@ -524,7 +528,7 @@ export default function Workspace() {
                 {view === "dashboard"
                   ? "המשימות, ההחלטות והאנשים שדורשים את תשומת הלב שלך."
                   : view === "personal"
-                    ? "המשימות הפרטיות והשעל״ח שלך, במקום אחד."
+                    ? "המשימות האישיות והשעל״ח שלך, במקום אחד."
                     : view === "tasks"
                       ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
                       : view === "decisions"
@@ -767,9 +771,9 @@ export default function Workspace() {
         </main>
       </div>
       <nav className="mobile-nav" aria-label="ניווט ראשי">
-        {[["records","סיכומי ישיבות",NotebookPen],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={view===id?"active":""} aria-current={view===id?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
+        {[["records","סיכומי ישיבות",NotebookPen],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={(view===id||(id==="more"&&!["records","tasks","dashboard","library"].includes(view)))?"active":""} aria-current={(view===id||(id==="more"&&!["records","tasks","dashboard","library"].includes(view)))?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
       </nav>
-      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation"><PushSettings/>{availableNav.map(([id,label,Icon])=><button className="nav-item" key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
+      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation"><button className="nav-item" onClick={()=>{setModal("");window.dispatchEvent(new Event("samgad:search"));}}><Search size={22}/>חיפוש בכל האפליקציה</button><PushSettings/>{availableNav.map(([id,label,Icon])=><button className={view===id?"nav-item active":"nav-item"} aria-current={view===id?"page":undefined} key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
       <TaskActionNotice/>
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}

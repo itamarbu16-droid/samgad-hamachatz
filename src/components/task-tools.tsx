@@ -3,7 +3,7 @@ import { taskTone } from "@/lib/task-display";
 import { apiFetch } from "@/lib/offline";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Modal, Empty } from "./workspace-primitives";
 import { TaskComposer } from "./task-composer";
 import { currentMonth, useRhythm, useTaskMutations } from "./use-rhythm";
@@ -29,6 +29,7 @@ export default function TaskTools({
   tasks,
   dashboard,
   personalAllowed=false,
+  showCapture=true,
   onSaved
 }: {
   userId: string;
@@ -36,6 +37,7 @@ export default function TaskTools({
   tasks: Task[];
   dashboard: boolean;
   personalAllowed?:boolean;
+  showCapture?:boolean;
   onSaved: () => Promise<void>;
 }) {
   const [month] = useState(currentMonth),
@@ -106,14 +108,16 @@ export default function TaskTools({
       setMode("task");
       setModal("capture");
     };
+    const search = () => setModal("search");
     window.addEventListener("samgad:capture", capture);
+    window.addEventListener("samgad:search", search);
     return () => {
       searchSequence.current++;
       window.removeEventListener("samgad:capture", capture);
+      window.removeEventListener("samgad:search", search);
     };
   }, []);
   return <>
-    <div className="global-task-bar"><button className="button secondary" onClick={() => setModal("search")}><Search size={17} />חיפוש בכל האפליקציה</button></div>
     {dashboard && <section className="focus-hub" aria-label="מה דורש ממך פעולה">
       {[{
         id: "pending",
@@ -129,7 +133,7 @@ export default function TaskTools({
         count: lateRows.length + legacyLate.length
       }].map(card => <button key={card.id} className="panel focus-card" onClick={() => setModal(card.id)}><strong>{data ? card.count : "…"}</strong><span>{card.label}</span></button>)}
     </section>}
-    {["deputy","staff"].includes(role) && <button className="capture-button" aria-label="הוספה מהירה" onClick={() => {
+    {showCapture && ["deputy","staff"].includes(role) && <button className="capture-button" aria-label="הוספה מהירה" onClick={() => {
       setMode("task");
       setModal("capture");
     }}><Plus size={24} /><span>הוספה</span></button>}
