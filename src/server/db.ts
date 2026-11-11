@@ -2,7 +2,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle as pgliteDrizzle } from 'drizzle-orm/pglite';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import * as schema from './schema';
 
@@ -13,7 +13,11 @@ const state = globalThis as unknown as { samgadConnection?: Promise<Connection> 
 export function isDemo() { return process.env.DEMO_MODE === 'true'; }
 
 async function connect(): Promise<Connection> {
-  const migration = async () => readFile(path.join(process.cwd(), 'migrations/0001_foundation.sql'), 'utf8');
+  const migration = async () => {
+    const directory = path.join(process.cwd(), 'migrations');
+    const files = (await readdir(directory)).filter(name => /^\d+.*\.sql$/.test(name)).sort();
+    return (await Promise.all(files.map(name => readFile(path.join(directory, name), 'utf8')))).join('\n');
+  };
   if (process.env.DATABASE_URL) {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
     return { db: drizzle(pool, { schema }), migrate: async () => { await pool.query(await migration()); }, close: () => pool.end() };
