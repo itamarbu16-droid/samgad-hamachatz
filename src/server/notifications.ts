@@ -1,4 +1,4 @@
-import {and,eq,inArray,isNull,lt} from 'drizzle-orm';
+import {and,eq,inArray,isNull,lt,desc,sql} from 'drizzle-orm';
 import {randomUUID,createECDH,createPrivateKey,sign} from 'node:crypto';
 import {z} from 'zod';
 import {getDb,type Database} from './db';
@@ -39,12 +39,18 @@ export function vapidAuthorization(endpoint:string,publicKey:string,privateKey:s
  return `vapid t=${data}.${sign('sha256',Buffer.from(data),{key,dsaEncoding:'ieee-p1363'}).toString('base64url')}, k=${publicKey}`;
 }
 export async function flushPush(){
- const db=await getDb(),events=await db.select().from(s.pushEvents).where(and(isNull(s.pushEvents.sentAt),lt(s.pushEvents.attempts,5))).limit(50);
+ const db=await getDb(),events=await db.select().from(s.pushEvents).where(and(isNull(s.pushEvents.sentAt),lt(s.pushEvents.attempts,5),
+  sql`EXISTS (SELECT 1 FROM ${s.pushSubscriptions} WHERE ${s.pushSubscriptions.userId} = ${s.pushEvents.recipientId} AND ${s.pushSubscriptions.organizationId} = ${s.pushEvents.organizationId})`)).limit(50);
  for(const event of events){
   // Claim each delivery once across concurrent post-response workers.
   const [claimed]=await db.update(s.pushEvents).set({attempts:event.attempts+1,sentAt:new Date()}).where(and(eq(s.pushEvents.id,event.id),isNull(s.pushEvents.sentAt),eq(s.pushEvents.attempts,event.attempts))).returning();if(!claimed)continue;
   const subscriptions=await db.select().from(s.pushSubscriptions).innerJoin(s.memberships,and(eq(s.memberships.userId,s.pushSubscriptions.userId),eq(s.memberships.organizationId,s.pushSubscriptions.organizationId),eq(s.memberships.active,true))).where(and(eq(s.pushSubscriptions.userId,event.recipientId),eq(s.pushSubscriptions.organizationId,event.organizationId)));
-  const [config]=await db.select().from(s.pushConfig).where(eq(s.pushConfig.organizationId,event.organizationId));if(!config)continue;
+  const [config]=await db.select().from(s.pushConfig).where(eq(s.pushConfig.organizationId,event.organizationId));
+  if(!config || !subscriptions.length){
+   // A device has not subscribed yet. Do not falsely record delivery or exhaust retries.
+   await db.update(s.pushEvents).set({sentAt:null,attempts:event.attempts}).where(eq(s.pushEvents.id,event.id));
+   continue;
+  }
   const privateKey=(unseal(config.encryptedPrivateKey) as {key:string}).key;
   let retry=false;
   for(const {push_subscriptions:subscription} of subscriptions){
@@ -57,4 +63,12 @@ export async function flushPush(){
  }
  // Pending notifications older than a month no longer belong on devices.
  await db.delete(s.pushEvents).where(lt(s.pushEvents.createdAt,new Date(Date.now()-30*86400000)));
+}
+
+/** Read-only account diagnostics; never exposes endpoints or key material. */
+export async function pushHealth(p:Principal){
+ const db=await getDb();
+ const subscriptions=await db.select({id:s.pushSubscriptions.id}).from(s.pushSubscriptions).where(and(eq(s.pushSubscriptions.organizationId,p.organizationId),eq(s.pushSubscriptions.userId,p.userId)));
+ const recent=await db.select({createdAt:s.pushEvents.createdAt,sentAt:s.pushEvents.sentAt,attempts:s.pushEvents.attempts}).from(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,p.userId))).orderBy(desc(s.pushEvents.createdAt)).limit(20);
+ return {registeredDevices:subscriptions.length,schedulerConfigured:Boolean(process.env.CRON_SECRET),recentEvents:recent,reminderTimes:['08:00','18:00'],timezone:'Asia/Jerusalem'};
 }

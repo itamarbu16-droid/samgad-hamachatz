@@ -29,5 +29,5 @@ export function PushSettings(){
   try{setActive(await syncDevicePush(true));setMessage('ההרשאה נשמרת במכשיר הזה ותסונכרן אוטומטית בכניסה הבאה.');}
   catch(error){setMessage((error as Error).message);}finally{setBusy(false);}
  }
- return <div className="push-settings">{active?<p role="status">✓ התראות פעילות במכשיר הזה</p>:<button className="button secondary" disabled={busy||checking} onClick={()=>void enable()}>{checking?'בודק התראות…':busy?'מפעיל…':'הפעל התראות בטלפון'}</button>}{message&&<p role="status">{message}</p>}</div>;
+ return <div className="push-settings">{active?<p role="status">✓ המכשיר רשום לקבלת התראות</p>:<button className="button secondary" disabled={busy||checking} onClick={()=>void enable()}>{checking?'בודק התראות…':busy?'מפעיל…':'הפעל התראות בטלפון'}</button>}{message&&<p role="status">{message}</p>}<p className="muted">תזכורת מרוכזת ב־08:00 וב־18:00, לפי שעון ישראל, למשימות שלך שדחופות, באיחור או לקראת תג״ב. ההרשמה במכשיר אינה אישור שהודעה כבר נמסרה.</p></div>;
 }

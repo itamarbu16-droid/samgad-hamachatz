@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {seedDemo} from '../src/server/seed';
 import {getDb,closeDb} from '../src/server/db';
-import {digestSlot,queueOverdueDigests} from '../src/server/overdue-digest';
+import {digestSlot,queueOverdueDigests,needsPersonalReminder} from '../src/server/overdue-digest';
 import {acknowledgePush} from '../src/server/notifications';
 import {principalFor} from '../src/server/service';
 import type {Principal} from '../src/server/policy';
@@ -22,8 +22,10 @@ beforeAll(async()=>{
   {...base,id:randomUUID(),ownerId:owner.userId,title:'owner-late'},
   {...base,id:randomUUID(),ownerId:other,title:'other-late'},
   {...base,id:randomUUID(),ownerId:other,title:'pending-excluded',status:'pending_review'},
-  {...base,id:randomUUID(),ownerId:owner.userId,title:'today-excluded',dueDate:'2026-10-22'},
+  {...base,id:randomUUID(),ownerId:owner.userId,title:'today-included',dueDate:'2026-10-22'},
   {...base,id:randomUUID(),ownerId:owner.userId,title:'undated-excluded',dueDate:null},
+  {...base,id:randomUUID(),ownerId:owner.userId,title:'urgent-undated',dueDate:null,priority:'urgent'},
+  {...base,id:randomUUID(),ownerId:owner.userId,title:'tomorrow-included',dueDate:'2026-10-23'},
   {...base,id:randomUUID(),ownerId:other,creatorId:other,title:'private-excluded'},
  ]);
  const itemId=randomUUID();await db.insert(s.rhythmItems).values({id:itemId,organizationId:owner.organizationId,creatorId:owner.userId,title:'recurring-late',frequency:'once',startDate:'2026-10-21',assigneeIds:[other],completionMode:'individual'});
@@ -40,7 +42,7 @@ it('queues only overdue actionable tasks and isolates personal and others digest
  expect(await queueOverdueDigests(morning)).toEqual({queued:2});
  const rows=await (await getDb()).select().from(s.pushEvents);
  expect(rows).toHaveLength(2);expect(rows.every(r=>r.recipientId===owner.userId)).toBe(true);
- expect(rows.find(r=>r.title.includes('שלך'))?.body).toContain('1 משימות');
+ expect(rows.find(r=>r.title.includes('שלך'))?.body).toContain('4 משימות');
  const others=rows.find(r=>r.title.includes('האחרים'))!;
  expect(others.body).toContain('2 משימות');expect(others.body).toContain('other-late');expect(others.body).toContain('recurring-late');
  expect(rows.map(r=>r.body).join()).not.toMatch(/excluded/);
@@ -58,4 +60,13 @@ it('does not notify when all tasks are completed or awaiting approval',async()=>
  const [item]=await db.select().from(s.rhythmItems).where(eq(s.rhythmItems.title,'recurring-late'));
  await db.update(s.rhythmOccurrences).set({reports:{[other]:'2026-10-22T12:00:00Z'}}).where(eq(s.rhythmOccurrences.itemId,item.id));
  expect(await queueOverdueDigests(new Date('2026-10-23T05:00:00Z'))).toEqual({queued:0});
+});
+
+it('includes urgent undated and upcoming personal tasks, not ordinary future tasks',()=>{
+ const today='2026-11-11';
+ expect(needsPersonalReminder(null,true,today)).toBe(true);
+ expect(needsPersonalReminder('2026-11-11',false,today)).toBe(true);
+ expect(needsPersonalReminder('2026-11-12',false,today)).toBe(true);
+ expect(needsPersonalReminder('2026-11-13',false,today)).toBe(false);
+ expect(needsPersonalReminder(null,false,today)).toBe(false);
 });

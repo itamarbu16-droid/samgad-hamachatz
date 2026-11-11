@@ -8,7 +8,7 @@ import {createRhythmItem,getRhythm,editRhythmItem,completeRhythm} from '../src/s
 import {actOnTask} from '../src/server/task-actions';
 import {requestDeadline,resolveDeadline,listDeadlineRequests} from '../src/server/deadline-requests';
 import {purgeCompletedTasks} from '../src/server/task-archive';
-import {subscribePush,pushKey,vapidAuthorization,validPushEndpoint,flushPush} from '../src/server/notifications';
+import {subscribePush,pushKey,vapidAuthorization,validPushEndpoint,flushPush,pushHealth} from '../src/server/notifications';
 import {localDate,type Principal} from '../src/server/policy';
 import {addDays} from '../src/lib/rhythm';
 import * as s from '../src/server/schema';
@@ -40,5 +40,21 @@ it('sends authenticated wake-up pushes and removes expired device subscriptions'
  const [url,options]=deliver.mock.calls[0] as unknown as [string,RequestInit];expect(url).toBe(endpoint);expect((options.headers as Record<string,string>).Authorization).toMatch(/^vapid t=/);expect(options.body).toBeUndefined();
  deliver.mockImplementation(async()=>new Response(null,{status:410}));await assigned();await flushPush();
  expect((await (await getDb()).select().from(s.pushSubscriptions)).some(row=>row.endpoint===endpoint)).toBe(false);
+ vi.unstubAllGlobals();
+});
+
+it('does not mark notifications delivered when no device is registered',async()=>{
+ const db=await getDb();
+ await db.delete(s.pushSubscriptions).where(eq(s.pushSubscriptions.userId,deputy.userId));
+ const task=await assigned();
+ const [event]=await db.select().from(s.pushEvents).where(eq(s.pushEvents.recipientId,deputy.userId));
+ const deliver=vi.fn();vi.stubGlobal('fetch',deliver);
+ await flushPush();
+ const pending=await db.select().from(s.pushEvents).where(eq(s.pushEvents.recipientId,deputy.userId));
+ expect(pending.some(row=>row.sentAt===null)).toBe(true);
+ expect(deliver).not.toHaveBeenCalled();
+ const health=await pushHealth(deputy);expect(health.registeredDevices).toBe(0);
+ expect(JSON.stringify(health)).not.toMatch(/endpoint|publicKey|privateKey/);
+ expect(task.id).toBeTruthy();expect(event.id).toBeTruthy();
  vi.unstubAllGlobals();
 });

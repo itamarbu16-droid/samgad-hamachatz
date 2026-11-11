@@ -1,7 +1,12 @@
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, lt, lte, or, sql } from 'drizzle-orm';
 import { getDb } from './db';
 import * as s from './schema';
 import { localDate } from './policy';
+import { addDays } from '../lib/rhythm';
+
+export function needsPersonalReminder(dueDate: string | null, urgent: boolean, today: string) {
+  return urgent || Boolean(dueDate && dueDate <= addDays(today, 1));
+}
 
 // Both UTC offsets are scheduled; only the matching Israel-time hour runs.
 export function digestSlot(now: Date): 'morning' | 'evening' | null {
@@ -29,32 +34,34 @@ export async function queueOverdueDigests(now = new Date()) {
     const names = new Map(members.map(member=>[member.id, member.name]));
     const personal: string[] = [], others: string[] = [];
     const tasks = await db.select().from(s.tasks).where(and(
-      eq(s.tasks.organizationId,workspace.organizationId), lt(s.tasks.dueDate,today),
+      eq(s.tasks.organizationId,workspace.organizationId),
+      or(lte(s.tasks.dueDate,addDays(today,1)),eq(s.tasks.priority,'urgent')),
       sql`${s.tasks.status} NOT IN ('completed','cancelled','pending_review')`,
     ));
     for (const task of tasks) {
-      if (task.ownerId === workspace.ownerId) personal.push(task.title);
+      if (task.ownerId === workspace.ownerId && needsPersonalReminder(task.dueDate,task.priority==='urgent',today)) personal.push(task.title);
       // Other people's private tasks stay private.
-      else if (task.ownerId !== task.creatorId && names.has(task.ownerId))
+      else if (task.ownerId !== workspace.ownerId && task.ownerId !== task.creatorId && names.has(task.ownerId) && task.dueDate && task.dueDate<today)
         others.push(`${names.get(task.ownerId)}: ${task.title}`);
     }
     const occurrences = await db.select().from(s.rhythmOccurrences)
       .innerJoin(s.rhythmItems,eq(s.rhythmItems.id,s.rhythmOccurrences.itemId))
       .where(and(eq(s.rhythmItems.organizationId,workspace.organizationId),
-        eq(s.rhythmItems.archived,false),eq(s.rhythmItems.hasDeadline,true),
-        eq(s.rhythmItems.category,'task'),lt(s.rhythmOccurrences.dueDate,today)));
+        eq(s.rhythmItems.archived,false),eq(s.rhythmItems.category,'task'),
+        or(and(eq(s.rhythmItems.hasDeadline,true),lte(s.rhythmOccurrences.dueDate,addDays(today,1))),
+          and(eq(s.rhythmItems.frequency,'once'),eq(s.rhythmItems.manualUrgent,true)))));
     for (const {rhythm_items:item,rhythm_occurrences:occurrence} of occurrences) {
       if (item.completionMode === 'shared' && occurrence.completedAt) continue;
       const remaining = item.assigneeIds.filter(id=>!occurrence.completions[id] && !occurrence.reports[id]);
-      if (remaining.includes(workspace.ownerId)) personal.push(item.title);
+      if (remaining.includes(workspace.ownerId) && needsPersonalReminder(item.hasDeadline?occurrence.dueDate:null,item.manualUrgent,today)) personal.push(item.title);
       const isPrivate = item.assigneeIds.length===1 && item.assigneeIds[0]===item.creatorId;
-      if (!isPrivate) {
+      if (!isPrivate && item.hasDeadline && occurrence.dueDate<today) {
         const assignees = remaining.filter(id=>id!==workspace.ownerId && names.has(id));
         if (assignees.length) others.push(`${assignees.map(id=>names.get(id)).join(', ')}: ${item.title}`);
       }
     }
     for (const [kind, entries, title, url] of [
-      ['personal',personal,'המשימות שלך באיחור','/?view=personal'],
+      ['personal',personal,'המשימות שלך לטיפול','/?view=personal'],
       ['others',slot==='morning'?others:[],'משימות באיחור אצל האחרים','/?view=tasks'],
     ] as const) {
       if (!entries.length) continue;
@@ -66,7 +73,7 @@ export async function queueOverdueDigests(now = new Date()) {
         if (!inserted.length) return 0;
         await tx.insert(s.pushEvents).values({id,
           organizationId:workspace.organizationId,recipientId:workspace.ownerId,title,
-          body:`${entries.length} משימות באיחור · ${entries.join(' · ')}`.slice(0,180),url,
+          body:`${entries.length} משימות ${kind==='personal'?'דחופות או לקראת תג״ב':'באיחור'} · ${entries.join(' · ')}`.slice(0,180),url,
         });
         return 1;
       });

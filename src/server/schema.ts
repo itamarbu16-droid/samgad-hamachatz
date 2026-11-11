@@ -139,3 +139,15 @@ export const overdueDigestRuns=pgTable('overdue_digest_runs',{
  id:text('id').primaryKey(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 });
 export const expiredTaskRecords=pgTable('expired_task_records',{taskKey:text('task_key').primaryKey(),expiredAt:timestamp('expired_at',{withTimezone:true}).notNull().defaultNow()});
+
+// Limited, revocable iPhone capture credentials. Plaintext is never persisted.
+export const quickPointKeys = pgTable('quick_point_keys', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  windowStartedAt: timestamp('window_started_at', { withTimezone: true }).notNull().defaultNow(),
+  windowCount: integer('window_count').notNull().default(0),
+});
