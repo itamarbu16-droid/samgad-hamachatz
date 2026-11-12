@@ -2375,12 +2375,12 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .schedule-day{margin-block:20px}
 .schedule-day>h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:1rem}
 .schedule-day>h3 span{font-size:.75rem;background:#f4e3d5;color:#874721;padding:4px 8px;border-radius:20px}
-.schedule-day>h3 small{margin-inline-start:auto;color:#716960;font-weight:400}
-.schedule-day.is-today>h3{color:#8c4a25}
+.schedule-day>h3 small{margin-inline-start:auto;color:var(--muted);font-weight:400}
+.schedule-day.is-today>h3{color:var(--teal)}
 .schedule-day article{margin-block:10px;padding:16px}
 .schedule-day article h4{margin:0 0 8px;font-size:1.05rem;overflow-wrap:anywhere}
 .schedule-day article p{margin:6px 0;overflow-wrap:anywhere}
-.schedule-empty{color:#716960;padding:12px 0}
+.schedule-empty{color:var(--muted);padding:12px 0}
 .schedule-connection-settings{margin-block:16px}
 .schedule-connection-settings summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
 @media(max-width:480px){.schedule-navigation{padding:12px}.schedule-view-switch button{padding-inline:16px}.schedule-date-navigation{gap:8px}.schedule-day article{padding:14px}}
