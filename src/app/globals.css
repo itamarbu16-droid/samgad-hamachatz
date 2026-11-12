@@ -2360,3 +2360,27 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .activity-manage-row .icon-button { flex-shrink:0; min-width:44px; min-height:44px; }
 .removed-updates { margin-top:20px; border-top:1px solid var(--border); padding-top:16px; }
 .removed-updates > summary { cursor:pointer; min-height:44px; padding:10px 0; }
+
+/* Compact RTL calendar navigation: one day by default, not a 90-day feed. */
+.schedule-navigation{margin-block:20px;padding:16px;border:1px solid var(--border,#dedbd6);border-radius:18px;background:var(--surface,#fff)}
+.schedule-navigation-top,.schedule-date-navigation{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.schedule-view-switch{display:flex;background:#eeeae5;border-radius:12px;padding:4px;gap:4px}
+.schedule-view-switch button{min-height:44px;padding:8px 20px;border:0;border-radius:9px;background:transparent;color:#51473f;font:inherit;cursor:pointer}
+.schedule-view-switch button[aria-pressed=true]{background:#fff;color:#8c4a25;box-shadow:0 1px 5px #0002;font-weight:700}
+.schedule-date-navigation{margin-top:16px}
+.schedule-date-navigation label{flex:1;max-width:240px;min-width:0}
+.schedule-date-navigation input{width:100%;min-height:44px;box-sizing:border-box}
+.schedule-date-navigation button{min-width:44px;min-height:44px;padding:10px}
+.schedule-range{text-align:center;margin:12px 0 0;font-weight:600}
+.schedule-day{margin-block:20px}
+.schedule-day>h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:1rem}
+.schedule-day>h3 span{font-size:.75rem;background:#f4e3d5;color:#874721;padding:4px 8px;border-radius:20px}
+.schedule-day>h3 small{margin-inline-start:auto;color:#716960;font-weight:400}
+.schedule-day.is-today>h3{color:#8c4a25}
+.schedule-day article{margin-block:10px;padding:16px}
+.schedule-day article h4{margin:0 0 8px;font-size:1.05rem;overflow-wrap:anywhere}
+.schedule-day article p{margin:6px 0;overflow-wrap:anywhere}
+.schedule-empty{color:#716960;padding:12px 0}
+.schedule-connection-settings{margin-block:16px}
+.schedule-connection-settings summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
+@media(max-width:480px){.schedule-navigation{padding:12px}.schedule-view-switch button{padding-inline:16px}.schedule-date-navigation{gap:8px}.schedule-day article{padding:14px}}
