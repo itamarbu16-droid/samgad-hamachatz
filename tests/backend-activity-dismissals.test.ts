@@ -19,6 +19,8 @@ it('removes and restores only my update feed, preserving task and audit event',a
  expect(event).toBeTruthy();
  await dismissActivity(owner,event.id,{dismissed:true});await dismissActivity(owner,event.id,{dismissed:true});
  const state=await getWorkspace(owner);
+ expect(state.user.organizationId).toBe(owner.organizationId);
+ expect((await getWorkspace(member)).user.organizationId).toBe(member.organizationId);
  expect(state.activity.some(a=>a.id===event.id)).toBe(false);
  expect(state.dismissedActivity.filter(a=>a.id===event.id)).toHaveLength(1);
  expect(state.tasks.some(t=>t.id===task.id)).toBe(true);

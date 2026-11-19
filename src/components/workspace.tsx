@@ -44,7 +44,7 @@ import {
   Menu,
   House,
 } from "lucide-react";
-type Person = { id: string; workspaceOwnerId?:string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
+type Person = { id: string; organizationId?:string; workspaceOwnerId?:string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
 type Task = {
   id: string;
   title: string;
@@ -231,7 +231,7 @@ function WorkspaceContent() {
       const destination = base + (params.size ? '?' + params : '');
       if (location.pathname !== base) { location.replace(destination); return; }
       if (location.search !== (params.size ? '?' + params : '')) history.replaceState({}, '', destination);
-      documentUploads.setIdentity({userId:j.user.id,workspaceOwnerId:j.user.workspaceOwnerId||''});
+      documentUploads.setIdentity({userId:j.user.id,organizationId:j.user.organizationId,workspaceOwnerId:j.user.workspaceOwnerId||''});
       setData(j);
       setRefreshed(
         new Date().toLocaleTimeString("he-IL", {

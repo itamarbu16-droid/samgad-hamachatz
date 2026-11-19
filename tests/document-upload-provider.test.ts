@@ -14,7 +14,8 @@ it('keeps the same upload while switching screens and aborts on provider teardow
  let finish!: (response:Response)=>void;
  const delayed=new Promise<Response>(resolve=>{finish=resolve;});
  const firstFilePosted=vi.fn();
- const fetcher=vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+ const fetcher=vi.spyOn(globalThis,'fetch').mockImplementation(async function(this:unknown,input,init){
+  expect(this).toBe(globalThis);
   switch(String(input)){
    case '/api/documents/upload-context':return Response.json({userId:'a',organizationId:'org',workspaceOwnerId:'owner',sessionMarker:'marker'});
    case '/api/documents/uploads':return Response.json({received:[]});
@@ -24,10 +25,10 @@ it('keeps the same upload while switching screens and aborts on provider teardow
  });
  const storeSeen=vi.fn();
  function Folder(){
-  const {store,pending}=useDocumentUpload();
+  const {store,pendingDocuments}=useDocumentUpload();
   storeSeen(store);
-  return h('div',null,h('output',null,pending?.phase??'empty'),h('button',{onClick:()=>{
-   store.setIdentity({userId:'a',workspaceOwnerId:'owner'});
+  return h('div',null,h('output',null,pendingDocuments[0]?.phase??'empty'),h('button',{onClick:()=>{
+   store.setIdentity({userId:'a',workspaceOwnerId:'owner',organizationId:'org'});
    store.start({title:'Synthetic',body:'',folderId:'synthetic-folder',documentDate:null},[new File(['a'],'synthetic.txt')],'Synthetic folder');
   }},'start'));
  }
@@ -80,7 +81,7 @@ it('closes the document form before upload and replaces the destination placehol
  });
  function Identity(){
   const {store}=useDocumentUpload();
-  useEffect(()=>{store.setIdentity({userId:'a',workspaceOwnerId:'owner'});},[store]);
+  useEffect(()=>{store.setIdentity({userId:'a',workspaceOwnerId:'owner',organizationId:'org'});},[store]);
   return null;
  }
  const pendingRow=()=>host.querySelector('[aria-label="מסמך בהעלאה"]');
@@ -117,5 +118,63 @@ it('closes the document form before upload and replaces the destination placehol
   await act(async()=>root.unmount());
   fetcher.mockRestore();
   host.remove();
+ }
+});
+
+it('shows same-title jobs separately across folders and stops only the selected upload',async()=>{
+ const host=document.createElement('div');document.body.append(host);
+ const root=createRoot(host);
+ const title='מסמך בדיקה זהה';
+ const folders=[...documentFolders,{id:'folder-a',name:'תיקייה סינתטית א',parent:null,section:'library'},{id:'folder-b',name:'תיקייה סינתטית ב',parent:null,section:'library'}];
+ const firstChunk=vi.fn(),commitFolders:string[]=[];
+ const fetcher=vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+  switch(String(input)){
+   case '/api/documents/upload-context':return Response.json({userId:'a',organizationId:'org',workspaceOwnerId:'owner',sessionMarker:'marker'});
+   case '/api/documents/uploads':return Response.json({received:[]});
+   case '/api/documents/uploads/chunks': {
+    if(firstChunk.mock.calls.length)return Response.json({received:0});
+    firstChunk(init?.signal);
+    return new Promise<Response>((_,reject)=>init?.signal?.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError')),{once:true}));
+   }
+   case '/api/documents':
+    if(init?.method==='POST'){commitFolders.push(JSON.parse(String(init.body)).folderId);return Response.json({entry:{id:'saved-b'}});}
+    return Response.json({entries:[],folders});
+   default:throw Error('Unexpected synthetic request');
+  }
+ });
+ function Seed(){
+  const {store}=useDocumentUpload();
+  return h('button',{onClick:()=>{
+    store.setIdentity({userId:'a',workspaceOwnerId:'owner',organizationId:'org'});
+    for(const [suffix,name] of [['a','תיקייה סינתטית א'],['b','תיקייה סינתטית ב']]){
+     store.start({title,body:'',folderId:'folder-'+suffix,documentDate:null},[new File(['abc'],suffix+'.txt')],name);
+    }
+  }},'seed');
+ }
+ const globalQueue=()=>host.querySelector('[aria-label="תור העלאות מסמכים"]')!;
+ const localCard=()=>host.querySelector('[aria-label="מסמך בהעלאה"]');
+ const clickFolder=async(name:string)=>{
+  const button=Array.from(host.querySelectorAll('button')).find(b=>b.querySelector('strong')?.textContent===name);
+  await act(async()=>button!.click());
+ };
+ try{
+  await act(async()=>root.render(h(DocumentUploadProvider,null,h(Seed),h(DocumentUploadStatus),h(DocumentLibrary,{section:'library',userId:'a',role:'deputy'}))));
+  await act(async()=>host.querySelector('button')!.click());
+  await act(async()=>vi.waitFor(()=>expect(firstChunk).toHaveBeenCalledTimes(1)));
+  expect(globalQueue().querySelectorAll('li')).toHaveLength(2);
+  expect(globalQueue().textContent).toContain('אחד ממתין');
+  await clickFolder('תיקייה סינתטית א');
+  expect(localCard()?.textContent).toContain('a.txt · 0%');
+  await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent?.trim()==='חזרה')!.click());
+  await clickFolder('תיקייה סינתטית ב');
+  expect(localCard()?.textContent).toContain('b.txt · 0%');
+  expect(localCard()?.textContent).toContain('ממתין בתור');
+  await act(async()=>globalQueue().querySelector<HTMLButtonElement>('button[aria-label$="תיקייה סינתטית א"]')!.click());
+  await act(async()=>vi.waitFor(()=>expect(commitFolders).toEqual(['folder-b'])));
+  expect(firstChunk.mock.calls[0][0].aborted).toBe(true);
+  expect(globalQueue().querySelectorAll('li')).toHaveLength(1);
+  expect(fetcher.mock.calls.some(([,init])=>init?.method==='DELETE')).toBe(false);
+ }finally{
+  await act(async()=>root.unmount());fetcher.mockRestore();host.remove();
  }
 });

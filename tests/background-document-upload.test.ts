@@ -3,7 +3,7 @@ import {describe,expect,it,vi} from 'vitest';
 import {BackgroundDocumentUpload} from '../src/lib/background-document-upload';
 import {DOCUMENT_CHUNK_BYTES} from '../src/lib/document-folders';
 
-const identity={userId:'synthetic-user',workspaceOwnerId:'synthetic-owner'};
+const identity={userId:'synthetic-user',workspaceOwnerId:'synthetic-owner',organizationId:'synthetic-org'};
 const context={...identity,organizationId:'synthetic-org',sessionMarker:'synthetic-marker'};
 const draft={title:'Synthetic document',body:'',folderId:'synthetic-subfolder',documentDate:null};
 const destination='Library / Synthetic';
@@ -50,7 +50,6 @@ describe('background document uploads',()=>{
   store.start(draft,[file('first.txt',DOCUMENT_CHUNK_BYTES+5),file('second.txt',7)],destination);
   const clientRequestId=store.snapshot()?.id;
   expect(store.snapshot()).toMatchObject({phase:'uploading',destination,files:[{name:'first.txt',bytes:0},{name:'second.txt',bytes:0}]});
-  expect(()=>store.start(draft,[file()],destination)).toThrow();
   unsubscribe();const renderedBeforeNavigation=leaving.mock.calls.length;
   await until(()=>expect(counts(calls,chunkPath)).toHaveLength(2));
   firstChunk.resolve(reply({received:0}));
@@ -195,7 +194,7 @@ describe('background document uploads',()=>{
   store.start(draft,[file()],destination);
   await until(()=>expect(counts(calls,chunkPath)).toHaveLength(1));
   if(reason==='logout')store.clear();
-  else store.setIdentity({userId:'other-user',workspaceOwnerId:'other-owner'});
+  else store.setIdentity({userId:'other-user',workspaceOwnerId:'other-owner',organizationId:'synthetic-org'});
   expect(counts(calls,chunkPath)[0].init?.signal?.aborted).toBe(true);
   expect(store.snapshot()).toBeNull();
   chunk.resolve(reply({received:0}));
