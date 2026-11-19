@@ -1,5 +1,6 @@
 "use client";
 import TrackingTables from "./tracking-tables";
+import {useDocumentUpload} from "./document-upload-provider";
 import {useDocumentOrganizer} from "./document-organizer";
 import { apiFetch } from "@/lib/offline";
 import {
@@ -75,6 +76,7 @@ export default function DocumentLibrary({
   role: string;
   editAll?: boolean;
 }) {
+  const {store:backgroundUpload,pending}=useDocumentUpload();
   const [entries, setEntries] = useState<Entry[]>([]),
     [folder, setFolder] = useState<string | null>(null),
     [query, setQuery] = useState("");
@@ -99,6 +101,7 @@ export default function DocumentLibrary({
   const current = catalog.find((item) => item.id === folder);
   const visibleFolders = catalog.filter((item) => item.parent === folder);
   const included = new Set<string>(catalog.map((item) => item.id));
+  const pendingVisible=Boolean(pending&&included.has(pending.draft.folderId)&&(query?`${pending.draft.title} ${pending.files.map(f=>f.name).join(' ')}`.includes(query):pending.draft.folderId===folder)&&!entries.some(entry=>entry.id===pending.entryId));
   const visibleEntries = entries.filter(
     (entry) =>
       included.has(entry.folderId) && entry.folderId !== "trackers" &&
@@ -125,7 +128,11 @@ export default function DocumentLibrary({
   }, []);
   useEffect(() => {
     void load();
+    const refresh=()=>{void load();setTrackingVersion(value=>value+1);};
+    window.addEventListener('samgad:saved',refresh);
+    return()=>window.removeEventListener('samgad:saved',refresh);
   }, [load]);
+  useEffect(()=>{if(pending?.entryId&&entries.some(entry=>entry.id===pending.entryId))backgroundUpload.acknowledge(pending.entryId);},[entries,pending,backgroundUpload]);
   const openedLink = useRef("");
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("entry");
@@ -165,6 +172,12 @@ export default function DocumentLibrary({
     setError("");
     try {
       const form = new FormData(event.currentTarget);
+      if(!selected){
+        const draft={title:String(form.get('title')),body:String(form.get('body')||''),folderId:String(form.get('folderId')),documentDate:form.get('documentDate')||null};
+        backgroundUpload.start(draft,files,folderPath(draft.folderId,folders));
+        setCreating(false);setEditing(false);setFiles([]);setFolder(draft.folderId);setQuery('');
+        return;
+      }
       const attachments=await prepareDocumentFiles(files,uploadCache.current,setUploadProgress);
       const body = {
         title: String(form.get("title")),
@@ -324,6 +337,15 @@ export default function DocumentLibrary({
         </button>
       )}
       <div className="document-entry-list" aria-busy={loading}>
+        {pending&&pendingVisible&&<article className="panel document-upload document-filename" aria-label="מסמך בהעלאה">
+          <strong>{pending.draft.title}</strong><small>{pending.destination}</small>
+          {pending.files.map((file,index)=><div key={index}>
+            <p>{file.name} · {Math.floor(file.bytes/file.size*100)}%</p>
+            <progress aria-label={`העלאת ${file.name}`} value={file.bytes} max={file.size}/>
+          </div>)}
+          <p role="status">{pending.phase==='committing'?'הקבצים הועלו; ממתין לאישור שמירת המסמך':pending.phase==='saved'?'השמירה אושרה; מרענן את הרשימה':pending.phase==='failed'?'ההעלאה לא הושלמה':'העלאה מתבצעת'}</p>
+          {pending.phase==='failed'&&<><p role="alert">{pending.error}</p><button className="button secondary" onClick={backgroundUpload.retry}>ניסיון נוסף</button></>}
+        </article>}
         {visibleEntries.map((entry) => (
           <div className="document-entry-shell" key={entry.id}>
           <button
@@ -350,7 +372,7 @@ export default function DocumentLibrary({
         ))}
       </div>
       {!loading &&
-        visibleEntries.length === 0 &&
+        visibleEntries.length === 0 && !pendingVisible &&
         (query || (current && visibleFolders.length === 0)) && (
           <Empty>
             {query

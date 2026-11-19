@@ -1,9 +1,10 @@
 "use client";
 import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
-import { useState, useEffect, useRef, type FormEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
 import ActivityFeed from "./activity-feed";
 import DocumentLibrary from "./document-library";
+import {DocumentUploadProvider,DocumentUploadStatus,useDocumentUploadStore} from "./document-upload-provider";
 import {isPersonalTask} from "@/lib/task-snapshot";
 import CommandDashboard from "./command-dashboard";
 import DeputiesDashboard from "./deputies-dashboard";
@@ -157,6 +158,10 @@ function Badge({
   );
 }
 export default function Workspace() {
+ return <DocumentUploadProvider><WorkspaceContent/></DocumentUploadProvider>;
+}
+function WorkspaceContent() {
+ const documentUploads=useDocumentUploadStore();
   const [data, setData] = useState<Data | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -207,15 +212,16 @@ export default function Workspace() {
     history.pushState({}, "", `${(data?.user.permissions?.manageAccess || data?.user.permissions?.editAll) ? "/" : "/deputies"}${p.size ? "?" + p : ""}`);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const r = await apiFetch("/api/workspace", { cache: "no-store" });
       if (r.status === 401) {
+        documentUploads.clear();
         location.href = location.pathname.startsWith("/deputies") ? "/deputies/login" : "/login";
         return;
       }
       const j = await r.json();
-      if (!r.ok) { setData(null); throw Error(j.error || "לא ניתן לטעון את המידע"); }
+      if (!r.ok) { if(r.status===403){documentUploads.clear();setData(null);} throw Error(j.error || "לא ניתן לטעון את המידע"); }
       const base = (j.user.permissions?.manageAccess || j.user.permissions?.editAll) ? '/' : '/deputies';
       const params = new URLSearchParams(location.search);
       if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
@@ -225,6 +231,7 @@ export default function Workspace() {
       const destination = base + (params.size ? '?' + params : '');
       if (location.pathname !== base) { location.replace(destination); return; }
       if (location.search !== (params.size ? '?' + params : '')) history.replaceState({}, '', destination);
+      documentUploads.setIdentity({userId:j.user.id,workspaceOwnerId:j.user.workspaceOwnerId||''});
       setData(j);
       setRefreshed(
         new Date().toLocaleTimeString("he-IL", {
@@ -238,12 +245,12 @@ export default function Workspace() {
     } finally {
       setLoading(false);
     }
-  }
+  },[documentUploads]);
   const taskActions=useTaskMutations(load);
-  useEffect(() => { const refresh = () => void load(); const visibleRefresh=()=>{if(document.visibilityState==="visible")refresh();}; const timer=setInterval(visibleRefresh,60000); window.addEventListener("samgad:saved", refresh); document.addEventListener("visibilitychange",visibleRefresh); return () => {clearInterval(timer);window.removeEventListener("samgad:saved", refresh);document.removeEventListener("visibilitychange",visibleRefresh);}; }, []);
+  useEffect(() => { const refresh = () => void load(); const visibleRefresh=()=>{if(document.visibilityState==="visible")refresh();}; const timer=setInterval(visibleRefresh,60000); window.addEventListener("samgad:saved", refresh); document.addEventListener("visibilitychange",visibleRefresh); return () => {clearInterval(timer);window.removeEventListener("samgad:saved", refresh);document.removeEventListener("visibilitychange",visibleRefresh);}; }, [load]);
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
   async function mutate(
     url: string,
     method: string,
@@ -451,6 +458,7 @@ export default function Workspace() {
               onClick={async () => {
                 if(guest){location.href="/login";return;}
                 if ((await offlineStatus()).length) { setError("יש שינויים שממתינים לסנכרון. יש לסנכרן לפני יציאה"); return; }
+                documentUploads.clear();
                 const result = await fetch("/api/auth/sign-out", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -493,6 +501,7 @@ export default function Workspace() {
           </div>
         </header>
         <main id="main-content" className="main-content" tabIndex={-1}>
+          <DocumentUploadStatus/>
           <DeadlineRequests manager={ownerInterface}/>
           <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} showCapture={!["personal", "tasks", "library", "records"].includes(view)} onSaved={load} />
           <div className="page-heading">

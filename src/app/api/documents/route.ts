@@ -6,5 +6,5 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return api(request, async (p) => ({
     entry: await createDocument(p, await readBody(request, 4_300_000)),
-  }));
+  }), { bindDocumentUpload: true });
 }

@@ -5,10 +5,12 @@ import { getAuth } from "./auth";
 import { AppError, type Principal } from "./policy";
 import { principalFor } from "./service";
 import { appUrl } from "./app-url";
+import { assertDocumentUploadContext, DocumentUploadContextChanged, documentUploadContextChangedCode } from "./document-upload-context";
 
 export async function api(
   request: Request,
-  handler: (principal: Principal) => Promise<unknown>,
+  handler: (principal: Principal, sessionId: string) => Promise<unknown>,
+  options?: { bindDocumentUpload?: boolean },
 ) {
   try {
     if (!["GET", "HEAD"].includes(request.method)) {
@@ -23,11 +25,15 @@ export async function api(
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session) throw new AppError(401, "הכניסה למיילים מורשים בלבד. יש להתחבר");
     const principal: Principal = await principalFor(session.user.id, session.user.name);
-    const result = await handler(principal);
+    const sessionId = session.session.id;
+    if (options?.bindDocumentUpload) assertDocumentUploadContext(request.headers, principal, sessionId);
+    const result = await handler(principal, sessionId);
     if(!["GET","HEAD"].includes(request.method)&&!new URL(request.url).pathname.startsWith("/api/push"))after(async()=>{try{await flushPush();}catch{console.error("Push delivery deferred");}});
     if (result instanceof Response) return result;
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    if (error instanceof DocumentUploadContextChanged)
+      return Response.json({ error: error.message, code: documentUploadContextChangedCode }, { status: error.status });
     if (error instanceof AppError)
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof ZodError)
