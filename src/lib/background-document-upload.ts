@@ -17,7 +17,7 @@ export class BackgroundDocumentUpload {
  private running=false;
  private epoch=0;
  private attachments:{uploadId:string}[]|null=null;
- constructor(private request:typeof fetch=fetch,private saved:()=>void=()=>{},private stopped:()=>void=()=>{}){}
+ constructor(private request:typeof fetch=(input,init)=>globalThis.fetch(input,init),private saved:()=>void=()=>{},private stopped:()=>void=()=>{}){}
  subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>{this.listeners.delete(listener);};};
  snapshot=()=>this.pending;
  private emit(){for(const listener of this.listeners)listener();}

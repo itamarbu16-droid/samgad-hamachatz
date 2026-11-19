@@ -4,7 +4,7 @@ import {BackgroundDocumentUpload} from '@/lib/background-document-upload';
 const UploadContext=createContext<BackgroundDocumentUpload|null>(null);
 export function DocumentUploadProvider({children}:{children:ReactNode}){
  const [stopped,setStopped]=useState(false);
- const [store]=useState(()=>new BackgroundDocumentUpload(fetch,()=>window.dispatchEvent(new Event('samgad:saved')),()=>setStopped(true)));
+ const [store]=useState(()=>new BackgroundDocumentUpload(undefined,()=>window.dispatchEvent(new Event('samgad:saved')),()=>setStopped(true)));
  useEffect(()=>{
   const leave=(event:BeforeUnloadEvent)=>{if(store.snapshot()&&store.snapshot()?.phase!=='saved'){event.preventDefault();event.returnValue='';}};
   window.addEventListener('beforeunload',leave);window.addEventListener('pagehide',store.clear);

@@ -241,3 +241,25 @@ describe('background document uploads',()=>{
   expect(counts(calls,commitPath)).toHaveLength(0);
  });
 });
+
+it('uses the global fetch receiver instead of the upload store (browser brand check)',async()=>{
+ const nativeLike=vi.fn(async function(this:unknown,input:RequestInfo|URL){
+  if(this!==globalThis)throw new TypeError('Illegal invocation');
+  return reply(String(input)===contextPath?context:{entry:{id:'synthetic-saved'}});
+ });
+ vi.stubGlobal('fetch',nativeLike);
+ try{
+  // Previous code saved native fetch as a property and invoked it on the store.
+  const previous=new BackgroundDocumentUpload(globalThis.fetch);
+  previous.setIdentity(identity);previous.start({...draft,body:'synthetic'},[],destination);
+  await vi.waitFor(()=>expect(previous.snapshot()?.phase).toBe('failed'));
+  expect(nativeLike.mock.contexts[0]).toBe(previous);
+  nativeLike.mockClear();
+  // Provider now selects this default wrapper, which preserves the global receiver.
+  const fixed=new BackgroundDocumentUpload(undefined);
+  fixed.setIdentity(identity);fixed.start({...draft,body:'synthetic'},[],destination);
+  await vi.waitFor(()=>expect(fixed.snapshot()?.phase).toBe('saved'));
+  expect(nativeLike).toHaveBeenCalledTimes(2);
+  expect(nativeLike.mock.contexts.every(value=>value===globalThis)).toBe(true);
+ }finally{vi.unstubAllGlobals();}
+});
