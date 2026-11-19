@@ -2,6 +2,8 @@
 import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
+import OpenDueReminder from './open-due-reminder';
+import type {DueReminderTask} from '@/lib/open-due-reminder';
 import ActivityFeed from "./activity-feed";
 import DocumentLibrary from "./document-library";
 import {DocumentUploadProvider,DocumentUploadStatus,useDocumentUploadStore} from "./document-upload-provider";
@@ -102,6 +104,7 @@ type Data = {
   dismissedActivity?: Data["activity"];
   demo: boolean;
   today: string;
+  rhythmDueReminder?: DueReminderTask[];
 };
 const statuses: Record<string, string> = {
   open: "לא בוצע",
@@ -560,6 +563,9 @@ function WorkspaceContent() {
               </button>
             </div>
           )}
+          {!guest&&!['admin','viewer'].includes(data.user.role)&&<OpenDueReminder
+            key={`${data.user.organizationId||''}:${data.user.id}:${data.today}`}
+            userId={data.user.id} today={data.today} tasks={data.tasks} rhythm={data.rhythmDueReminder||[]}/>}
           {view === "personal" && data.user.permissions?.manageAccess && (
             <PersonalRhythm
               key={data.user.id}

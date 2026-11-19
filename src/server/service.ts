@@ -11,6 +11,8 @@ import { z } from 'zod';
 import {documentScope} from './documents';
 import {rhythmScope} from './rhythm';
 import {getPins} from './task-pins';
+import { addDays } from '../lib/rhythm';
+import { readPersonalRhythmDueTasks } from './open-due-reminder';
 import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
 
@@ -85,6 +87,8 @@ export async function getWorkspace(p: Principal) {
   if(canEditAll(p)) await ensureResponsibilityDomains(p);
   const db = await getDb();
   const taskRows = await db.select().from(s.tasks).where(taskScope(p)).orderBy(desc(s.tasks.updatedAt));
+  const today=localDate();
+  const rhythmDueReminder=await readPersonalRhythmDueTasks(db,p,addDays(today,1));
   const decisionRows = await db.select().from(s.decisions).where(decisionScope(p)).orderBy(desc(s.decisions.createdAt));
   const taskIds = taskRows.map(t => t.id), decisionIds = decisionRows.map(d => d.id);
   const commentRows = taskIds.length ? await db.select({ id: s.comments.id, taskId: s.comments.taskId, actorId: s.comments.actorId, actorName: s.user.name, body: s.comments.body, createdAt: s.comments.createdAt }).from(s.comments).innerJoin(s.user, eq(s.comments.actorId, s.user.id)).where(inArray(s.comments.taskId, taskIds)).orderBy(desc(s.comments.createdAt)) : [];
@@ -108,7 +112,7 @@ export async function getWorkspace(p: Principal) {
   const users = userRows.filter(u => visibleUserIds.has(u.id) || (isManager(p) && (!p.companyId || !u.companyId || u.companyId === p.companyId) && (!p.domainId || !u.domainId || u.domainId === p.domainId)));
   const canonicalDomains=responsibilityDomains.map(d=>domainRows.find(row=>row.id===d.id||row.id===`${p.organizationId}:${d.id}`)).filter((d):d is NonNullable<typeof d>=>Boolean(d));
   const normalizedTasks=taskRows.map(t=>({...t,domainId:['safety','people'].includes(t.domainId)?`${p.organizationId}:deputies`:t.domainId}));
-  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, organizationId:p.organizationId, workspaceOwnerId:p.workspaceOwnerId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, dismissedActivity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today:localDate(), demo: isDemo(), refreshedAt: new Date().toISOString() };
+  return { pinnedTaskKeys:await getPins(p), user: { id: p.userId, organizationId:p.organizationId, workspaceOwnerId:p.workspaceOwnerId, name: p.name, role:canEditAll(p)?'deputy':['company_commander','staff'].includes(p.role)?'contributor':p.role, permissions:{editAll:canEditAll(p),manageAccess:Boolean(p.manageAccess),guest:Boolean(p.guest)} }, tasks: normalizedTasks.map(task => ({ ...task, comments: commentRows.filter(c => c.taskId === task.id) })), decisions: decisionRows, domains: canonicalDomains, companies: companyRows, users, activity, dismissedActivity, metrics: calculateMetrics(taskRows.filter(t=>t.ownerId!==t.creatorId)), today, rhythmDueReminder, demo: isDemo(), refreshedAt: new Date().toISOString() };
 }
 export async function createTask(p: Principal, input: unknown) {
   assertWrite(p); const {clientRequestId,...data} = createTaskInput.parse(input); const db = await getDb();

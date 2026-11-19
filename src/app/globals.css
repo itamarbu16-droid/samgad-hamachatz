@@ -2413,3 +2413,15 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .upload-job-error { margin-block-start: 6px; }
 .upload-job-error p { margin: 0 0 6px; overflow-wrap: anywhere; color: var(--red); }
 @media (prefers-reduced-motion: reduce) { .upload-ring-fill { transition: none; } }
+
+.open-due-reminder{border:1px solid var(--border);border-inline-start:3px solid var(--amber);border-radius:14px;background:var(--surface);margin:0 0 14px;padding:8px 14px;color:var(--text)}
+.open-due-reminder-heading{display:flex;align-items:center;gap:8px}
+.open-due-reminder-heading>svg{color:var(--amber);flex-shrink:0}
+.open-due-reminder-heading h2{margin:0;font-size:16px}
+.open-due-reminder-heading button{margin-inline-start:auto;flex-shrink:0;min-width:44px;min-height:44px}
+.open-due-reminder-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:8px 16px;padding-block-end:6px}
+.open-due-reminder-group h3{margin:0 0 3px;font-size:14px}
+.open-due-reminder-group ul{list-style:none;margin:0;padding:0}
+.open-due-reminder-group li{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px;padding:2px 0;overflow-wrap:anywhere}
+.open-due-reminder-group time{flex-shrink:0;color:var(--muted);font-size:12px}
+.open-due-reminder-group summary{width:max-content;max-width:100%;cursor:pointer;padding-block:6px}
