@@ -2358,6 +2358,9 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .activity-manage-row { display:flex; align-items:center; gap:12px; }
 .activity-manage-row .activity-copy { min-width:0; flex:1; overflow-wrap:anywhere; }
 .activity-manage-row .icon-button { flex-shrink:0; min-width:44px; min-height:44px; }
+.activity-swipe-shell { position:relative; isolation:isolate; overflow:hidden; border-radius:12px; touch-action:pan-y pinch-zoom; }
+.activity-swipe-underlay { position:absolute; inset:0; display:grid; place-items:center start; padding-left:18px; direction:ltr; color:#fff; background:#a52332; pointer-events:none; }
+.activity-swipe-dragging { background:var(--surface); transform:translateX(var(--activity-swipe-offset,0px)); user-select:none; -webkit-user-select:none; }
 .removed-updates { margin-top:20px; border-top:1px solid var(--border); padding-top:16px; }
 .removed-updates > summary { cursor:pointer; min-height:44px; padding:10px 0; }
 

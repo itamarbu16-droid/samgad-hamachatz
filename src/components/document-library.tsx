@@ -28,7 +28,7 @@ import {
   type DocumentSection,
   type DocumentFolder,
 } from "@/lib/document-folders";
-import {prepareDocumentFiles,validateDocumentFiles,type DocumentUploadCache} from "@/lib/document-uploads";
+import {documentUploadError,prepareDocumentFiles,validateDocumentFiles,type DocumentUploadCache} from "@/lib/document-uploads";
 import { Modal, Empty } from "./workspace-primitives";
 
 type Attachment = { id: string; filename: string; byteSize: number; contentType?: string };
@@ -204,7 +204,7 @@ export default function DocumentLibrary({
       setTrackingVersion(value=>value+1);
       setNotice("המסמך נשמר בתיקייה");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "המסמך לא נשמר");
+      setError(documentUploadError(error));
     } finally {
       setBusy(false);setUploadProgress("");
     }

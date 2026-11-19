@@ -1,11 +1,19 @@
 import {DOCUMENT_CHUNK_BYTES,INLINE_DOCUMENT_BYTES,MAX_DOCUMENT_BYTES,MAX_DOCUMENT_TOTAL_BYTES} from './document-folders';
+export const DOCUMENT_REQUEST_TIMEOUT_MS = 90_000;
+export function documentUploadError(error:unknown):string {
+ const name=error instanceof Error?error.name:'';
+ const message=error instanceof Error?error.message:'';
+ if(name==='AbortError'||name==='TimeoutError'||name==='TypeError'||/fetch is aborted|load failed|failed to fetch|networkerror/i.test(message))
+  return 'החיבור נקטע או שההעלאה ארכה יותר מדי. לא התקבל אישור שמירה. השאר את החלון פתוח ונסה לשמור שוב';
+ return message||'המסמך לא נשמר';
+}
 type UploadSession={id:string;filename:string;size:number;modified:number};
 export type DocumentUploadCache=Map<File,UploadSession>;
 export function encodeDocumentFile(file:Blob):Promise<string>{
  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('לא ניתן לקרוא את הקובץ'));reader.readAsDataURL(file);});
 }
 async function post(url:string,body:object){
- const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(DOCUMENT_REQUEST_TIMEOUT_MS)});
  let result;try{result=await response.json();}catch{throw Error('ההעלאה נקטעה. אפשר לנסות לשמור שוב');}
  if(!response.ok)throw Error(result.error||'הקובץ לא הועלה');return result;
 }

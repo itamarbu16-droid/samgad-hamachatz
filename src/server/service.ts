@@ -8,6 +8,8 @@ import { AppError, assertTransition, assertWrite, assertOwnTask, canEditAll, can
 import { initializeWorkspace,ensureResponsibilityDomains,authorizedMember } from './access';
 import {ensureActivityDismissals} from './activity-dismissals';
 import { z } from 'zod';
+import {documentScope} from './documents';
+import {rhythmScope} from './rhythm';
 import {getPins} from './task-pins';
 import { responsibilityDomains } from '../lib/responsibility-domains';
 import { createTaskInput, updateTaskInput, commentInput, createDecisionInput, updateDecisionInput } from './validation';
@@ -89,6 +91,12 @@ export async function getWorkspace(p: Principal) {
   const entityFilters: SQL[] = [];
   if (taskIds.length) entityFilters.push(and(eq(s.auditEvents.entityType, 'task'), inArray(s.auditEvents.entityId, taskIds))!);
   if (decisionIds.length) entityFilters.push(and(eq(s.auditEvents.entityType, 'decision'), inArray(s.auditEvents.entityId, decisionIds))!);
+  // Resolve access against the current source record, not historical recipients.
+  // Only newly emitted creation events are included; no legacy backfill.
+  entityFilters.push(and(eq(s.auditEvents.entityType, 'document'), eq(s.auditEvents.action, 'document.created'),
+    inArray(s.auditEvents.entityId, db.select({id:s.documentEntries.id}).from(s.documentEntries).where(and(documentScope(p),eq(s.documentEntries.archived,false)))))!);
+  entityFilters.push(and(eq(s.auditEvents.entityType, 'rhythm'), eq(s.auditEvents.action, 'rhythm.created'),
+    inArray(s.auditEvents.entityId, db.select({id:s.rhythmItems.id}).from(s.rhythmItems).where(and(rhythmScope(p),eq(s.rhythmItems.archived,false),eq(s.rhythmItems.category,'task'),eq(s.rhythmItems.frequency,'once')))))!);
   await ensureActivityDismissals();
   const dismissed = sql`EXISTS (SELECT 1 FROM activity_dismissals ad WHERE ad.organization_id=${p.organizationId} AND ad.user_id=${p.userId} AND ad.event_id=${s.auditEvents.id})`;
   const activity = entityFilters.length ? await db.select({ id: s.auditEvents.id, entityType: s.auditEvents.entityType, entityId: s.auditEvents.entityId, action: s.auditEvents.action, summary: s.auditEvents.summary, actorName: s.user.name, createdAt: s.auditEvents.createdAt }).from(s.auditEvents).innerJoin(s.user, eq(s.auditEvents.actorId, s.user.id)).where(and(eq(s.auditEvents.organizationId, p.organizationId), or(...entityFilters),sql`NOT ${dismissed}`)).orderBy(desc(s.auditEvents.createdAt)).limit(100) : [];
@@ -189,6 +197,12 @@ export async function dismissActivity(p: Principal, id: string, input: unknown) 
   if(event.entityType==='task') await findTask(db,p,event.entityId);
   else if(event.entityType==='decision') {
     const rows=await db.select({id:s.decisions.id}).from(s.decisions).where(and(decisionScope(p),eq(s.decisions.id,event.entityId))).limit(1);
+    if(!rows.length) throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
+  } else if(event.entityType==='document' && event.action==='document.created') {
+    const rows=await db.select({id:s.documentEntries.id}).from(s.documentEntries).where(and(documentScope(p),eq(s.documentEntries.id,event.entityId),eq(s.documentEntries.archived,false))).limit(1);
+    if(!rows.length) throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
+  } else if(event.entityType==='rhythm' && event.action==='rhythm.created') {
+    const rows=await db.select({id:s.rhythmItems.id}).from(s.rhythmItems).where(and(rhythmScope(p),eq(s.rhythmItems.id,event.entityId),eq(s.rhythmItems.archived,false),eq(s.rhythmItems.category,'task'),eq(s.rhythmItems.frequency,'once'))).limit(1);
     if(!rows.length) throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
   } else throw new AppError(404,'העדכון לא נמצא או אינו זמין לך');
   if(dismissed) await db.insert(s.activityDismissals).values({organizationId:p.organizationId,userId:p.userId,eventId:id}).onConflictDoNothing();

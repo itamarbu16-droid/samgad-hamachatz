@@ -353,6 +353,11 @@ export async function createRhythmItem(p: Principal, input: unknown) {
             : monthEnd(today.slice(0, 7)),
           today,
         );
+        if (item.category === 'task' && item.frequency === 'once') {
+          await tx.insert(s.auditEvents).values({id:randomUUID(), organizationId:p.organizationId,
+            entityType:'rhythm', entityId:item.id, actorId:p.userId,
+            action:'rhythm.created', summary:`נוצרה משימה: ${item.title}`});
+        }
         await queueTaskNotification(tx,p,item.assigneeIds,"משימה חדשה שויכה אליך",item.title);
         return item;
       },

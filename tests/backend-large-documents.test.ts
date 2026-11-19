@@ -71,3 +71,24 @@ it('validates per-file and total selection limits consistently on the client',()
  expect(()=>validateDocumentFiles([{size:MAX_DOCUMENT_BYTES+1}])).toThrow('25');
  expect(()=>validateDocumentFiles(Array.from({length:5},()=>({size:MAX_DOCUMENT_BYTES})))).toThrow('100');
 });
+it('saves a 2.7 MiB JPEG in meeting summaries and deduplicates a lost-response retry',async()=>{
+ const bytes=Buffer.alloc(Math.floor(2.7*1024*1024),37),id=randomUUID();
+ const metadata={id,filename:'synthetic-meeting.jpg',byteSize:bytes.length};
+ const upload=async()=>{
+  const {received}=await beginDocumentUpload(owner,metadata);
+  for(let index=0;index<Math.ceil(bytes.length/DOCUMENT_CHUNK_BYTES);index++){
+   if(!received.includes(index))await putDocumentChunk(owner,{uploadId:id,index,contentBase64:bytes.subarray(index*DOCUMENT_CHUNK_BYTES,(index+1)*DOCUMENT_CHUNK_BYTES).toString('base64')});
+  }
+ };
+ await upload();
+ const request={...input(id),folderId:'meetings',title:'סיכום בדיקה סינתטי'};
+ const entry=await createDocument(owner,request);
+ // Client cannot know whether the final save succeeded: repeat preparation with
+ // the same cached upload ID, then repeat create with the same request ID.
+ await upload();
+ expect((await createDocument(owner,request)).id).toBe(entry.id);
+ const detail=await getDocument(owner,entry.id);
+ expect(detail.folderId).toBe('meetings');expect(detail.attachments).toHaveLength(1);
+ expect(detail.attachments[0].byteSize).toBe(bytes.length);
+ expect((await downloadDocument(owner,detail.attachments[0].id)).bytes.equals(bytes)).toBe(true);
+});

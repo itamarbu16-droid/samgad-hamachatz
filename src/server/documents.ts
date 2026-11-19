@@ -5,7 +5,7 @@ import { getDb } from "./db";
 import * as s from "./schema";
 import { AppError, assertWrite, isManager,canEditAll, type Principal } from "./policy";
 import {
-  documentFolders,
+  documentFolders, folderPath,
   documentExtensions,
   MAX_DOCUMENT_BYTES, MAX_DOCUMENT_TOTAL_BYTES, INLINE_DOCUMENT_BYTES,
 } from "../lib/document-folders";
@@ -52,7 +52,7 @@ function isTrackingTable(body:string) {
   try {const value=JSON.parse(body);return value?.kind==='tracking-table-v1'&&Array.isArray(value.columns)&&Array.isArray(value.rows);}
   catch {return false;}
 }
-function scope(p: Principal) {
+export function documentScope(p: Principal) {
   return and(
     eq(s.documentEntries.organizationId, p.organizationId),
     p.role === "admin" ? sql`false` : undefined,
@@ -116,7 +116,7 @@ export async function getDocuments(p: Principal) {
       updatedAt: s.documentEntries.updatedAt,
     })
     .from(s.documentEntries)
-    .where(and(scope(p), eq(s.documentEntries.archived, false)))
+    .where(and(documentScope(p), eq(s.documentEntries.archived, false)))
     .orderBy(desc(s.documentEntries.updatedAt));
   const attachments = entries.length
     ? await db
@@ -144,7 +144,7 @@ export async function getDocument(p: Principal, id: string) {
     .from(s.documentEntries)
     .where(
       and(
-        scope(p),
+        documentScope(p),
         eq(s.documentEntries.id, id),
         eq(s.documentEntries.archived, false),
       ),
@@ -160,6 +160,7 @@ export async function createDocument(p: Principal, input: unknown) {
   assertWrite(p);
   const { clientRequestId, attachments, ...data } = createInput.parse(input);
   await assertDocumentFolder(p,data.folderId);
+  const destination = folderPath(data.folderId, await getDocumentFolders(p));
   const db = await getDb();
   return db.transaction(async (tx) => {
     const key = `${p.organizationId}:${p.userId}:document:${clientRequestId}`;
@@ -184,7 +185,7 @@ export async function createDocument(p: Principal, input: unknown) {
         .from(s.documentEntries)
         .where(
           and(
-            scope(p),
+            documentScope(p),
             eq(s.documentEntries.id, result.id),
             eq(s.documentEntries.archived, false),
           ),
@@ -211,6 +212,12 @@ export async function createDocument(p: Principal, input: unknown) {
           entryId: entry.id,
         })),
       );
+    await tx.insert(s.auditEvents).values({
+      id: randomUUID(), organizationId: p.organizationId, entityType: 'document',
+      entityId: entry.id, actorId: p.userId, action: 'document.created',
+      summary: `נוסף מסמך: ${data.title} · תיקייה: ${destination}`,
+      details: {folderId: data.folderId, folderPath: destination},
+    });
     await clearUploads(tx,p,attachments);
     await tx
       .update(s.mutationReceipts)
@@ -238,7 +245,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
       .from(s.documentEntries)
       .where(
         and(
-          scope(p),
+          documentScope(p),
           eq(s.documentEntries.id, id),
           eq(s.documentEntries.archived, false),
         ),
@@ -260,7 +267,7 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
       .set({ ...changes, version: version + 1, updatedAt: new Date() })
       .where(
         and(
-          scope(p),
+          documentScope(p),
           eq(s.documentEntries.id, id),
           eq(s.documentEntries.version, version),
         ),
@@ -292,7 +299,7 @@ export async function downloadDocument(p: Principal, attachmentId: string) {
     )
     .where(
       and(
-        scope(p),
+        documentScope(p),
         eq(s.documentEntries.archived, false),
         eq(s.documentAttachments.id, attachmentId),
       ),
@@ -329,11 +336,12 @@ export async function duplicateDocument(p:Principal,id:string,input:unknown){
  const data=z.object({title:z.string().trim().min(2).max(160),folderId:z.string().min(1).max(160),resetStatuses:z.boolean().default(true),clientRequestId:z.string().uuid()}).strict().parse(input);
  await assertDocumentFolder(p,data.folderId);
  if(!await isTrackingFolder(p,data.folderId))throw new AppError(422,'יש לבחור תיקייה במעקבים');
+ const destination=folderPath(data.folderId,await getDocumentFolders(p));
  const original=await getDocument(p,id);
  if(!await isTrackingFolder(p,original.folderId))throw new AppError(422,'ניתן לשכפל פריטים מתוך המעקבים');
  const db=await getDb();
  return db.transaction(async tx=>{
-  const [source]=await tx.select().from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.id,id),eq(s.documentEntries.archived,false)));
+  const [source]=await tx.select().from(s.documentEntries).where(and(documentScope(p),eq(s.documentEntries.id,id),eq(s.documentEntries.archived,false)));
   if(!source)throw new AppError(404,'המסמך אינו זמין לך');
   if(source.folderId!==original.folderId)throw new AppError(409,'המסמך הועבר. יש לרענן ולנסות שוב');
   const key=`${p.organizationId}:${p.userId}:duplicate-document:${data.clientRequestId}`;
@@ -349,6 +357,9 @@ export async function duplicateDocument(p:Principal,id:string,input:unknown){
   const [entry]=await tx.insert(s.documentEntries).values({id:randomUUID(),organizationId:p.organizationId,creatorId:p.userId,folderId:data.folderId,title:data.title,body,documentDate:null}).returning({id:s.documentEntries.id});
   const files=await tx.select().from(s.documentAttachments).where(eq(s.documentAttachments.entryId,id));
   if(files.length)await tx.insert(s.documentAttachments).values(files.map(file=>({id:randomUUID(),entryId:entry.id,filename:file.filename,contentType:file.contentType,byteSize:file.byteSize,contentBase64:file.contentBase64})));
+  await tx.insert(s.auditEvents).values({id:randomUUID(),organizationId:p.organizationId,entityType:'document',
+   entityId:entry.id,actorId:p.userId,action:'document.created',
+   summary:`נוסף מסמך: ${data.title} · תיקייה: ${destination}`,details:{folderId:data.folderId,folderPath:destination}});
   await tx.update(s.mutationReceipts).set({result:entry}).where(eq(s.mutationReceipts.key,key));
   return entry;
  });
@@ -358,7 +369,7 @@ export async function getTrackerTrash(p:Principal){
  const folders=await getDocumentFolders(p);
  const trackingIds=new Set<string>(['trackers']);let changed=true;
  while(changed){changed=false;for(const f of folders)if(f.parent&&trackingIds.has(f.parent)&&!trackingIds.has(f.id)){trackingIds.add(f.id);changed=true;}}
- return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,[...trackingIds])))).filter(row=>isManager(p)||row.creatorId===p.userId);
+ return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(documentScope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,[...trackingIds])))).filter(row=>isManager(p)||row.creatorId===p.userId);
 }
 export async function manageDocuments(p:Principal,input:unknown,trackersOnly=false){
  assertWrite(p);
@@ -373,7 +384,7 @@ export async function manageDocuments(p:Principal,input:unknown,trackersOnly=fal
  while(changed){changed=false;for(const f of folders)if(f.parent&&trackingIds.has(f.parent)&&!trackingIds.has(f.id)){trackingIds.add(f.id);changed=true;}}
  const db=await getDb();
  return db.transaction(async tx=>{
-  const rows=await tx.select({id:s.documentEntries.id,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId,archived:s.documentEntries.archived,body:s.documentEntries.body}).from(s.documentEntries).where(and(scope(p),inArray(s.documentEntries.id,data.items.map(i=>i.id))));
+  const rows=await tx.select({id:s.documentEntries.id,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId,archived:s.documentEntries.archived,body:s.documentEntries.body}).from(s.documentEntries).where(and(documentScope(p),inArray(s.documentEntries.id,data.items.map(i=>i.id))));
   if(rows.length!==data.items.length)throw new AppError(404,'אחד המעקבים אינו זמין לך');
   const results=[];
   for(const item of data.items){
@@ -382,7 +393,7 @@ export async function manageDocuments(p:Principal,input:unknown,trackersOnly=fal
    if(data.action==='move'&&isTrackingTable(row.body)&&!trackingIds.has(data.folderId!))throw new AppError(422,'טבלת מעקב נשארת במרחב המעקבים');
    if(!isManager(p)&&row.creatorId!==p.userId)throw new AppError(403,'רק יוצר המעקב או מנהל רשאים להעביר ולמחוק אותו');
    if(row.version!==item.version||row.archived!==(data.action==='restore'))throw new AppError(409,'המעקב השתנה. יש לרענן ולנסות שוב');
-   const [updated]=await tx.update(s.documentEntries).set({...(data.action==='move'?{folderId:data.folderId!}:{archived:data.action==='trash'}),version:row.version+1,updatedAt:new Date()}).where(and(scope(p),eq(s.documentEntries.id,row.id),eq(s.documentEntries.version,item.version),eq(s.documentEntries.archived,row.archived))).returning({id:s.documentEntries.id,version:s.documentEntries.version});
+   const [updated]=await tx.update(s.documentEntries).set({...(data.action==='move'?{folderId:data.folderId!}:{archived:data.action==='trash'}),version:row.version+1,updatedAt:new Date()}).where(and(documentScope(p),eq(s.documentEntries.id,row.id),eq(s.documentEntries.version,item.version),eq(s.documentEntries.archived,row.archived))).returning({id:s.documentEntries.id,version:s.documentEntries.version});
    if(!updated)throw new AppError(409,'המעקב השתנה. יש לרענן ולנסות שוב');
    results.push(updated);
   }
@@ -396,7 +407,7 @@ export async function getDocumentTrash(p:Principal,section:string){
  if(!['library','records','all'].includes(section))throw new AppError(422,'מרחב מסמכים לא תקין');
  const folders=await getDocumentFolders(p);
  const ids=folders.filter(f=>section==='all'||f.section===section).map(f=>f.id);
- return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,ids)))).filter(row=>isManager(p)||row.creatorId===p.userId);
+ return (await (await getDb()).select({id:s.documentEntries.id,title:s.documentEntries.title,version:s.documentEntries.version,creatorId:s.documentEntries.creatorId,folderId:s.documentEntries.folderId}).from(s.documentEntries).where(and(documentScope(p),eq(s.documentEntries.archived,true),inArray(s.documentEntries.folderId,ids)))).filter(row=>isManager(p)||row.creatorId===p.userId);
 }
 export async function updateDocumentFolder(p:Principal,input:unknown){
  if(!canEditAll(p))throw new AppError(403,'עריכת תיקייה דורשת הרשאת מנהל');
@@ -430,7 +441,7 @@ export async function deleteDocumentFolder(p:Principal,input:unknown){
   const [folder]=await tx.select().from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.id,id),eq(s.customDocumentFolders.organizationId,p.organizationId)));
   if(!folder)throw new AppError(422,'תיקיות המערכת קבועות; ניתן למחוק רק תיקייה שיצרת');
   const children=await tx.select({id:s.customDocumentFolders.id}).from(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.parent,id),eq(s.customDocumentFolders.organizationId,p.organizationId)));
-  const documents=await tx.select({id:s.documentEntries.id}).from(s.documentEntries).where(and(scope(p),eq(s.documentEntries.folderId,id)));
+  const documents=await tx.select({id:s.documentEntries.id}).from(s.documentEntries).where(and(documentScope(p),eq(s.documentEntries.folderId,id)));
   if(children.length||documents.length)throw new AppError(409,'התיקייה אינה ריקה. יש להעביר קודם את הפריטים ותיקיות המשנה, כולל פריטים בסל המחזור');
   await tx.delete(s.customDocumentFolders).where(and(eq(s.customDocumentFolders.id,id),eq(s.customDocumentFolders.organizationId,p.organizationId)));
   return {id};

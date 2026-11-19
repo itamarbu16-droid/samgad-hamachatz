@@ -1,3 +1,4 @@
+import {DOCUMENT_REQUEST_TIMEOUT_MS} from './document-uploads';
 // Durable, account-scoped outbox. Authentication tokens never enter browser storage.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>; // API snapshots contain heterogeneous entity records.
@@ -36,8 +37,11 @@ async function write(state: State) {
 }
 const json = (body: unknown, status = 200, queued = false) => Response.json(body, { status, headers: queued ? { 'X-Samgad-Queued': '1' } : {} });
 const queueable = (url: string, method: string) => method === 'POST' && ['/api/tasks', '/api/rhythm/items'].includes(url) || method === 'PATCH' && /^\/api\/(tasks|rhythm\/(items|occurrences))\/[^/]+$/.test(url);
+export function requestTimeoutMs(url:string,method='GET') {
+ return ['POST','PATCH'].includes(method)&&/^\/api\/documents(?:\/[^/?]+)?$/.test(url)?DOCUMENT_REQUEST_TIMEOUT_MS:12000;
+}
 async function network(url: string, init?: RequestInit) {
-  return fetch(url, { ...init, signal: init?.signal || AbortSignal.timeout(12000) });
+  return fetch(url, { ...init, signal: init?.signal || AbortSignal.timeout(requestTimeoutMs(url,init?.method)) });
 }
 export function project(snapshot: Row, queue: Pending[], user: Row): Row {
   const data = structuredClone(snapshot);
