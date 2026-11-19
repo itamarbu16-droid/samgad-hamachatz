@@ -17,5 +17,12 @@
       "schedule": "0 16 * * *"
     }
   ],
-  "buildCommand": "npx next build"
+  "buildCommand": "npx next build",
+  "schedules": {
+    "hourly-overdue-assignees": {
+      "schedule": "5,35 * * * *",
+      "path": "/api/cron/hourly-overdue",
+      "requestMethod": "POST"
+    }
+  }
 }

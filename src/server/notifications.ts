@@ -4,6 +4,7 @@ import {z} from 'zod';
 import {getDb,type Database} from './db';
 import * as s from './schema';
 import {AppError,type Principal} from './policy';
+import {pendingHourlyPush,acknowledgeHourlyPush} from './hourly-reminder-state';
 import {seal,unseal} from './google-calendar';
 type Executor=Parameters<Parameters<Database['transaction']>[0]>[0];
 export async function queueTaskNotification(tx:Executor,p:Principal,recipients:string[],title:string,body:string){
@@ -30,9 +31,10 @@ export async function subscribePush(p:Principal,input:unknown){
 }
 export async function unsubscribePush(p:Principal,input:unknown){const {endpoint}=z.object({endpoint:z.string()}).parse(input);await (await getDb()).delete(s.pushSubscriptions).where(and(eq(s.pushSubscriptions.userId,p.userId),eq(s.pushSubscriptions.organizationId,p.organizationId),eq(s.pushSubscriptions.endpoint,endpoint)));return {ok:true};}
 export async function pendingPush(p:Principal){
- const db=await getDb();return db.select({id:s.pushEvents.id,title:s.pushEvents.title,body:s.pushEvents.body,url:s.pushEvents.url}).from(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,p.userId))).orderBy(s.pushEvents.createdAt).limit(20);
+ const db=await getDb();const ordinary=await db.select({id:s.pushEvents.id,title:s.pushEvents.title,body:s.pushEvents.body,url:s.pushEvents.url}).from(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,p.userId))).orderBy(s.pushEvents.createdAt).limit(20);
+ return [...ordinary,...await pendingHourlyPush(p)];
 }
-export async function acknowledgePush(p:Principal,input:unknown){const {ids}=z.object({ids:z.array(z.string()).max(20)}).parse(input);if(ids.length)await (await getDb()).delete(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,p.userId),inArray(s.pushEvents.id,ids)));return {ok:true};}
+export async function acknowledgePush(p:Principal,input:unknown){const {ids}=z.object({ids:z.array(z.string()).max(21)}).parse(input);if(ids.length)await (await getDb()).delete(s.pushEvents).where(and(eq(s.pushEvents.organizationId,p.organizationId),eq(s.pushEvents.recipientId,p.userId),inArray(s.pushEvents.id,ids)));await acknowledgeHourlyPush(p,ids);return {ok:true};}
 export function vapidAuthorization(endpoint:string,publicKey:string,privateKey:string){
  const enc=(v:unknown)=>Buffer.from(JSON.stringify(v)).toString('base64url'),h=enc({typ:'JWT',alg:'ES256'}),claims=enc({aud:new URL(endpoint).origin,exp:Math.floor(Date.now()/1000)+3600,sub:'https://samgad-hamachatz-git-feature-personal-rhythm-itamar14.vercel.app'}),data=h+'.'+claims;
  const raw=Buffer.from(publicKey,'base64url'),key=createPrivateKey({key:{kty:'EC',crv:'P-256',x:raw.subarray(1,33).toString('base64url'),y:raw.subarray(33).toString('base64url'),d:privateKey},format:'jwk'});
