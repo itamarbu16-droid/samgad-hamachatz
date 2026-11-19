@@ -1,0 +1,38 @@
+import {expect,test} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {signInThroughForm} from './login';
+
+test('meeting actions edit, cut, move, cancel deletion and restore without losing content',async({page})=>{
+ await signInThroughForm(page);
+ const title=`Synthetic meeting ${randomUUID()}`;
+ const create=await page.request.post('/api/documents',{headers:{origin:new URL(page.url()).origin},data:{clientRequestId:randomUUID(),folderId:'meeting-deputies',title,body:'Synthetic meeting content retained through operations'}});
+ expect(create.ok()).toBeTruthy();
+ await page.goto('/?view=records');
+ await page.locator('.document-folder-card').filter({hasText:'סיכומי ישיבות'}).click();
+ await page.locator('.document-folder-card').filter({hasText:'ישיבת סגנים'}).click();
+ await page.getByRole('button',{name:`פעולות עבור ${title}`,exact:true}).click();
+ await page.getByRole('button',{name:'עריכת מסמך / שינוי שם',exact:true}).click();
+ await page.getByRole('dialog').getByLabel('כותרת',{exact:true}).fill(title+' edited');
+ await page.getByRole('button',{name:'שמירה בתיקייה',exact:true}).click();
+ const edited=title+' edited';
+ await expect(page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true})).toBeVisible();
+ await page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true}).click();
+ await page.getByRole('button',{name:'גזירה',exact:true}).click();
+ await page.getByRole('button',{name:'חזרה',exact:true}).click();
+ await page.locator('.document-folder-card').filter({hasText:'ועדת בטיחות'}).click();
+ await page.getByRole('button',{name:'הדבקה כאן',exact:true}).click();
+ await expect(page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true})).toBeVisible();
+ await page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true}).click();
+ await page.getByRole('button',{name:'מחיקה',exact:true}).click();
+ await page.getByRole('dialog',{name:'מחיקת פריט'}).getByRole('button',{name:'ביטול',exact:true}).click();
+ await expect(page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true})).toBeVisible();
+ await page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true}).click();
+ await page.getByRole('button',{name:'מחיקה',exact:true}).click();
+ await page.getByRole('dialog',{name:'מחיקת פריט'}).getByRole('button',{name:'מחיקה',exact:true}).click();
+ await expect(page.getByRole('button',{name:`פעולות עבור ${edited}`,exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'נמחקו לאחרונה',exact:true}).click();
+ await page.locator('.document-trash-row').filter({hasText:edited}).getByRole('button',{name:'שחזור',exact:true}).click();
+ await page.getByRole('dialog',{name:'נמחקו לאחרונה'}).getByRole('button',{name:'סגירה',exact:true}).click();
+ await page.locator('.document-entry').filter({hasText:edited}).click();
+ await expect(page.getByRole('dialog').getByText('Synthetic meeting content retained through operations',{exact:true})).toBeVisible();
+});
