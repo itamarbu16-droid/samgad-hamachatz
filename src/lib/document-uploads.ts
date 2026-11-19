@@ -34,10 +34,25 @@ export async function prepareDocumentFiles(files:File[],cache:DocumentUploadCach
   progress(`מעלה קובץ ${n+1} מתוך ${files.length}…`);
   const started=await post('/api/documents/uploads',{id:session.id,filename:file.name,byteSize:file.size});
   const received=new Set<number>(started.received);
+  const missing:number[]=[];
+  const report=()=>progress(`מעלה קובץ ${n+1} מתוך ${files.length} · ${Math.round(transferred/total*100)}%`);
   for(let index=0;index<Math.ceil(file.size/DOCUMENT_CHUNK_BYTES);index++){
-   const part=file.slice(index*DOCUMENT_CHUNK_BYTES,(index+1)*DOCUMENT_CHUNK_BYTES);
-   if(!received.has(index))await post('/api/documents/uploads/chunks',{uploadId:session.id,index,contentBase64:await encodeDocumentFile(part)});
-   transferred+=part.size;progress(`מעלה קובץ ${n+1} מתוך ${files.length} · ${Math.round(transferred/total*100)}%`);
+   if(received.has(index))transferred+=Math.min(DOCUMENT_CHUNK_BYTES,file.size-index*DOCUMENT_CHUNK_BYTES);
+   else missing.push(index);
+  }
+  report();
+  // Two bounded requests overlap network latency. Keep the server's row lock:
+  // it serializes writes, while the client never starts a new batch after failure.
+  for(let start=0;start<missing.length;start+=2){
+   const results=await Promise.allSettled(missing.slice(start,start+2).map(async index=>{
+    const part=file.slice(index*DOCUMENT_CHUNK_BYTES,(index+1)*DOCUMENT_CHUNK_BYTES);
+    await post('/api/documents/uploads/chunks',{uploadId:session.id,index,contentBase64:await encodeDocumentFile(part)});
+    transferred+=part.size;report();
+   }));
+   // Wait for every in-flight write before rejecting, so a manual retry cannot
+   // race a previous batch or lose an acknowledgement that arrived after failure.
+   const failed=results.find(result=>result.status==='rejected');
+   if(failed?.status==='rejected')throw failed.reason;
   }
   attachments.push({uploadId:session.id});
  }

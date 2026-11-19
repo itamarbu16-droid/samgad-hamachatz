@@ -32,3 +32,29 @@ it('extends only document writes, not all requests',()=>{
  expect(requestTimeoutMs('/api/documents','GET')).toBe(12000);
  expect(requestTimeoutMs('/api/tasks','POST')).toBe(12000);
 });
+it('waits for a slower in-flight success after failure and starts no further batch',async()=>{
+ const file=new File([new Uint8Array(4*1024*1024)],'synthetic.jpg');const cache=new Map();
+ let release:()=>void=()=>{};const slow=new Promise<void>(resolve=>{release=resolve;});
+ const indices:number[]=[];let finished=false;
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init:RequestInit)=>{
+  const b=JSON.parse(String(init.body));if(!url.endsWith('/chunks'))return Response.json({received:[]});
+  indices.push(b.index);if(b.index===0)throw new TypeError('Load failed');
+  await slow;return Response.json({received:b.index});
+ }));
+ const outcome=prepareDocumentFiles([file],cache,()=>{}).then(()=>null,e=>e).finally(()=>{finished=true;});
+ while(indices.length<2)await new Promise(r=>setTimeout(r,1));
+ await new Promise(r=>setTimeout(r,5));expect(finished).toBe(false);expect(indices).toEqual([0,1]);
+ release();expect(await outcome).toBeInstanceOf(TypeError);expect(indices).toEqual([0,1]);
+});
+it('caps concurrency at two and reports monotonic acknowledged progress',async()=>{
+ const file=new File([new Uint8Array(5*1024*1024)],'synthetic.jpg');let active=0,peak=0;
+ const percentages:number[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init:RequestInit)=>{
+  const b=JSON.parse(String(init.body));if(!url.endsWith('/chunks'))return Response.json({received:[0]});
+  active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,b.index%2?8:2));active--;
+  return Response.json({received:b.index});
+ }));
+ await prepareDocumentFiles([file],new Map(),m=>{const value=m.match(/(\d+)%/);if(value)percentages.push(Number(value[1]));});
+ expect(peak).toBe(2);expect(active).toBe(0);expect(percentages[0]).toBe(20);
+ expect(percentages.at(-1)).toBe(100);expect(percentages).toEqual([...percentages].sort((a,b)=>a-b));
+});

@@ -92,3 +92,14 @@ it('saves a 2.7 MiB JPEG in meeting summaries and deduplicates a lost-response r
  expect(detail.attachments[0].byteSize).toBe(bytes.length);
  expect((await downloadDocument(owner,detail.attachments[0].id)).bytes.equals(bytes)).toBe(true);
 });
+it('preserves final bytes with simultaneous scoped chunk writes',async()=>{
+ const bytes=Buffer.alloc(2*DOCUMENT_CHUNK_BYTES+37,59),id=randomUUID();
+ await beginDocumentUpload(owner,{id,filename:'concurrent.jpg',byteSize:bytes.length});
+ const part=(index:number)=>({uploadId:id,index,contentBase64:bytes.subarray(index*DOCUMENT_CHUNK_BYTES,(index+1)*DOCUMENT_CHUNK_BYTES).toString('base64')});
+ await Promise.all([putDocumentChunk(owner,part(0)),putDocumentChunk(owner,part(1))]);
+ await expect(putDocumentChunk(other,part(2))).rejects.toMatchObject({status:404});
+ await putDocumentChunk(owner,part(2));
+ const entry=await createDocument(owner,{...input(id),folderId:'meetings'});
+ const detail=await getDocument(owner,entry.id);
+ expect((await downloadDocument(owner,detail.attachments[0].id)).bytes.equals(bytes)).toBe(true);
+});
