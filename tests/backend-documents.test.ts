@@ -353,3 +353,43 @@ it('renames and moves custom folders, preventing cycles and protecting populated
  await deleteDocumentFolder(deputy,{id:a.id});
  expect((await getDocuments(deputy)).folders.some(f=>f.id===a.id)).toBe(false);
 });
+
+// Generic table customization only. Fixtures contain no operational data.
+describe('generic customizable tracker persistence',()=>{
+ const table=()=>({kind:'tracking-table-v1',columns:[{id:'custom-notes',name:'הערה לבחירה',type:'text'},{id:'legacy-date',name:'תאריך',type:'date'}],rows:Array.from({length:125},(_,i)=>({'custom-notes':`Synthetic ${i+1}`,'custom-notes:status':i%2?'v':'x','legacy-date':'2026-11-19',unknownLegacyKey:'preserve'})),previousLayout:{columns:[{id:'old',name:'Old',type:'text'}],rows:[{old:'synthetic original'}]}});
+ it('round-trips custom column names, types, more than fifty rows and unknown legacy fields',async()=>{
+  const folder=await createDocumentFolder(deputy,{name:'Synthetic custom tables',parent:'trackers',section:'library',clientRequestId:randomUUID()});
+  const nested=await createDocumentFolder(deputy,{name:'Synthetic nested',parent:folder.id,section:'library',clientRequestId:randomUUID()});
+  const body=JSON.stringify(table()),request=input({folderId:nested.id,body,title:'Generic synthetic table'});
+  const result=await createDocument(deputy,request);
+  expect(await createDocument(deputy,request)).toEqual(result);
+  const saved=await getDocument(deputy,result.id);
+  expect(saved.body).toBe(body);expect(saved.folderId).toBe(nested.id);
+  const changed=table();changed.columns.push({id:'custom-additional',name:'שם עמודה חדש',type:'text'});changed.rows.push({...changed.rows[0],'custom-notes':'Synthetic row 126'});
+  const update={title:saved.title,folderId:saved.folderId,body:JSON.stringify(changed),version:saved.version};
+  // Keep the existing collaborative table-write policy, without elevating it.
+  await updateDocument(contributor,result.id,update);
+  expect(JSON.parse((await getDocument(deputy,result.id)).body)).toEqual(changed);
+  await expect(updateDocument(deputy,result.id,update)).rejects.toMatchObject({status:409});
+  expect(JSON.parse((await getDocument(deputy,result.id)).body)).toEqual(changed);
+ });
+ it('duplicates all custom rows/columns while resetting only requested status cells',async()=>{
+  const original=table(),source=await createDocument(deputy,input({folderId:'trackers',body:JSON.stringify(original)}));
+  for(const resetStatuses of [false,true]){
+   const copy=await duplicateDocument(deputy,source.id,{title:'Synthetic copy',folderId:'trackers',clientRequestId:randomUUID(),resetStatuses});
+   const actual=JSON.parse((await getDocument(deputy,copy.id)).body);
+   const expected=table();if(resetStatuses)expected.rows=expected.rows.map(row=>({...row,'custom-notes:status':''}));
+   expect(actual).toEqual(expected);
+  }
+  expect(JSON.parse((await getDocument(deputy,source.id)).body)).toEqual(original);
+ });
+ it('retains write, tenant and size boundaries for custom tables',async()=>{
+  const body=JSON.stringify(table()),source=await createDocument(deputy,input({folderId:'trackers',body}));
+  await expect(createDocument(viewer,input({folderId:'trackers',body}))).rejects.toMatchObject({status:403});
+  await expect(updateDocument(viewer,source.id,{folderId:'trackers',title:'Synthetic replacement',body,version:1})).rejects.toMatchObject({status:403});
+  await expect(getDocument({...deputy,organizationId:'synthetic-inaccessible-org'},source.id)).rejects.toMatchObject({status:404});
+  await expect(updateDocument({...contributor,organizationId:'synthetic-inaccessible-org'},source.id,{folderId:'trackers',title:'Synthetic replacement',body,version:1})).rejects.toMatchObject({status:404});
+  await expect(updateDocument(deputy,source.id,{folderId:'trackers',title:'Synthetic oversized',body:'x'.repeat(100001),version:1})).rejects.toBeDefined();
+  expect((await getDocument(deputy,source.id)).body).toBe(body);
+ });
+});

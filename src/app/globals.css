@@ -2425,3 +2425,12 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .open-due-reminder-group li{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px;padding:2px 0;overflow-wrap:anywhere}
 .open-due-reminder-group time{flex-shrink:0;color:var(--muted);font-size:12px}
 .open-due-reminder-group summary{width:max-content;max-width:100%;cursor:pointer;padding-block:6px}
+
+/* Tracker controls sit outside the scroll surface, reachable in narrow RTL layouts. */
+.tracking-structure-toolbar { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:8px 16px; }
+.tracking-structure-toolbar p { margin:0; }
+.tracking-structure-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.tracking-structure-actions button,.tracking-structure-footer button { min-height:44px; }
+.tracking-structure-toolbar + .tracking-scroll { margin-block-start:8px; }
+.tracking-structure-footer { margin-block:-6px 12px; }
+.tracking-scroll :is(input,th):focus-visible { outline:2px solid #ed9b40; outline-offset:-2px; }
