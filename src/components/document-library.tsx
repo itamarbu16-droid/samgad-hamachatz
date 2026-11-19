@@ -232,7 +232,7 @@ export default function DocumentLibrary({
   const modalOpen = creating || Boolean(selected);
   const editForm = creating || editing;
   const tracking = section === "library" && (()=>{let id=folder;const seen=new Set<string>();while(id&&!seen.has(id)){if(id==='trackers')return true;seen.add(id);id=catalog.find(f=>f.id===id)?.parent??null;}return false;})();
-  const pendingCards=visiblePending.map(job=><article key={job.id} className="panel document-upload document-filename" aria-label="מסמך בהעלאה">
+  const pendingCards=visiblePending.map(job=><article key={job.id} className="panel upload-job-card" aria-label="מסמך בהעלאה">
     <DocumentUploadJob job={job} store={backgroundUpload} showFiles/>
   </article>);
   return (

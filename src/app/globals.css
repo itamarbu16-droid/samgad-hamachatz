@@ -2387,3 +2387,29 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .schedule-connection-settings{margin-block:16px}
 .schedule-connection-settings summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
 @media(max-width:480px){.schedule-navigation{padding:12px}.schedule-view-switch button{padding-inline:16px}.schedule-date-navigation{gap:8px}.schedule-day article{padding:14px}}
+
+/* Compact, per-file upload progress (clockwise even in the Hebrew UI). */
+.upload-job-card,.upload-queue { padding: 12px 14px; min-width: 0; }
+.upload-queue-label { display: block; margin-block-end: 5px; font-size: .875rem; color: var(--muted); }
+.upload-queue-list,.upload-job-files { margin: 0; padding: 0; list-style: none; }
+.upload-queue-list > li + li { border-block-start: 1px solid var(--border); margin-block-start: 8px; padding-block-start: 8px; }
+.upload-job-row { display: flex; align-items: center; gap: 12px; min-height: 46px; }
+.upload-job-details { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.upload-job-details > strong { display: block; text-align: start; }
+.upload-job-details > small { display: block; color: var(--muted); line-height: 1.35; }
+.upload-job-details > .upload-job-state { font-weight: 600; }
+.upload-ring,.upload-job-symbol { flex: 0 0 46px; width: 46px; height: 46px; display: inline-grid; place-items: center; }
+.upload-ring { position: relative; }
+.upload-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke-width: 3; }
+.upload-ring-track { stroke: var(--border); }
+.upload-ring-fill { stroke: #ff963f; stroke-linecap: round; transition: stroke-dasharray .22s ease-out; }
+.upload-ring bdi { font: 700 12px/1 "Heebo",Arial,sans-serif; font-variant-numeric: tabular-nums; }
+.upload-job-symbol { color: var(--teal); }
+.upload-job-failed { color: var(--red); }
+.upload-job-remove { flex: 0 0 44px; align-self: center; }
+.upload-job-files { display: grid; gap: 5px; margin-block-start: 8px; }
+.upload-job-files > li { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; min-width: 0; }
+.upload-job-files .upload-ring { color: var(--text); }
+.upload-job-error { margin-block-start: 6px; }
+.upload-job-error p { margin: 0 0 6px; overflow-wrap: anywhere; color: var(--red); }
+@media (prefers-reduced-motion: reduce) { .upload-ring-fill { transition: none; } }

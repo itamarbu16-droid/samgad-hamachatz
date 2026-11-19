@@ -2,7 +2,8 @@
 import React,{act,createElement as h,useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import {expect,it,vi} from 'vitest';
-import {DocumentUploadProvider,DocumentUploadStatus,useDocumentUpload} from '../src/components/document-upload-provider';
+import {DocumentUploadJob,DocumentUploadProvider,DocumentUploadStatus,useDocumentUpload} from '../src/components/document-upload-provider';
+import {BackgroundDocumentUpload,type PendingDocument} from '../src/lib/background-document-upload';
 import DocumentLibrary from "../src/components/document-library";
 import {documentFolders} from "../src/lib/document-folders";
 vi.mock("../src/lib/offline",()=>({apiFetch:(...args:Parameters<typeof fetch>)=>fetch(...args)}));
@@ -100,15 +101,18 @@ it('closes the document form before upload and replaces the destination placehol
   await act(async()=>button('שמירה בתיקייה').click());
   expect(document.querySelector('[role=dialog]')).toBeNull();
   expect(pendingRow()?.textContent).toContain(title);
-  expect(pendingRow()?.textContent).toContain('פורמטים / תיקיית בדיקה');
-  expect(pendingRow()?.textContent).toContain(`${filename} · 0%`);
+  const ring=()=>pendingRow()?.querySelector(`[role="progressbar"][aria-label="העלאת ${filename}"]`);
+  expect(ring()?.getAttribute('aria-valuenow')).toBe('0');
+  expect(ring()?.textContent).toBe('0%');
+  expect(pendingRow()?.textContent).not.toContain('מעלה ברקע');
   expect(host.querySelector('.document-entry-shell')).toBeNull();
   await act(async()=>context.resolve(Response.json({userId:'a',workspaceOwnerId:'owner',organizationId:'org',sessionMarker:'marker'})));
   await requestSeen('POST /api/documents/uploads/chunks');
   await act(async()=>chunk.resolve(Response.json({received:0})));
   await requestSeen('POST /api/documents');
-  expect(pendingRow()?.textContent).toContain(`${filename} · 100%`);
-  expect(pendingRow()?.textContent).toContain('ממתין לאישור שמירת המסמך');
+  expect(ring()?.getAttribute('aria-valuenow')).toBe('100');
+  expect(ring()?.textContent).toBe('100%');
+  expect(pendingRow()?.textContent).toContain('שומר…');
   expect(host.querySelector('.document-entry-shell')).toBeNull();
   entries=[result];
   await act(async()=>commit.resolve(Response.json({entry:{id:result.id}})));
@@ -162,13 +166,14 @@ it('shows same-title jobs separately across folders and stops only the selected 
   await act(async()=>host.querySelector('button')!.click());
   await act(async()=>vi.waitFor(()=>expect(firstChunk).toHaveBeenCalledTimes(1)));
   expect(globalQueue().querySelectorAll('li')).toHaveLength(2);
-  expect(globalQueue().textContent).toContain('אחד ממתין');
+  expect(globalQueue().textContent).toContain('בתור');
+  expect(globalQueue().textContent).not.toContain('אפשר לעבור בין מסכי האפליקציה');
   await clickFolder('תיקייה סינתטית א');
-  expect(localCard()?.textContent).toContain('a.txt · 0%');
+  expect(localCard()?.querySelector('[role="progressbar"][aria-label="העלאת a.txt"]')?.textContent).toBe('0%');
   await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent?.trim()==='חזרה')!.click());
   await clickFolder('תיקייה סינתטית ב');
-  expect(localCard()?.textContent).toContain('b.txt · 0%');
-  expect(localCard()?.textContent).toContain('ממתין בתור');
+  expect(localCard()?.querySelector('[role="progressbar"][aria-label="העלאת b.txt"]')?.textContent).toBe('0%');
+  expect(localCard()?.textContent).toContain('בתור');
   await act(async()=>globalQueue().querySelector<HTMLButtonElement>('button[aria-label$="תיקייה סינתטית א"]')!.click());
   await act(async()=>vi.waitFor(()=>expect(commitFolders).toEqual(['folder-b'])));
   expect(firstChunk.mock.calls[0][0].aborted).toBe(true);
@@ -176,5 +181,32 @@ it('shows same-title jobs separately across folders and stops only the selected 
   expect(fetcher.mock.calls.some(([,init])=>init?.method==='DELETE')).toBe(false);
  }finally{
   await act(async()=>root.unmount());fetcher.mockRestore();host.remove();
+ }
+});
+
+
+it('draws real byte progress for multiple files, and keeps errors and retry actionable', async()=>{
+ const host=document.createElement('div');
+ document.body.append(host);
+ const root=createRoot(host);
+ const store=new BackgroundDocumentUpload();
+ const retry=vi.spyOn(store,'retry');
+ const job:PendingDocument={id:'progress',draft:{title:'כותרת ארוכה',body:'',folderId:'test',documentDate:null},destination:'תיקיית בדיקה',phase:'uploading',files:[{name:'a.pdf',bytes:12,size:30},{name:'b.pdf',bytes:0,size:10}]};
+ try{
+  await act(async()=>root.render(h(DocumentUploadJob,{job,store,showFiles:true})));
+  const rings=[...host.querySelectorAll('[role=progressbar]')];
+  expect(rings.map(ring=>ring.getAttribute('aria-valuenow'))).toEqual(['40','0']);
+  expect(rings[0].querySelector('.upload-ring-fill')?.getAttribute('stroke-dasharray')).toBe('40 100');
+  expect(rings[0].querySelector('bdi')?.textContent).toBe('40%');
+  expect(rings[1].querySelector('.upload-ring-fill')).toBeNull();
+  await act(async()=>root.render(h(DocumentUploadJob,{job,store})));
+  expect(host.querySelector('[role=progressbar]')?.textContent).toBe('30%');
+  await act(async()=>root.render(h(DocumentUploadJob,{job:{...job,phase:'failed',error:'החיבור נקטע'},store,showFiles:true})));
+  expect(host.querySelector('[role=alert]')?.textContent).toBe('החיבור נקטע');
+  expect(host.querySelector('[role=progressbar]')).toBeNull();
+  await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label^="ניסיון נוסף"]')!.click());
+  expect(retry).toHaveBeenCalledWith(job.id);
+ }finally{
+  await act(async()=>root.unmount());host.remove();
  }
 });
