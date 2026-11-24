@@ -44,6 +44,35 @@ async function setup(role:string,editAll=false){
  return {item,button,dialog,click,hold,dismiss,pointer,attributedClick};
 }
 
+it('anchors the Files-style highlight and menu beside the card, traps focus and closes on backdrop',async()=>{
+ const u=await setup('deputy');
+ vi.useFakeTimers();
+ const card=u.item(syntheticFolder.name);
+ const rectangle=vi.spyOn(card,'getBoundingClientRect').mockReturnValue(new DOMRect(175,window.innerHeight-90,140,60));
+ const menuHeight=vi.spyOn(HTMLElement.prototype,'scrollHeight','get').mockReturnValue(220);
+ try {
+  await u.hold(card);
+  const dialog=u.dialog()!;
+  const backdrop=dialog.parentElement!;
+  const spotlight=backdrop.querySelector<HTMLElement>('.document-context-spotlight')!;
+  expect(backdrop.classList.contains('document-context-anchored')).toBe(true);
+  expect(card.classList.contains('document-context-lifted')).toBe(true);
+  expect(spotlight.style.left).toBe('175px');
+  expect(spotlight.style.width).toBe('140px');
+  expect(parseFloat(dialog.style.top)).toBeLessThan(window.innerHeight-90);
+  expect(document.activeElement).toBe(dialog);
+  expect(backdrop.getAttribute('aria-hidden')).toBeNull();
+  expect(spotlight.getAttribute('aria-hidden')).toBe('true');
+  await act(async()=>{u.pointer(backdrop,'pointerdown');u.attributedClick(backdrop);});
+  expect(u.dialog()).toBeNull();
+  expect(card.classList.contains('document-context-lifted')).toBe(false);
+  expect(document.activeElement).toBe(card);
+  expect(u.item(own.title)).toBeUndefined();
+  await act(async()=>card.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true})));
+  expect(u.dialog()?.getAttribute('aria-label')).toBe('פעולות: '+syntheticFolder.name);
+ }finally {rectangle.mockRestore();menuHeight.mockRestore();}
+});
+
 it('lets a designated editor open the expected folder and document menus by touch without opening the target',async()=>{
  const u=await setup('contributor',true);
  vi.useFakeTimers();

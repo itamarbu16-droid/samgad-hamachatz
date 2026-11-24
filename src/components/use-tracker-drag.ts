@@ -3,16 +3,16 @@ import {useEffect,useRef,useState} from 'react';
 import type {PointerEvent as ReactPointerEvent,TouchEvent as ReactTouchEvent} from 'react';
 
 type Drag = {ids:string[];title:string;x:number;y:number;target:string|null};
-type Pending = {ids:string[];title:string;x:number;y:number;touchId:number|null;moved:boolean;holdId?:string};
-export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void,onHold?:(ids:string[])=>void){
+type Pending = {ids:string[];title:string;x:number;y:number;touchId:number|null;moved:boolean;holdId?:string;anchor?:HTMLElement};
+export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void,onHold?:(ids:string[],anchor?:HTMLElement)=>void){
  const [drag,setDrag]=useState<Drag|null>(null);
  const active=useRef<Drag|null>(null),pending=useRef<Pending|null>(null);
  const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const suppressClick=useRef(false),drop=useRef(onDrop),hold=useRef(onHold);
  drop.current=onDrop;hold.current=onHold;
  function clearTimer(){if(timer.current)clearTimeout(timer.current);timer.current=null;}
- function begin(ids:string[],title:string,x:number,y:number,touchId:number|null,holdId?:string){
-  clearTimer();suppressClick.current=false;pending.current={ids,title,x,y,touchId,moved:false,holdId};
+ function begin(ids:string[],title:string,x:number,y:number,touchId:number|null,holdId?:string,anchor?:HTMLElement){
+  clearTimer();suppressClick.current=false;pending.current={ids,title,x,y,touchId,moved:false,holdId,anchor};
   timer.current=setTimeout(()=>{
    const p=pending.current;if(!p)return;
    suppressClick.current=true;active.current={ids:p.ids,title:p.title,x:p.x,y:p.y,target:null};setDrag(active.current);
@@ -34,7 +34,10 @@ export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void,onHol
     const shifted=Math.hypot(position.x-origin.x,position.y-origin.y)>10;
     const target=shifted?targetAt(position.x,position.y):null;
     if(target)drop.current(current.ids,target);
-    else if(!shifted&&!origin.moved)hold.current?.(origin.holdId?[origin.holdId]:current.ids);
+    else if(!shifted&&!origin.moved){
+     const ids=origin.holdId?[origin.holdId]:current.ids;
+     if(origin.anchor)hold.current?.(ids,origin.anchor);else hold.current?.(ids);
+    }
    }
   }
   const mouseMove=(e:PointerEvent)=>{if(e.pointerType==='mouse')move(e.clientX,e.clientY,e);};
@@ -50,12 +53,12 @@ export function useTrackerDrag(onDrop:(ids:string[],folderId:string)=>void,onHol
  },[]);
  useEffect(()=>{
   if(!drag)return;
-  const interval=setInterval(()=>{const d=active.current;if(!d)return;const delta=d.y>window.innerHeight-90?14:d.y<90?-14:0;if(delta)window.scrollBy(0,delta);},30);
+  const interval=setInterval(()=>{const d=active.current;if(!d||!pending.current?.moved)return;const delta=d.y>window.innerHeight-90?14:d.y<90?-14:0;if(delta)window.scrollBy(0,delta);},30);
   return ()=>clearInterval(interval);
  },[Boolean(drag)]);
  return {drag,
   consumeClick(){if(!suppressClick.current)return false;suppressClick.current=false;return true;},
-  startMouse(e:ReactPointerEvent,ids:string[],title:string,holdId?:string){if(e.pointerType==='mouse'&&e.button===0)begin(ids,title,e.clientX,e.clientY,null,holdId);},
-  startTouch(e:ReactTouchEvent,ids:string[],title:string,holdId?:string){if(e.touches.length!==1)return;const t=e.touches[0];begin(ids,title,t.clientX,t.clientY,t.identifier,holdId);},
+  startMouse(e:ReactPointerEvent,ids:string[],title:string,holdId?:string){if(e.pointerType==='mouse'&&e.button===0)begin(ids,title,e.clientX,e.clientY,null,holdId,e.currentTarget as HTMLElement);},
+  startTouch(e:ReactTouchEvent,ids:string[],title:string,holdId?:string){if(e.touches.length!==1)return;const t=e.touches[0];begin(ids,title,t.clientX,t.clientY,t.identifier,holdId,e.currentTarget as HTMLElement);},
  };
 }

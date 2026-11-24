@@ -9,6 +9,7 @@ it('shows concise RTL groups, hides other assignees, and dismisses without writi
  const host=document.createElement('div');
  const root=createRoot(host);
  const onDismiss=vi.fn();
+ const match=vi.spyOn(window,"matchMedia").mockReturnValue({matches:true} as MediaQueryList);
  try {
   await act(async()=>root.render(h(OpenDueReminder,{
    onDismiss,userId:'me',today:'2026-11-19',
@@ -25,6 +26,7 @@ it('shows concise RTL groups, hides other assignees, and dismisses without writi
   await act(async()=>host.querySelector('button')?.click());
   expect(onDismiss).toHaveBeenCalledOnce();
  } finally {
+  match.mockRestore();
   await act(async()=>root.unmount());
  }
 });

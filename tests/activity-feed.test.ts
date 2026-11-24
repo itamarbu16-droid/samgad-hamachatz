@@ -35,3 +35,29 @@ it('keeps confirmation visible on failure and allows retry',async()=>{
  expect(document.querySelector('[role=alert]')?.textContent).toBe('אין חיבור');
  expect(button('מחיקה מהרשימה').disabled).toBe(false);
 });
+
+it('follows the horizontal drag, snaps back on cancel and only opens a delete confirmation after a committed swipe',async()=>{
+ const fetcher=vi.spyOn(globalThis,'fetch');
+ await act(async()=>root.render(h(ActivityFeed,{items})));
+ const front=host.querySelector<HTMLElement>('.swipe-motion-front')!;
+ const gesture=(type:string,x:number,y=50)=>front.dispatchEvent(new PointerEvent(type,{isPrimary:true,button:0,pointerId:1,pointerType:'touch',clientX:x,clientY:y,bubbles:true,cancelable:true}));
+ await act(async()=>{gesture('pointerdown',50);gesture('pointermove',92);});
+ expect(front.dataset.motion).toBe('drag');
+ expect(front.style.getPropertyValue('--swipe-motion-x')).toBe('42px');
+ await act(async()=>gesture('pointercancel',140));
+ expect(front.dataset.motion).toBe('return');
+ expect(front.style.getPropertyValue('--swipe-motion-x')).toBe('0px');
+ expect(document.querySelector('[role=dialog]')).toBeNull();
+ await act(async()=>{gesture('pointerdown',50);gesture('pointermove',100);gesture('pointerup',130);});
+ expect(front.dataset.motion).toBe('exit');
+ expect(document.querySelector('[role=dialog]')).toBeNull();
+ await act(async()=>new Promise(resolve=>setTimeout(resolve,175)));
+ expect(document.querySelector('[role=dialog]')?.textContent).toContain('הרשימה שלך בלבד');
+ expect(fetcher).not.toHaveBeenCalled();
+ await act(async()=>button('ביטול').click());
+ expect(fetcher).not.toHaveBeenCalled();
+ await act(async()=>root.render(h(ActivityFeed,{items,readOnly:true})));
+ await act(async()=>{gesture('pointerdown',50);gesture('pointermove',125);gesture('pointerup',145);});
+ expect(document.querySelector('[role=dialog]')).toBeNull();
+ expect(fetcher).not.toHaveBeenCalled();
+});

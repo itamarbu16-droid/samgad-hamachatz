@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Inbox, X } from "lucide-react";
+import {contextMenuPosition} from "@/lib/context-menu-position";
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <div className="empty">
@@ -61,17 +62,20 @@ export function Modal({
   children,
   wide = false,
   actionSheet = false,
+  contextAnchor = null,
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
   wide?: boolean;
   actionSheet?: boolean;
+  contextAnchor?: HTMLElement | null;
 }) {
   const section = useRef<HTMLElement>(null),
     dirty = useRef(false),
     closeRef = useRef(close);
   const openingClickUntil=useRef(0);
+  const highlight=useRef<HTMLDivElement>(null);
   const [confirm, setConfirm] = useState(false);
   const [mounted, setMounted] = useState(false);
   const continueButton = useRef<HTMLButtonElement>(null);
@@ -90,11 +94,56 @@ export function Modal({
   }
   const dismissRef = useRef(dismiss);
   dismissRef.current = dismiss;
+  useLayoutEffect(() => {
+    const dialog=section.current, spotlight=highlight.current;
+    if(!mounted||!dialog||!spotlight||!contextAnchor)return;
+    const backdrop=dialog.parentElement;
+    const anchor=contextAnchor;
+    const visible=window.visualViewport;
+    const clear=()=>{
+      backdrop?.classList.remove('document-context-anchored');
+      [dialog,spotlight].forEach(node=>['left','top','width','height','max-height'].forEach(property=>node.style.removeProperty(property)));
+    };
+    const locate=()=>{
+      const x=visible?.offsetLeft??0,y=visible?.offsetTop??0;
+      const viewport={left:x,top:y,right:x+(visible?.width??window.innerWidth),bottom:y+(visible?.height??window.innerHeight)};
+      const source=anchor.getBoundingClientRect();
+      const rect={left:Math.max(viewport.left,source.left),top:Math.max(viewport.top,source.top),
+        right:Math.min(viewport.right,source.right),bottom:Math.min(viewport.bottom,source.bottom)};
+      for(let parent=anchor.parentElement;parent&&parent!==document.body;parent=parent.parentElement){
+        const css=getComputedStyle(parent);
+        if(!/(auto|scroll|hidden|clip)/.test(css.overflow+css.overflowX+css.overflowY))continue;
+        const bounds=parent.getBoundingClientRect();
+        if(bounds.width>0&&/(auto|scroll|hidden|clip)/.test(css.overflowX||css.overflow)){rect.left=Math.max(rect.left,bounds.left);rect.right=Math.min(rect.right,bounds.right);}
+        if(bounds.height>0&&/(auto|scroll|hidden|clip)/.test(css.overflowY||css.overflow)){rect.top=Math.max(rect.top,bounds.top);rect.bottom=Math.min(rect.bottom,bounds.bottom);}
+      }
+      if(!anchor.isConnected||rect.right<=rect.left||rect.bottom<=rect.top){clear();return;}
+      backdrop?.classList.add('document-context-anchored');
+      const px=(value:number)=>`${value}px`;
+      Object.assign(spotlight.style,{left:px(rect.left),top:px(rect.top),width:px(rect.right-rect.left),height:px(rect.bottom-rect.top)});
+      dialog.style.width=px(contextMenuPosition(rect,viewport,0).width);
+      dialog.style.maxHeight=px(Math.max(0,viewport.bottom-viewport.top-24));
+      const position=contextMenuPosition(rect,viewport,dialog.scrollHeight+2);
+      Object.assign(dialog.style,{left:px(position.left),top:px(position.top),maxHeight:px(position.maxHeight)});
+    };
+    locate();
+    anchor.classList.add('document-context-lifted');
+    window.addEventListener('resize',locate);window.addEventListener('scroll',locate);
+    visible?.addEventListener('resize',locate);visible?.addEventListener('scroll',locate);
+    return ()=>{
+      clear();anchor.classList.remove('document-context-lifted');
+      window.removeEventListener('resize',locate);window.removeEventListener('scroll',locate);
+      visible?.removeEventListener('resize',locate);visible?.removeEventListener('scroll',locate);
+    };
+  },[contextAnchor,mounted]);
   useEffect(() => {
     if (!mounted || !section.current) return;
     const dialog = section.current;
     openingClickUntil.current=Date.now()+400;
-    const previousFocus = document.activeElement as HTMLElement | null;
+    const focused = document.activeElement as HTMLElement | null;
+    const nearAnchor=contextAnchor?.contains(focused)||focused?.parentElement===contextAnchor?.parentElement;
+    const previousFocus=contextAnchor&&!nearAnchor?
+      contextAnchor.querySelector<HTMLElement>('button:not(:disabled)')??contextAnchor:focused;
     if (!activeDialogs.length) originalOverflow = document.body.style.overflow;
     activeDialogs.push(dialog);
     syncDialogBackground();
@@ -148,9 +197,9 @@ export function Modal({
       const index = activeDialogs.indexOf(dialog);
       if (index >= 0) activeDialogs.splice(index, 1);
       syncDialogBackground();
-      if (previousFocus?.isConnected) previousFocus.focus();
+      if (previousFocus?.isConnected && !previousFocus.closest('[inert]')) previousFocus.focus({preventScroll:true});
     };
-  }, [mounted]);
+  }, [contextAnchor,mounted]);
   if (!mounted) return null;
   return createPortal(
     <div
@@ -159,12 +208,13 @@ export function Modal({
       onClickCapture={e=>{
         // The same release that opened a touch menu must not hit the backdrop
         // or an option. A genuine next pointerdown or keyboard click is allowed.
-        if(actionSheet&&e.detail!==0&&Date.now()<openingClickUntil.current){e.preventDefault();e.stopPropagation();}
+        if((actionSheet||contextAnchor)&&e.detail!==0&&Date.now()<openingClickUntil.current){e.preventDefault();e.stopPropagation();}
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) dismiss();
       }}
     >
+      {contextAnchor&&<div aria-hidden="true" ref={highlight} className="document-context-spotlight"/>}
       <section
         ref={section}
         className={"modal"+(wide?" wide":"")+(actionSheet?" document-context-sheet":"")}

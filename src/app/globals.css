@@ -2485,3 +2485,22 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
   .document-context-sheet { position:relative; padding-block-start:10px; border-radius:24px 24px 0 0; }
   .document-context-sheet::before { content:""; position:absolute; z-index:1; width:38px; height:4px; border-radius:10px; background:#73737b; inset-block-start:8px; left:50%; translate:-50% 0; pointer-events:none; }
 }
+
+/* Files-style contextual actions are anchored; ordinary modal sheets are unchanged. */
+.document-context-spotlight { display:none; }
+.modal-backdrop.document-context-anchored { background:transparent; backdrop-filter:none; -webkit-backdrop-filter:none; overflow:hidden; }
+.document-context-anchored .document-context-spotlight { display:block; position:absolute; border-radius:12px; outline:1px solid #ff9a4566; box-shadow:0 0 0 200vmax #000a, 0 6px 24px #0008; pointer-events:none; }
+.document-context-anchored .document-context-sheet { position:absolute; z-index:1; margin:0; padding:0; border-radius:17px; box-shadow:0 12px 30px #0009; }
+.document-context-anchored .document-context-sheet::before { content:none; }
+.document-context-anchored .document-context-sheet .modal-heading { padding:8px 12px; }
+.document-context-anchored .document-context-sheet .modal-heading h2 { font-size:15px; }
+.document-context-anchored .document-context-sheet .modal-body { padding:8px; }
+.document-context-anchored .document-context-sheet .document-action-menu .button { min-height:44px; }
+@media(prefers-reduced-motion:no-preference) {
+ .document-context-lifted { animation:document-context-lift 260ms ease-out; }
+ @keyframes document-context-lift {
+  0%,100% { rotate:0deg; }
+  27% { rotate:-.8deg; }
+  60% { rotate:.6deg; }
+ }
+}

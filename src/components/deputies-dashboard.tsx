@@ -34,7 +34,7 @@ export default function DeputiesDashboard({ user, tasks, today, go,pinnedTaskKey
   }
   const pending = rows.filter(row => row.pending).length;
   const overdue = rows.filter(row => !row.done && row.due && row.due < today).length;
-  const upcoming = [...rows].filter(row => !row.done && !row.pending).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')||Number(b.pinned)-Number(a.pinned)).slice(0, 5);
+  const upcoming = [...rows].filter(row => !row.done && !row.pending).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999')||Number(b.pinned)-Number(a.pinned));
   const tiles = [
     { title: 'המשימות שלי', icon: ClipboardCheck, view: 'tasks' },
     { title: 'ספרייה', icon: Folder, view: 'library' },
@@ -47,7 +47,7 @@ export default function DeputiesDashboard({ user, tasks, today, go,pinnedTaskKey
     <nav className="command-tiles command-shortcuts" aria-label="קיצורים">{tiles.map(tile => <button type="button" className="command-tile" key={tile.view} onClick={() => go(tile.view)}><tile.icon size={23} aria-hidden="true" /><strong>{tile.title}</strong></button>)}</nav>
     <section className="command-panel"><div className="command-panel-heading"><h2>משימות קרובות</h2><button onClick={() => go('tasks')}>הצג הכל</button></div>
       {!data&&!error&&<p role="status">טוענים משימות נוספות…</p>}{error && <p role="alert">מוצג מידע חלקי. {error} <button className="button secondary" onClick={()=>void load()}>נסה שוב</button></p>}
-      {upcoming.length>0&&<HomeTaskPreview tasks={upcoming} renderTask={row => <a className={`command-task ${taskTone(row.done, row.due, today)}`} href={row.href} key={row.id}><div><strong>{row.pinned?"📌 ":""}{row.title}</strong><span>{row.pending ? 'דווח שבוצע · ממתין לאישור מנהל' : 'ממתין לביצוע'}</span></div><time>{row.due ? new Date(row.due + 'T12:00:00').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : 'ללא מועד'}</time><i /></a>}/>}
+      {upcoming.length>0&&<HomeTaskPreview limit={5} tasks={upcoming} renderTask={row => <a className={`command-task ${taskTone(row.done, row.due, today)}`} href={row.href} key={row.id}><div><strong>{row.pinned?"📌 ":""}{row.title}</strong><span>{row.pending ? 'דווח שבוצע · ממתין לאישור מנהל' : 'ממתין לביצוע'}</span></div><time>{row.due ? new Date(row.due + 'T12:00:00').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : 'ללא מועד'}</time><i /></a>}/>}
       {!upcoming.length && data && <p className="empty"><CheckCheck size={22} />אין משימות שממתינות לביצוע</p>}
     {pending>0&&<button className="button secondary" onClick={()=>openTasks("pending_review")}>{pending} דיווחים ממתינים לאישור המנהל</button>}</section>
     <WeeklySchedule/>

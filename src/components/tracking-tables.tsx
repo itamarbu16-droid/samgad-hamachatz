@@ -48,7 +48,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   const tableScroll=useRef<HTMLDivElement>(null);
   const nextFocus=useRef<{row:number;keyboard:boolean}|{column:string}|null>(null);
   const shifts=useRef<TrackingShift[]>([]);
-  const [cellAction,setCellAction]=useState<{index:number;column:Column}|null>(null);
+  const [cellAction,setCellAction]=useState<{index:number;column:Column;anchor:HTMLElement}|null>(null);
   const [undoShift,setUndoShift]=useState<{sheet:Sheet;dirty:boolean;shifts:TrackingShift[]}|null>(null);
   const namePress=useRef<{timer:number;id:number;x:number;y:number}|null>(null);
   const suppressNameClick=useRef<HTMLInputElement|null>(null);
@@ -81,8 +81,9 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   function destinationPath(id:string){const names:string[]=[];const seen=new Set<string>();let current:string|null=id;while(current&&!seen.has(current)){seen.add(current);const f=folders.find(f=>f.id===current);if(!f)break;names.unshift(f.name);current=f.parent;}return names.join(' / ');}
 
   const [actionItems,setActionItems]=useState<Entry[]|null>(null);
+  const [actionAnchor,setActionAnchor]=useState<HTMLElement|null>(null);
   const [trashItems,setTrashItems]=useState<Entry[]|null>(null);
-  const dragDrop=useTrackerDrag((ids,target)=>{void manage(entries.filter(e=>ids.includes(e.id)),'move',target);},ids=>{if(editorContext&&!busy){const allowed=entries.filter(e=>ids.includes(e.id)&&mayManage(e));if(allowed.length)setActionItems(allowed);}});
+  const dragDrop=useTrackerDrag((ids,target)=>{void manage(entries.filter(e=>ids.includes(e.id)),'move',target);},(ids,anchor)=>{if(editorContext&&!busy){const allowed=entries.filter(e=>ids.includes(e.id)&&mayManage(e));if(allowed.length){setActionAnchor(anchor??null);setActionItems(allowed);}}});
   function mayManage(entry:Entry){return manager||entry.creatorId===userId;}
   async function manage(items:Entry[],action:'move'|'trash'|'restore',target?:string){
     if(busy||!canWrite||!items.length)return;
@@ -127,8 +128,8 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     if(namePress.current)window.clearTimeout(namePress.current.timer);
     namePress.current=null;
   }
-  function openCellActions(index:number,column:Column){
-    if(editable&&!busy&&sheet.rows[index]?.[column.id])setCellAction({index,column});
+  function openCellActions(index:number,column:Column,anchor:HTMLElement){
+    if(editable&&!busy&&sheet.rows[index]?.[column.id])setCellAction({index,column,anchor});
   }
   function startNamePress(event:PointerEvent<HTMLInputElement>,index:number,column:Column){
     cancelNamePress();suppressNameClick.current=null;
@@ -139,7 +140,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     namePress.current={id:event.pointerId,x:event.clientX,y:event.clientY,timer:window.setTimeout(()=>{
       suppressNameClick.current=input;
       input.blur();
-      openCellActions(index,column);
+      openCellActions(index,column,input.closest<HTMLElement>('.tracking-cell-editor')??input);
     },550)};
   }
   function moveNamePress(event:PointerEvent<HTMLInputElement>){
@@ -308,14 +309,21 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
         <button disabled={busy} className={"document-folder-card tracker-draggable"+(dragDrop.drag?.ids.includes(e.id)?" is-dragging":"")}
           onPointerDown={event=>{if(allowed&&!busy)dragDrop.startMouse(event,dragIds(e),e.title,e.id);}}
           onTouchStart={event=>{if(allowed&&!busy)dragDrop.startTouch(event,dragIds(e),e.title,e.id);}}
-          onContextMenu={event=>{if(allowed)event.preventDefault();}}
+          onContextMenu={event=>{
+            if(!allowed)return;event.preventDefault();
+            if(event.button===2&&editorContext){setActionAnchor(event.currentTarget);setActionItems([e]);}
+          }}
+          onKeyDown={event=>{
+            if(!allowed||!editorContext||(event.key!=='ContextMenu'&&!(event.key==='F10'&&event.shiftKey)))return;
+            event.preventDefault();setActionAnchor(event.currentTarget);setActionItems([e]);
+          }}
           onDragStart={event=>event.preventDefault()}
           onClick={()=>{if(!dragDrop.consumeClick())void open(e);}}>
           <strong>{e.title}</strong><span>{e.attachments?.length?e.attachments.length+" קבצים · פתיחה והורדה":"פתיחת טבלה"}</span>
           {e.attachments?.map(file=><small key={file.id}>{file.filename}</small>)}
         </button>
         {allowed&&<button type="button" className={"document-icon-action"+(editorContext?" tracker-context-action":"")} disabled={busy}
-          aria-haspopup="dialog" aria-label={"פעולות עבור "+e.title} onClick={()=>setActionItems([e])}>
+          aria-haspopup="dialog" aria-label={"פעולות עבור "+e.title} onClick={event=>{setActionAnchor(event.currentTarget.parentElement?.querySelector<HTMLElement>('.tracker-draggable')??event.currentTarget);setActionItems([e]);}}>
           <MoreHorizontal size={22}/>{!editorContext&&"פעולות"}
         </button>}
         {canWrite&&!editorContext&&<button className="button secondary" disabled={busy} onClick={()=>askCopy(e)}>שכפול / שבוע נוסף</button>}
@@ -343,7 +351,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
           onPointerUp={cancelNamePress} onPointerCancel={cancelNamePress} onPointerLeave={cancelNamePress}
           onContextMenu={e=>{if(namePress.current||suppressNameClick.current===e.currentTarget)e.preventDefault();}}
           onClickCapture={e=>{if(suppressNameClick.current===e.currentTarget){suppressNameClick.current=null;e.preventDefault();e.stopPropagation();}}}/>
-          {editable&&row[c.id]&&<button type="button" className="tracker-name-action" aria-label={`פעולות שם, ${c.name}, שורה ${index+1}`} aria-haspopup="dialog" disabled={busy} onClick={()=>openCellActions(index,c)}>⋯</button>}
+          {editable&&row[c.id]&&<button type="button" className="tracker-name-action" aria-label={`פעולות שם, ${c.name}, שורה ${index+1}`} aria-haspopup="dialog" disabled={busy} onClick={event=>openCellActions(index,c,event.currentTarget.closest<HTMLElement>('.tracking-cell-editor')??event.currentTarget)}>⋯</button>}
           <select aria-label={`סימון, ${c.name}, שורה ${index+1}`} style={{minWidth:48,width:48,height:36,border:0,borderInlineStart:"1px solid #64748b",borderRadius:0,background:"transparent",color:"inherit",padding:2}} disabled={!editable||busy} value={status} onChange={e=>change({...sheet,rows:sheet.rows.map((r,i)=>i===index?{...r,[`${c.id}:status`]:e.target.value}:r)})}><option value="">—</option><option value="v">✓</option><option value="x">✗</option></select></div></td>;
       })}</tr>)}</tbody></table></div>
       {editable&&<div className="tracking-structure-footer"><button type="button" className="button secondary" disabled={busy||sheet.rows.length>=MAX_TRACKING_ROWS} onClick={addRow}><Plus aria-hidden="true" size={17}/> הוספת שורה בסוף הטבלה</button></div>}
@@ -355,7 +363,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       {notice==="המעקב נשמר"&&<p role="status">{notice}</p>}
       <small>{flexible?(assistantDraft?"המעקב יופיע בתיקייה אחרי לחיצה על יצירת המעקב.":"השינויים נשמרים רק בלחיצה על שמירת המעקב."):"למחיקת שם ולהשארת משבצת ריקה, מחקו את הטקסט. לקידום הטור, לחצו לחיצה ארוכה על השם או על ⋯. השינויים נשמרים רק בלחיצה על שמירה."}</small>
     </section>:<p>בחר טבלה או קובץ, או הוסף מעקב חדש כדי להתחיל.</p>}
-    {cellAction&&editable&&<Modal title="פעולות על שם במעקב" close={()=>setCellAction(null)}>
+    {cellAction&&editable&&<Modal actionSheet contextAnchor={cellAction.anchor} title="פעולות על שם במעקב" close={()=>setCellAction(null)}>
       <p>{cellAction.column.name}, שורה {cellAction.index+1}. השם והסימון יימחקו. רק הטור הזה יתקדם שורה אחת ומספר השורות לא ישתנה.</p>
       <div className="document-toolbar">
         <button type="button" className="button secondary" onClick={()=>setCellAction(null)}>ביטול</button>
@@ -374,7 +382,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     }}><label>שם העמודה<input name="columnName" required maxLength={MAX_TRACKING_COLUMN_NAME} autoComplete="off"/></label>
       {columnError&&<p role="alert">{columnError}</p>}<button className="button primary" disabled={busy}>הוספת עמודה</button>
     </form></Modal>}
-    {actionItems&&<Modal actionSheet={editorContext} title={actionItems.length===1?"פעולות: "+actionItems[0].title:actionItems.length+" מעקבים נבחרו"} close={()=>{if(!busy)setActionItems(null);}}>
+    {actionItems&&<Modal actionSheet={editorContext} contextAnchor={editorContext?actionAnchor:null} title={actionItems.length===1?"פעולות: "+actionItems[0].title:actionItems.length+" מעקבים נבחרו"} close={()=>{if(!busy)setActionItems(null);}}>
       <div className={editorContext?"document-action-menu":"tracker-action-menu"}>
       {editorContext&&actionItems.length===1&&<button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);void open(actionItems[0],true);}}><Pencil size={18}/>עריכה / שינוי שם</button>}
       <button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);organize(actionItems);}}><FolderInput size={18}/>העברה לתיקייה</button>

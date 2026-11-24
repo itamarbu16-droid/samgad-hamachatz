@@ -53,7 +53,7 @@ export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,canExtendDirec
   if(!event.isPrimary||event.button!==0||(event.target as HTMLElement).closest('input,select,textarea,label,.task-action-control'))return;
   const base=renderedSwipeOffset(getComputedStyle(event.currentTarget).transform,offset.current);
   root.current?.classList.add('is-dragging');paint(base,true);offset.current=base;
-  start.current={x:event.clientX,y:event.clientY,id:event.pointerId,base,rest:offset.current,horizontal:false,lastX:event.clientX,lastTime:event.timeStamp,velocity:0};
+  start.current={x:event.clientX,y:event.clientY,id:event.pointerId,base,rest:openSide>0?rightWidth:openSide<0?-leftWidth:0,horizontal:false,lastX:event.clientX,lastTime:event.timeStamp,velocity:0};
  }
  function move(event:PointerEvent<HTMLDivElement>){
   const gesture=start.current;if(!gesture||gesture.id!==event.pointerId)return;
@@ -83,7 +83,7 @@ export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,canExtendDirec
  }
  function cancel(event:PointerEvent<HTMLDivElement>){
   const gesture=start.current;
-  if(gesture?.id===event.pointerId)settle(gesture.horizontal?swipeTarget(offset.current,rightWidth,leftWidth,0,gesture.base):gesture.rest);
+  if(gesture?.id===event.pointerId)settle(gesture.rest);
  }
  // Native non-passive touchmove prevents Safari from stealing a horizontal drag
  // for vertical scrolling. Pointer events remain available for mouse and pen.
@@ -92,7 +92,7 @@ export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,canExtendDirec
  useEffect(()=>{
   const element=front.current;if(!element)return;
   const asPointer=(e:TouchEvent,t:Touch)=>({isPrimary:true,button:0,pointerType:'touch',pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY,timeStamp:e.timeStamp,target:e.target,currentTarget:element}) as unknown as PointerEvent<HTMLDivElement>;
-  const down=(e:TouchEvent)=>{if(e.touches.length===1)touchHandlers.current.begin(asPointer(e,e.touches[0]));};
+  const down=(e:TouchEvent)=>{if(e.touches.length===1)touchHandlers.current.begin(asPointer(e,e.touches[0]));else{const active=Array.from(e.touches).find(t=>t.identifier===start.current?.id);if(active)touchHandlers.current.cancel(asPointer(e,active));}};
   const drag=(e:TouchEvent)=>{const t=Array.from(e.touches).find(t=>t.identifier===start.current?.id);if(!t)return;touchHandlers.current.move(asPointer(e,t));if(start.current?.horizontal&&e.cancelable)e.preventDefault();};
   const up=(e:TouchEvent)=>{const t=Array.from(e.changedTouches).find(t=>t.identifier===start.current?.id);if(t)touchHandlers.current.finish(asPointer(e,t));};
   const abort=(e:TouchEvent)=>{const t=e.changedTouches[0];if(t)touchHandlers.current.cancel(asPointer(e,t));};
@@ -104,7 +104,7 @@ export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,canExtendDirec
   onKeyDown={event=>{if(event.key==='Escape')close();}}
   onClickCapture={event=>{
    if(!(event.target as HTMLElement).closest('.swipe-task-front'))return;
-   if(swiped.current){event.preventDefault();event.stopPropagation();swiped.current=false;return;}
+   if(swiped.current&&event.detail>0){event.preventDefault();event.stopPropagation();swiped.current=false;return;}
    if(offset.current){event.preventDefault();event.stopPropagation();close();}
   }}>
   <div className="task-underlay task-underlay-right" role="group" aria-label={`הצמדה ומחיקה: ${title}`} aria-hidden={openSide!==1} inert={openSide!==1}>
