@@ -8,9 +8,10 @@ Object.assign(globalThis,{React,IS_REACT_ACT_ENVIRONMENT:true});
 it('shows concise RTL groups, hides other assignees, and dismisses without writing',async()=>{
  const host=document.createElement('div');
  const root=createRoot(host);
+ const onDismiss=vi.fn();
  try {
   await act(async()=>root.render(h(OpenDueReminder,{
-   userId:'me',today:'2026-11-19',
+   onDismiss,userId:'me',today:'2026-11-19',
    tasks:[{id:'1',title:'משימה סינתטית באיחור',ownerId:'me',status:'open',dueDate:'2026-11-18'},
     {id:'2',title:'לא שייכת לי',ownerId:'other',status:'open',dueDate:'2026-11-18'}],
    rhythm:Array.from({length:4},(_,i)=>({id:String(i),title:'משימה קרובה '+i,dueDate:'2026-11-20'})),
@@ -22,32 +23,8 @@ it('shows concise RTL groups, hides other assignees, and dismisses without writi
   expect(host.textContent).toContain('להיום או למחר (4)');
   expect(host.querySelector('details summary')?.textContent).toBe('עוד 1');
   await act(async()=>host.querySelector('button')?.click());
-  expect(host.querySelector('section')).toBeNull();
+  expect(onDismiss).toHaveBeenCalledOnce();
  } finally {
   await act(async()=>root.unmount());
- }
-});
-
-
-it('shows the reminder again on app resume, but not immediately after a brief switch',async()=>{
- const host=document.createElement('div'),root=createRoot(host);
- const visibility=vi.spyOn(document,'visibilityState','get').mockReturnValue('visible');
- const clock=vi.spyOn(Date,'now').mockReturnValue(10_000);
- const switchVisibility=async(state:'visible'|'hidden',at:number)=>{
-  visibility.mockReturnValue(state);clock.mockReturnValue(at);
-  await act(async()=>document.dispatchEvent(new Event('visibilitychange')));
- };
- try{
-  await act(async()=>root.render(h(OpenDueReminder,{userId:'me',today:'2026-11-19',tasks:[],
-   rhythm:[{id:'x',dueDate:'2026-11-18',title:'משימה סינתטית'}]})));
-  await act(async()=>host.querySelector('button')?.click());
-  await switchVisibility('hidden',10_000);
-  await switchVisibility('visible',11_000);
-  expect(host.querySelector('section')).toBeNull();
-  await switchVisibility('hidden',15_000);
-  await switchVisibility('visible',46_000);
-  expect(host.textContent).toContain('משימה סינתטית');
- }finally{
-  await act(async()=>root.unmount());visibility.mockRestore();clock.mockRestore();
  }
 });

@@ -2,6 +2,8 @@
 import { apiFetch, clearOffline, offlineStatus } from "@/lib/offline";
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { isOverdue, assertTransition, type TaskStatus } from "@/server/policy";
+import ManualReminderNotice from './manual-reminder-notice';
+import {canRemindLegacy} from '@/lib/manual-task-reminder';
 import OpenDueReminder from './open-due-reminder';
 import type {DueReminderTask} from '@/lib/open-due-reminder';
 import ActivityFeed from "./activity-feed";
@@ -131,7 +133,6 @@ const nav = [
   ["library", "ספרייה", LibraryBig],
   ["records", "סיכומי ישיבות וביקורות", NotebookPen],
   ["decisions", "ממתין להחלטה", CircleHelp],
-  ["domains", "אחריות", Layers3],
   ["activity", "פעילות אחרונה", History],
   ["calendar", "לו״ז", CalendarDays],
 ] as const;
@@ -175,6 +176,7 @@ function WorkspaceContent() {
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(""),
     [refreshed, setRefreshed] = useState("");
+  const [hiddenDueReminders,setHiddenDueReminders]=useState<Set<string>>(()=>new Set());
   const [sort,setSort]=useState<TaskSort>("deadline_asc");
   const [taskSelection,setTaskSelection]=useState<string[]>([]),[batchOwner,setBatchOwner]=useState("");
   const requestIds = useRef(new Map<string, string>());
@@ -329,6 +331,8 @@ function WorkspaceContent() {
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
   const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
+  const manualReminderActorId=!guest&&(data.user.permissions?.editAll||data.user.role==="deputy")?data.user.id:undefined;
+  const dueReminderAccount=JSON.stringify([data.user.organizationId??null,data.user.id]);
   const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
   const task = data.tasks.find((t) => t.id === selected);
   const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.workspaceOwnerId || data.user.id):!ownerInterface||!isPersonalTask(t,data.user.workspaceOwnerId || data.user.id));
@@ -355,7 +359,7 @@ function WorkspaceContent() {
       </button>
       <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
-      <TaskActions canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+      <TaskActions canRemind={Boolean(manualReminderActorId&&t.ownerId!==manualReminderActorId&&canRemindLegacy(t.status,t.dueDate,data!.today))} canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"], readOnly = false) {
@@ -513,6 +517,7 @@ function WorkspaceContent() {
           {view === "dashboard" && <WorkspaceHomeHeader owner={ownerInterface} today={data.today} userName={guest?undefined:data.user.name} demo={data.demo}
             canCapture={!guest&&["deputy","staff"].includes(data.user.role)} hasUpdates={Boolean(data.activity.length)}
             onActivity={()=>go("activity")} onSearch={openSearch} onCapture={openCapture}/>}
+          {!guest&&!["viewer","admin"].includes(data.user.role)&&<ManualReminderNotice key={`${data.user.organizationId||""}:${data.user.id}`}/>}
           <DocumentUploadStatus/>
           <DeadlineRequests manager={ownerInterface}/>
           <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} showCapture={false} onSaved={load} />
@@ -536,8 +541,8 @@ function WorkspaceContent() {
               </button>
             </div>
           )}
-          {!guest&&!['admin','viewer'].includes(data.user.role)&&<OpenDueReminder
-            key={`${data.user.organizationId||''}:${data.user.id}:${data.today}`}
+          {view==='dashboard'&&!guest&&!['admin','viewer'].includes(data.user.role)&&!hiddenDueReminders.has(dueReminderAccount)&&<OpenDueReminder
+            key={dueReminderAccount} onDismiss={()=>setHiddenDueReminders(previous=>new Set([...previous,dueReminderAccount]))}
             userId={data.user.id} today={data.today} tasks={data.tasks} rhythm={data.rhythmDueReminder||[]}/>}
           {view === "personal" && data.user.permissions?.manageAccess && (
             <PersonalRhythm
@@ -545,11 +550,12 @@ function WorkspaceContent() {
               userId={data.user.workspaceOwnerId || data.user.id}
               role={data.user.role}
               legacyTasks={data.tasks.filter(t=>isPersonalTask(t,data.user.workspaceOwnerId || data.user.id))}
+              manualReminderActorId={manualReminderActorId}
               scope="personal"
             />
           )}
-          {view === "dashboard" && ownerInterface && <CommandDashboard key={data.user.id} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} onActivityChanged={load} go={go}/> }
-          {view === "dashboard" && !ownerInterface && <DeputiesDashboard pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
+          {view === "dashboard" && ownerInterface && <CommandDashboard key={"command:"+dueReminderAccount} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} onActivityChanged={load} go={go}/> }
+          {view === "dashboard" && !ownerInterface && <DeputiesDashboard key={"deputies:"+dueReminderAccount} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} today={data.today} go={go} />}
           {view === "calendar" && <Schedule owner={Boolean(data.user.permissions?.manageAccess)} manager={ownerInterface}/>}
           {view === "access" && data.user.permissions?.manageAccess && <AccessSettings />}
           {guest && <div className="guest-banner">מצב צפייה בלבד · האזור האישי אינו מוצג <a href="/login">כניסה לחשבון לעריכת המשימות שלך</a></div>}
@@ -558,6 +564,7 @@ function WorkspaceContent() {
               key={data.user.id}
               userId={ownerInterface ? data.user.workspaceOwnerId || data.user.id : data.user.id}
               role={data.user.role}
+              manualReminderActorId={manualReminderActorId}
               scope="assigned"
               manageRhythm={ownerInterface}
               canMoveToPersonal={ownerInterface}

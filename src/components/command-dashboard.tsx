@@ -1,7 +1,8 @@
 "use client";
 import ActivityFeed from "./activity-feed";
-import {CalendarDays, ClipboardCheck, UsersRound, Folder, FileText, UserRound, ChevronLeft, ShieldCheck} from 'lucide-react';
+import {CalendarDays, ClipboardCheck, Folder, FileText, UserRound, ChevronLeft, ShieldCheck} from 'lucide-react';
 import {currentMonth,useRhythm} from './use-rhythm';
+import HomeTaskPreview from './home-task-preview';
 import {taskTone} from '@/lib/task-display';
 import {isPersonalItem} from '@/lib/unit-roles';
 import {isPersonalTask} from '@/lib/task-snapshot';
@@ -18,12 +19,12 @@ export default function CommandDashboard({pinnedTaskKeys=[],user,tasks,users,tod
  const late=rows.filter(t=>!t.done&&t.due&&t.due<today).length;
  const tomorrow=rows.filter(t=>!t.done&&t.due&&t.due>=today&&t.due<=addDays(today,1)).length;
  const done=rows.filter(t=>t.done).length;
- const upcoming=rows.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')||Number(b.pinned)-Number(a.pinned)).slice(0,4);
- const tiles=[{title:'אחריות',icon:UsersRound,view:'domains'}, {title:'שעל״ח',icon:CalendarDays,view:user.permissions?.manageAccess?'personal':'tasks',tab:'rhythm'}, {title:'משימות',icon:ClipboardCheck,view:'tasks'}, ...(user.permissions?.manageAccess?[{title:'אישי',icon:UserRound,view:'personal'}]:[]), {title:'ספרייה',icon:Folder,view:'library'}, {title:'סיכומי ישיבות',icon:FileText,view:'records'}];
+ const upcoming=rows.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')||Number(b.pinned)-Number(a.pinned));
+ const tiles=[{title:'שעל״ח',icon:CalendarDays,view:user.permissions?.manageAccess?'personal':'tasks',tab:'rhythm'}, {title:'משימות',icon:ClipboardCheck,view:'tasks'}, ...(user.permissions?.manageAccess?[{title:'אישי',icon:UserRound,view:'personal'}]:[]), {title:'ספרייה',icon:Folder,view:'library'}, {title:'סיכומי ישיבות',icon:FileText,view:'records'}];
  return <div className="command-dashboard workspace-overview">
   <section className="command-snapshot"><h2>תמונת מצב גדודית</h2><div className="command-stats">{[{n:rows.length,label:'סה״כ',tone:'total',filter:'all'},{n:done,label:'בוצעו',tone:'green',filter:'completed'},{n:tomorrow,label:'בקרוב',tone:'orange',filter:'due_soon'},{n:late,label:'באיחור',tone:'red',filter:'overdue'}].map(s=><button key={s.label} className={s.tone} onClick={()=>openTasks(s.filter)}><strong>{data ? s.n : "…"}</strong><span>{s.label}</span></button>)}</div><small className="snapshot-note">משימות גדודיות + שעל״ח החודש</small>{!data&&!error&&<p role="status">טוענים משימות נוספות…</p>}{error&&<p role="alert">מוצג מידע חלקי. {error} <button className="button secondary" onClick={()=>void load()}>נסה שוב</button></p>}</section>
   <nav className="command-tiles command-shortcuts" aria-label="קיצורים">{tiles.map(t=><button type="button" className="command-tile" key={t.title} onClick={()=>{if(t.tab){history.pushState({},'',`/?view=${t.view}&tab=${t.tab}`);window.dispatchEvent(new PopStateEvent('popstate'));}else go(t.view);}}><t.icon size={23} aria-hidden="true"/><strong>{t.title}</strong></button>)}</nav>
-  <section className="command-panel"><div className="command-panel-heading"><h2>משימות קרובות</h2><button onClick={()=>go('tasks')}>הצג הכל</button></div>{upcoming.length?upcoming.map(t=><a className={`command-task ${taskTone(t.done,t.due,today)}`} href={t.href} key={t.id}><div><strong>{t.pinned?"📌 ":""}{t.title}</strong><span>{t.owner} · {t.done?"בוצע":t.due&&t.due<today?"באיחור":t.due===today?"להיום":t.due===addDays(today,1)?"דחוף":"לביצוע"}</span></div><time>{t.due?new Date(t.due+'T12:00:00').toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}):'ללא מועד'}</time><i/></a>):<p className="empty">{data ? "אין משימות להצגה" : "טוענים משימות…"}</p>}</section>
+  <section className="command-panel"><div className="command-panel-heading"><h2>משימות קרובות</h2><button onClick={()=>go('tasks')}>הצג הכל</button></div>{upcoming.length?<HomeTaskPreview tasks={upcoming} renderTask={t=><a className={`command-task ${taskTone(t.done,t.due,today)}`} href={t.href} key={t.id}><div><strong>{t.pinned?"📌 ":""}{t.title}</strong><span>{t.owner} · {t.done?"בוצע":t.due&&t.due<today?"באיחור":t.due===today?"להיום":t.due===addDays(today,1)?"דחוף":"לביצוע"}</span></div><time>{t.due?new Date(t.due+'T12:00:00').toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}):'ללא מועד'}</time><i/></a>}/>:<p className="empty">{data ? "אין משימות להצגה" : "טוענים משימות…"}</p>}</section>
   <section className="command-panel"><div className="command-panel-heading"><h2>עדכונים</h2><button onClick={()=>go('activity')}>כל העדכונים</button></div><ActivityFeed items={activity.slice(0,2)} onSaved={onActivityChanged}/></section>
   {user.permissions?.manageAccess && <div className="command-access"><button type="button" onClick={()=>go('access')}><ShieldCheck size={22} aria-hidden="true"/><span><strong>ניהול גישה</strong></span><ChevronLeft size={18} aria-hidden="true"/></button><a href="/deputies/login">כניסת סגני המחץ</a></div>}
  </div>

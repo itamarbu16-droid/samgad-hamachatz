@@ -2,13 +2,14 @@
 import {useCallback,useEffect,useRef,useState,type ReactNode,type PointerEvent} from 'react';
 import {createPortal} from 'react-dom';
 import {swipeIntent,swipeTarget,clampSwipe,renderedSwipeOffset} from '@/lib/task-swipe';
-import {CalendarPlus,MoreHorizontal,Pin,PinOff,Trash2,CalendarClock} from 'lucide-react';
+import {BellRing,CalendarPlus,MoreHorizontal,Pin,PinOff,Trash2,CalendarClock} from 'lucide-react';
 import {Modal} from './workspace-primitives';
 import {addDays} from '@/lib/rhythm';
 import {localDate} from '@/server/policy';
 import {CalendarTaskDialog} from './task-calendar';
+import type {ManualReminderResult} from '@/lib/manual-task-reminder';
 export type TaskActionRef={kind:'task'|'rhythm';id:string;occurrenceId?:string};
-export type TaskActionProps={task:TaskActionRef;title:string;version:number;occurrenceVersion?:number;dueDate:string|null;pinned:boolean;canEdit:boolean;canDelete:boolean;canExtendDirectly?:boolean;canMoveToPersonal?:boolean;recurring?:boolean;onSaved:()=>Promise<void>};
+export type TaskActionProps={task:TaskActionRef;title:string;version:number;occurrenceVersion?:number;dueDate:string|null;pinned:boolean;canEdit:boolean;canDelete:boolean;canExtendDirectly?:boolean;canMoveToPersonal?:boolean;canRemind?:boolean;recurring?:boolean;onSaved:()=>Promise<void>};
 const rowKey=(task:TaskActionRef)=>`${task.kind}:${task.id}:${task.occurrenceId||''}`;
 async function send(url:string,body:object){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.error||'הפעולה לא נשמרה');return j;}
 type SwipeAction = 'pin'|'delete'|'extend'|'calendar';
@@ -123,7 +124,17 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
  const {task,title,version,occurrenceVersion,dueDate,pinned,canEdit,canDelete,canExtendDirectly=false,recurring,onSaved}=props;
  const [menu,setMenu]=useState(''),[dialog,setDialog]=useState(''),[date,setDate]=useState(addDays(dueDate&&dueDate>localDate()?dueDate:localDate(),1)),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [reason,setReason]=useState('');
+ const [reminderResult,setReminderResult]=useState<ManualReminderResult|null>(null);
  const key=rowKey(task);
+ async function remind(){
+  if(busy||!props.canRemind)return;
+  setBusy(true);setError('');
+  try{
+   const result=await send('/api/push/task-reminder',{...task,version,...(task.kind==='rhythm'?{occurrenceVersion}:{})}) as ManualReminderResult;
+   setReminderResult(result);
+  }catch(error){setError(error instanceof Error?error.message:'לא ניתן ליצור תזכורת כרגע');}
+  finally{setBusy(false);}
+ }
  const act=useCallback(async (action:'pin'|'delete'|'extend'|'personal')=>{
   setBusy(true);setError('');
   try{const result=await send(action==='extend'&&!canExtendDirectly?'/api/deadline-requests':'/api/task-actions',action==='extend'&&!canExtendDirectly?{...task,date,reason}:{...task,version,occurrenceVersion,action,...(action==='pin'?{pinned:!pinned}:action==='extend'?{date}:{})});
@@ -151,11 +162,23 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
    {props.canMoveToPersonal&&<button className="button secondary" disabled={busy} onClick={()=>void act('personal')}>העבר למרחב האישי</button>}
    {canEdit&&<button className="swipe-extend" disabled={busy} onClick={()=>{setError('');setMenu('');setDate(addDays(dueDate&&dueDate>localDate()?dueDate:localDate(),1));setDialog('extend');}}><CalendarClock size={21}/>{canExtendDirectly?'הארך תג״ב':'בקש הארכת תג״ב'}</button>}
    <button className="swipe-calendar" disabled={busy} onClick={()=>{setError('');setMenu('');setDialog('calendar');}}><CalendarPlus size={21}/>הוסף ליומן</button>
+   {props.canRemind&&<button type="button" className="button secondary" disabled={busy} onClick={()=>{setError('');setReminderResult(null);setMenu('');setDialog('remind');}}><BellRing size={21} aria-hidden="true"/>שליחת תזכורת</button>}
   </div>{props.children&&<div className="task-extra-actions" onClick={event=>{if((event.target as HTMLElement).closest('button'))setMenu('');}}>{props.children}</div>}{canDelete&&<div className="dialog-actions"><button type="button" className="button danger" disabled={busy} onClick={()=>{setError('');setMenu('');setDialog('delete');}}><Trash2 size={21}/>מחיקת משימה</button></div>}{error&&<p className="task-action-error" role="alert">{error}</p>}</Modal>}
   {error&&!menu&&!dialog&&<Modal title="הפעולה לא הושלמה" close={()=>setError('')}><p className="task-action-error" role="alert">{error}</p></Modal>}
   {dialog==='delete'&&<Modal title="למחוק את המשימה?" close={()=>{if(!busy)setDialog('');}}><p>{title}</p>{recurring&&<p>זו משימה חוזרת. המחיקה תסיר את כל המופעים שלה.</p>}<p>אפשר לבטל מיד אחרי המחיקה.</p>{error&&<p role="alert" className="task-action-error">{error}</p>}<div className="dialog-actions"><button className="button secondary" disabled={busy} onClick={()=>setDialog('')}>ביטול</button><button className="button danger" disabled={busy} onClick={()=>void act('delete')}>{busy?'מוחק…':'מחיקה'}</button></div></Modal>}
   {dialog==='extend'&&<Modal title={canExtendDirectly?'הארכת תג״ב':'בקשת הארכת תג״ב'} close={()=>{if(!busy)setDialog('');}}><p>{title}</p>{recurring&&<p>השינוי יחול על המופע הזה בלבד, בלי לשנות את מחזור המשימה.</p>}<form onSubmit={event=>{event.preventDefault();void act('extend');}}><label>תג״ב חדש<input required type="date" min={dueDate?addDays(dueDate,1):undefined} value={date} onChange={e=>setDate(e.target.value)}/></label>{!canExtendDirectly&&<><p>התג״ב המקורי נשאר בתוקף עד לאישור המנהל.</p><label>סיבת ההארכה<textarea required minLength={2} maxLength={1500} value={reason} onChange={e=>setReason(e.target.value)}/></label></>}<div className="deadline-shortcuts"><button type="button" className="button secondary" onClick={()=>setDate(addDays(dueDate||localDate(),1))}>יום נוסף</button><button type="button" className="button secondary" onClick={()=>setDate(addDays(dueDate||localDate(),7))}>שבוע נוסף</button></div>{error&&<p role="alert">{error}</p>}<button className="button primary" disabled={busy}>{busy?'שומר…':canExtendDirectly?'עדכן תג״ב':'שלח בקשה לאישור'}</button></form></Modal>}
   {dialog==='calendar'&&<Modal title="הוספה ל-Google Calendar" close={()=>setDialog('')}><CalendarTaskDialog task={task} title={title} dueDate={dueDate}/></Modal>}
+  {dialog==='remind'&&<Modal title="תזכורת לאחראים" close={()=>{if(!busy)setDialog('');}}>
+   <p>{title}</p>
+   {reminderResult?<div role="status">
+    {reminderResult.created>0?<p>תזכורת זמינה באפליקציה ל־{reminderResult.created} אחראים.</p>:!reminderResult.throttled&&<p>אין אחראים שעדיין ממתינים לתזכורת.</p>}
+    {reminderResult.throttled>0&&<p>ל־{reminderResult.throttled} כבר נוצרה תזכורת לאחרונה.</p>}
+    <p>לא נשלחה התראה לטלפון.</p>
+   </div>:<><p>התזכורת תופיע באפליקציה רק לאחראים שטרם דיווחו על ביצוע.</p>
+    {error&&<p role="alert">{error}</p>}
+    <div className="dialog-actions"><button type="button" className="button secondary" disabled={busy} onClick={()=>setDialog('')}>ביטול</button>
+    <button type="button" className="button primary" disabled={busy||!props.canRemind} onClick={()=>void remind()}>{busy?'יוצר תזכורת…':'שליחת תזכורת'}</button></div></>}
+  </Modal>}
  </>,document.body)}
  </div>;
 }

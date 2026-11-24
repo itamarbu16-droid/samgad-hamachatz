@@ -11,6 +11,7 @@ import { hasPendingReport,matchesTaskFilter,taskTone,compareTasks,taskSorts,type
 import { frequencies } from "@/lib/rhythm";
 import {TaskFilters} from "./task-filters";
 import {TaskActions,SwipeTaskRow} from "./task-actions";
+import {outstandingRhythmIds} from "@/lib/manual-task-reminder";
 import { Modal, Empty } from "./workspace-primitives";
 import { TaskComposer, type Item, type Occurrence } from "./task-composer";
 import { useRhythm, useTaskMutations, currentMonth } from "./use-rhythm";
@@ -22,6 +23,7 @@ export default function PersonalRhythm({
   legacyTasks = [],
   scope = "personal",
   canMoveToPersonal = false,
+  manualReminderActorId,
   manageRhythm = scope === "personal"
 }: {
   userId: string;
@@ -30,6 +32,7 @@ export default function PersonalRhythm({
   scope?: "personal" | "assigned";
   manageRhythm?: boolean;
   canMoveToPersonal?: boolean;
+  manualReminderActorId?: string;
 }) {
   const lastOccurrenceLink = useRef<string | null>(null);
   const [month, setMonth] = useState(currentMonth),
@@ -249,7 +252,7 @@ export default function PersonalRhythm({
                   const pending = Boolean(occurrence.reports[id]) && !approved;
                   return <div className="completion-controls" key={id}><span>{item.assigneeIds.length > 1 || !isPersonalItem(item, userId) ? `${person(id)} · ` : ""}{approved ? "בוצע" : pending ? "ממתין לאישור" : "לא בוצע"}</span>{canWrite && (id === userId || manager) && <button className={approved || pending ? "button secondary" : "button primary"} disabled={actions.busy} aria-label={`${approved ? "סמן כלא בוצע" : pending ? "ביטול דיווח" : "סמן כבוצע"}: ${item.title} ${person(id)}`} onClick={() => void actions.run([complete(occurrence, id, !(approved || pending))])}>{approved ? "סמן כלא בוצע" : pending ? "ביטול דיווח" : "סמן כבוצע"}</button>}{pending && manager && canWrite && <><button className="button primary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, true, "approve")])}>אשר</button><button className="button secondary" disabled={actions.busy} onClick={() => void actions.run([complete(occurrence, id, false, "reject")])}>החזר לטיפול</button></>}</div>;
                 })}</TaskCompletionSummary></div>
-          <div className="rhythm-task-management"><TaskActions canMoveToPersonal={scope!=="personal"&&canMoveToPersonal&&!isPersonalItem(item,userId)} canExtendDirectly={role==="deputy"} task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} title={item.title} version={item.version} occurrenceVersion={occurrence.version} dueDate={item.hasDeadline?occurrence.dueDate:null} pinned={Boolean(data.pinnedTaskKeys?.includes("rhythm:"+item.id))} canEdit={canWrite&&(manager||item.assigneeIds.includes(userId))} canDelete={canWrite&&(manager||item.creatorId===userId)} recurring={item.frequency!=="once"} onSaved={load}>{(manager || item.assigneeIds.includes(userId)) && canWrite && <div className="completion-controls"><button className="button secondary" onClick={() => {
+          <div className="rhythm-task-management"><TaskActions canRemind={Boolean(manualReminderActorId&&item.category==="task"&&item.hasDeadline&&occurrence.dueDate<data.today&&outstandingRhythmIds(item,occurrence).some(id=>id!==manualReminderActorId))} canMoveToPersonal={scope!=="personal"&&canMoveToPersonal&&!isPersonalItem(item,userId)} canExtendDirectly={role==="deputy"} task={{kind:"rhythm",id:item.id,occurrenceId:occurrence.id}} title={item.title} version={item.version} occurrenceVersion={occurrence.version} dueDate={item.hasDeadline?occurrence.dueDate:null} pinned={Boolean(data.pinnedTaskKeys?.includes("rhythm:"+item.id))} canEdit={canWrite&&(manager||item.assigneeIds.includes(userId))} canDelete={canWrite&&(manager||item.creatorId===userId)} recurring={item.frequency!=="once"} onSaved={load}>{(manager || item.assigneeIds.includes(userId)) && canWrite && <div className="completion-controls"><button className="button secondary" onClick={() => {
                     setEditing(item);
                     setModal(item.category === "point" ? "point" : "edit");
                   }}>עריכה</button>{item.category === "point" && <button className="button primary" onClick={() => {

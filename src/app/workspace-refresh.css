@@ -133,3 +133,8 @@
   .workspace-overview .command-tile { flex-direction: column; }
   .workspace-topbar-brand strong { font-size: .8125rem; }
 }
+
+.manual-reminder-notice { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-block:0 12px; }
+.manual-reminder-notice > svg { flex:0 0 auto; }
+.manual-reminder-notice > span { flex:1 1 160px; }
+.manual-reminder-notice .button { padding-inline:12px; }

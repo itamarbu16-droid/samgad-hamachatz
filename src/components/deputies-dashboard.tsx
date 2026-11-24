@@ -2,6 +2,7 @@
 
 import { CheckCheck, ClipboardCheck, FileText, Folder, Send } from 'lucide-react';
 import {WeeklySchedule} from "./weekly-schedule";
+import HomeTaskPreview from './home-task-preview';
 import { taskTone } from '@/lib/task-display';
 import { currentMonth, useRhythm } from './use-rhythm';
 
@@ -46,7 +47,7 @@ export default function DeputiesDashboard({ user, tasks, today, go,pinnedTaskKey
     <nav className="command-tiles command-shortcuts" aria-label="קיצורים">{tiles.map(tile => <button type="button" className="command-tile" key={tile.view} onClick={() => go(tile.view)}><tile.icon size={23} aria-hidden="true" /><strong>{tile.title}</strong></button>)}</nav>
     <section className="command-panel"><div className="command-panel-heading"><h2>משימות קרובות</h2><button onClick={() => go('tasks')}>הצג הכל</button></div>
       {!data&&!error&&<p role="status">טוענים משימות נוספות…</p>}{error && <p role="alert">מוצג מידע חלקי. {error} <button className="button secondary" onClick={()=>void load()}>נסה שוב</button></p>}
-      {upcoming.map(row => <a className={`command-task ${taskTone(row.done, row.due, today)}`} href={row.href} key={row.id}><div><strong>{row.pinned?"📌 ":""}{row.title}</strong><span>{row.pending ? 'דווח שבוצע · ממתין לאישור מנהל' : 'ממתין לביצוע'}</span></div><time>{row.due ? new Date(row.due + 'T12:00:00').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : 'ללא מועד'}</time><i /></a>)}
+      {upcoming.length>0&&<HomeTaskPreview tasks={upcoming} renderTask={row => <a className={`command-task ${taskTone(row.done, row.due, today)}`} href={row.href} key={row.id}><div><strong>{row.pinned?"📌 ":""}{row.title}</strong><span>{row.pending ? 'דווח שבוצע · ממתין לאישור מנהל' : 'ממתין לביצוע'}</span></div><time>{row.due ? new Date(row.due + 'T12:00:00').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : 'ללא מועד'}</time><i /></a>}/>}
       {!upcoming.length && data && <p className="empty"><CheckCheck size={22} />אין משימות שממתינות לביצוע</p>}
     {pending>0&&<button className="button secondary" onClick={()=>openTasks("pending_review")}>{pending} דיווחים ממתינים לאישור המנהל</button>}</section>
     <WeeklySchedule/>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect,useId,useState } from 'react';
+import { useId } from 'react';
+import { useRightSwipe } from './home-task-preview';
 import { ClockAlert,X } from 'lucide-react';
 import { openDueReminderGroups,type DueReminderTask } from '@/lib/open-due-reminder';
 
@@ -18,27 +19,16 @@ function TaskList({title,tasks}:{title:string;tasks:DueReminderTask[]}){
  </div>;
 }
 
-export default function OpenDueReminder(props:Parameters<typeof openDueReminderGroups>[0]){
+export default function OpenDueReminder({onDismiss,...props}:Parameters<typeof openDueReminderGroups>[0]&{onDismiss:()=>void}){
  const heading=useId();
- const [dismissed,setDismissed]=useState(false);
- useEffect(()=>{
-  let hiddenAt:number|null=document.visibilityState==='hidden'?Date.now():null;
-  const visibilityChanged=()=>{
-   if(document.visibilityState==='hidden'){hiddenAt=Date.now();return;}
-   if(hiddenAt!==null&&Date.now()-hiddenAt>=30_000)setDismissed(false);
-   hiddenAt=null;
-  };
-  document.addEventListener('visibilitychange',visibilityChanged);
-  return ()=>document.removeEventListener('visibilitychange',visibilityChanged);
- },[]);
- if(dismissed)return null;
+ const swipe=useRightSwipe<HTMLElement>(onDismiss);
  const {overdue,soon}=openDueReminderGroups(props);
  if(!overdue.length&&!soon.length)return null;
- return <section className="open-due-reminder" aria-labelledby={heading} dir="rtl">
+ return <section className="open-due-reminder" aria-labelledby={heading} dir="rtl" {...swipe}>
   <div className="open-due-reminder-heading">
    <ClockAlert size={19} aria-hidden="true"/>
    <h2 id={heading}>המשימות שלך שדורשות תשומת לב</h2>
-   <button type="button" className="icon-button" aria-label="סגירת תזכורת משימות" onClick={()=>setDismissed(true)}><X size={18} aria-hidden="true"/></button>
+   <button type="button" className="icon-button" aria-label="סגירת תזכורת משימות" onClick={onDismiss}><X size={18} aria-hidden="true"/></button>
   </div>
   <div className="open-due-reminder-body">
    <TaskList title="באיחור" tasks={overdue}/>
