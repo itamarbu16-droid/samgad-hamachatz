@@ -60,15 +60,18 @@ export function Modal({
   close,
   children,
   wide = false,
+  actionSheet = false,
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
   wide?: boolean;
+  actionSheet?: boolean;
 }) {
   const section = useRef<HTMLElement>(null),
     dirty = useRef(false),
     closeRef = useRef(close);
+  const openingClickUntil=useRef(0);
   const [confirm, setConfirm] = useState(false);
   const [mounted, setMounted] = useState(false);
   const continueButton = useRef<HTMLButtonElement>(null);
@@ -90,6 +93,7 @@ export function Modal({
   useEffect(() => {
     if (!mounted || !section.current) return;
     const dialog = section.current;
+    openingClickUntil.current=Date.now()+400;
     const previousFocus = document.activeElement as HTMLElement | null;
     if (!activeDialogs.length) originalOverflow = document.body.style.overflow;
     activeDialogs.push(dialog);
@@ -150,14 +154,20 @@ export function Modal({
   if (!mounted) return null;
   return createPortal(
     <div
-      className="modal-backdrop"
+      className={"modal-backdrop"+(actionSheet?" document-context-backdrop":"")}
+      onPointerDownCapture={()=>{openingClickUntil.current=0;}}
+      onClickCapture={e=>{
+        // The same release that opened a touch menu must not hit the backdrop
+        // or an option. A genuine next pointerdown or keyboard click is allowed.
+        if(actionSheet&&e.detail!==0&&Date.now()<openingClickUntil.current){e.preventDefault();e.stopPropagation();}
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) dismiss();
       }}
     >
       <section
         ref={section}
-        className={`modal ${wide ? "wide" : ""}`}
+        className={"modal"+(wide?" wide":"")+(actionSheet?" document-context-sheet":"")}
         role="dialog"
         aria-modal="true"
         aria-label={title}

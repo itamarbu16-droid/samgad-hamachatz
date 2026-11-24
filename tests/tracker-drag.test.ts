@@ -36,3 +36,22 @@ it('opens file actions when a held touch is released without dropping on a folde
  drag.startTouch({touches:[{identifier:7,clientX:10,clientY:10}]} as never,['bike'],'bike');
  vi.advanceTimersByTime(500);touch('touchend',10,10);expect(drop).not.toHaveBeenCalled();expect(hold).toHaveBeenCalledExactlyOnceWith(['bike']);
 });
+
+it('does not mistake a drag outside a destination or back to its origin for a stationary hold',()=>{
+ Object.assign(doc,{elementFromPoint:()=>null});const drop=vi.fn(),hold=vi.fn(),drag=useTrackerDrag(drop,hold);
+ drag.startTouch({touches:[{identifier:7,clientX:10,clientY:10}]} as never,['sample'],'Synthetic');
+ vi.advanceTimersByTime(450);touch('touchmove',150,160);touch('touchend',150,160);
+ expect(drop).not.toHaveBeenCalled();expect(hold).not.toHaveBeenCalled();expect(drag.consumeClick()).toBe(true);
+ drag.startTouch({touches:[{identifier:7,clientX:10,clientY:10}]} as never,['sample'],'Synthetic');
+ vi.advanceTimersByTime(450);touch('touchmove',150,160);touch('touchmove',10,10);touch('touchend',10,10);
+ expect(drop).not.toHaveBeenCalled();expect(hold).not.toHaveBeenCalled();expect(drag.consumeClick()).toBe(true);
+});
+
+it('opens the specifically held tracker while leaving marked trackers grouped for dragging',()=>{
+ const drop=vi.fn(),hold=vi.fn(),drag=useTrackerDrag(drop,hold);
+ const arm=()=>drag.startTouch({touches:[{identifier:7,clientX:10,clientY:10}]} as never,['first','second'],'Synthetic','second');
+ arm();vi.advanceTimersByTime(450);touch('touchend',10,10);
+ expect(hold).toHaveBeenCalledExactlyOnceWith(['second']);
+ arm();vi.advanceTimersByTime(450);touch('touchmove',150,160);touch('touchend',150,160);
+ expect(drop).toHaveBeenCalledExactlyOnceWith(['first','second'],'road-safety');
+});

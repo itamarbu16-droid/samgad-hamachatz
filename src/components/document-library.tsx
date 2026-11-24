@@ -228,7 +228,7 @@ export default function DocumentLibrary({
       setBusy(false);setUploadProgress("");
     }
   }
-  const organizer = useDocumentOrganizer({folders,folder,section,canWrite,manager,userId,refresh:async()=>{await load();setTrackingVersion(value=>value+1);},navigate:openFolder,closeDocument:()=>{setSelected(null);setEditing(false);},edit:entry=>void openEntry(entry,true)});
+  const organizer = useDocumentOrganizer({folders,folder,section,canWrite,manager,editorContext:editAll||role==="deputy",userId,refresh:async()=>{await load();setTrackingVersion(value=>value+1);},navigate:openFolder,closeDocument:()=>{setSelected(null);setEditing(false);},edit:entry=>void openEntry(entry,true)});
   const modalOpen = creating || Boolean(selected);
   const editForm = creating || editing;
   const tracking = section === "library" && (()=>{let id=folder;const seen=new Set<string>();while(id&&!seen.has(id)){if(id==='trackers')return true;seen.add(id);id=catalog.find(f=>f.id===id)?.parent??null;}return false;})();
@@ -243,12 +243,12 @@ export default function DocumentLibrary({
       {tracking ? <>
         {pendingCards.length>0&&<div className="document-entry-list">{pendingCards}</div>}
         <TrackingTables key={folder} userId={userId} role={role} editAll={editAll}
-        folderActions={organizer.folderAction} cutEntry={entry=>organizer.cutEntry({...entry,folderId:folder!})} refreshKey={trackingVersion}
+        folderActions={organizer.folderAction} folderPress={organizer.folderPress} canContextFolder={organizer.canContextFolder} cutEntry={entry=>organizer.cutEntry({...entry,folderId:folder!})} refreshKey={trackingVersion}
         folderId={folder!} folders={catalog} navigate={id=>{openFolder(id);void load();}}
         foldersChanged={()=>void load()}
         back={() => {openFolder(null);void load();}}
         addFile={()=>{setCreating(true);setSelected(null);setFiles([]);setError('');uploadCache.current.clear();}}
-        openFile={id=>void openEntry({id})} /></> : <>
+        openFile={(id,edit)=>void openEntry({id},edit)} /></> : <>
       {creatingFolder && <Modal title="הוספת תיקייה" close={()=>setCreatingFolder(false)}><form onSubmit={async event=>{
         event.preventDefault();const form=new FormData(event.currentTarget);setBusy(true);setError('');
         try{const response=await apiFetch('/api/documents/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.get('name'),parent:form.get('parent')||null,section,clientRequestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw Error(result.error||'לא ניתן ליצור תיקייה');await load();setCreatingFolder(false);openFolder(result.folder.id);setNotice('התיקייה נוספה');window.dispatchEvent(new Event('samgad:saved'));}catch(error){setError(error instanceof Error?error.message:'לא ניתן ליצור תיקייה');}finally{setBusy(false);}
@@ -317,7 +317,8 @@ export default function DocumentLibrary({
               <div className="document-folder-shell" key={item.id}>
               {organizer.folderAction(item)}
               <button
-                className="document-folder-card"
+                className={"document-folder-card"+(organizer.canContextFolder(item)?" document-context-target":"")}
+                {...organizer.folderPress(item)}
                 onClick={() => openFolder(item.id)}
               >
                 <Folder size={40} />
@@ -352,7 +353,8 @@ export default function DocumentLibrary({
         {visibleEntries.map((entry) => (
           <div className="document-entry-shell" key={entry.id}>
           <button
-            className="panel document-entry"
+            className={"panel document-entry"+(organizer.canContextEntry(entry)?" document-context-target":"")}
+            {...organizer.entryPress(entry)}
             onClick={() => void openEntry(entry)}
             disabled={busy}
           >

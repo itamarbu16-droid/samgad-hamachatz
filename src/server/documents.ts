@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "./db";
 import * as s from "./schema";
+import {FLEXIBLE_TRACKER_KIND,parseFlexibleTracker} from "../lib/flexible-tracker";
 import { AppError, assertWrite, isManager,canEditAll, type Principal } from "./policy";
 import {
   documentFolders, folderPath,
@@ -48,10 +49,14 @@ const createInput = z
     (value) => value.body.length > 0 || value.attachments.length > 0,
     "יש להוסיף טקסט או קובץ",
   );
-function isTrackingTable(body:string) {
-  try {const value=JSON.parse(body);return value?.kind==='tracking-table-v1'&&Array.isArray(value.columns)&&Array.isArray(value.rows);}
-  catch {return false;}
+function trackerFormat(body:string) {
+  try {
+    const value=JSON.parse(body);
+    if(value?.kind===FLEXIBLE_TRACKER_KIND)return parseFlexibleTracker(value)?FLEXIBLE_TRACKER_KIND:'invalid-flexible-tracker';
+    return value?.kind==='tracking-table-v1'&&Array.isArray(value.columns)&&Array.isArray(value.rows)?'tracking-table-v1':null;
+  } catch {return null;}
 }
+function isTrackingTable(body:string){return trackerFormat(body)!==null;}
 export function documentScope(p: Principal) {
   return and(
     eq(s.documentEntries.organizationId, p.organizationId),
@@ -160,6 +165,10 @@ export async function createDocument(p: Principal, input: unknown) {
   assertWrite(p);
   const { clientRequestId, attachments, ...data } = createInput.parse(input);
   await assertDocumentFolder(p,data.folderId);
+  const format=trackerFormat(data.body);
+  if(format==='invalid-flexible-tracker')throw new AppError(422,'מבנה המעקב אינו תקין');
+  if(format===FLEXIBLE_TRACKER_KIND&&!await isTrackingFolder(p,data.folderId))
+    throw new AppError(422,'טבלת מעקב נשארת במרחב המעקבים');
   const destination = folderPath(data.folderId, await getDocumentFolders(p));
   const db = await getDb();
   return db.transaction(async (tx) => {
@@ -251,7 +260,12 @@ export async function updateDocument(p: Principal, id: string, input: unknown) {
         ),
       );
     if (!before) throw new AppError(404, "המסמך אינו זמין לך");
-    if (before.creatorId !== p.userId && !isManager(p) && !(trackingFolder && before.folderId === data.folderId && !data.archived && data.title === before.title && isTrackingTable(before.body) && isTrackingTable(data.body)))
+    const beforeFormat=trackerFormat(before.body),afterFormat=trackerFormat(data.body);
+    if(beforeFormat==='invalid-flexible-tracker'||afterFormat==='invalid-flexible-tracker')
+      throw new AppError(422,'מבנה המעקב אינו תקין');
+    if((beforeFormat===FLEXIBLE_TRACKER_KIND||afterFormat===FLEXIBLE_TRACKER_KIND)&&(!trackingFolder||beforeFormat!==afterFormat))
+      throw new AppError(422,'יש לערוך את הטבלה הגמישה מתוך המעקבים, בלי להחליף את מבנה המסמך');
+    if (before.creatorId !== p.userId && !isManager(p) && !(trackingFolder && before.folderId === data.folderId && !data.archived && data.title === before.title && beforeFormat && beforeFormat===afterFormat))
       throw new AppError(403, "רק יוצר המסמך או מנהל יכולים לערוך אותו");
     const existingFiles = await tx
       .select({ id: s.documentAttachments.id })
@@ -349,7 +363,7 @@ export async function duplicateDocument(p:Principal,id:string,input:unknown){
   const receipt=await tx.insert(s.mutationReceipts).values({key,fingerprint}).onConflictDoNothing().returning();
   if(!receipt.length){const [previous]=await tx.select().from(s.mutationReceipts).where(eq(s.mutationReceipts.key,key));if(previous.fingerprint!==fingerprint)throw new AppError(409,'מזהה הבקשה כבר שימש להעתקה אחרת');return previous.result as {id:string};}
   let body=source.body;
-  if(data.resetStatuses&&isTrackingTable(body)){
+  if(data.resetStatuses&&trackerFormat(body)==='tracking-table-v1'){
    const table=JSON.parse(body);
    table.rows=table.rows.map((row:Record<string,string>)=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,key.endsWith(':status')?'':value])));
    body=JSON.stringify(table);

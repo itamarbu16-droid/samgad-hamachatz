@@ -1,9 +1,11 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type ComponentProps } from "react";
 import { apiFetch } from "@/lib/offline";
 import {useTrackerDrag} from "./use-tracker-drag";
 import { Modal } from "./workspace-primitives";
-import { Plus } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, FolderInput, Scissors, Copy, Trash2 } from "lucide-react";
+import FlexibleTrackerEditor from "./flexible-tracker";
+import { emptyFlexibleTracker, FLEXIBLE_TRACKER_KIND, parseFlexibleTracker, type FlexibleTracker } from "@/lib/flexible-tracker";
 import {
   INITIAL_TRACKING_ROWS, MAX_TRACKING_COLUMNS, MAX_TRACKING_ROWS, MAX_TRACKING_COLUMN_NAME,
   initialTrackingColumns as initialColumns, openTrackingSheet, addTrackingRow, appendTrackingColumn, mergeTrackingEdits, shiftTrackingColumn,
@@ -13,12 +15,15 @@ import {
 type Entry = { id: string; title: string; version: number; creatorId: string; preview?:string; attachments?:{id:string;filename:string;byteSize:number}[] };
 const initialTitle = "הסמכת תחמושת מתפצלת";
 type Folder={id:string;name:string;parent:string|null;section:string};
-export default function TrackingTables({userId,role,back,addFile,openFile,refreshKey,folderId,folders,navigate,foldersChanged,editAll=false,folderActions,cutEntry}:{editAll?:boolean;folderActions?:(folder:Folder)=>ReactNode;cutEntry?:(entry:Entry)=>void;userId:string;role:string;back:()=>void;addFile:()=>void;openFile:(id:string)=>void;refreshKey:number;folderId:string;folders:Folder[];navigate:(id:string)=>void;foldersChanged:()=>void}) {
+export default function TrackingTables({userId,role,back,addFile,openFile,refreshKey,folderId,folders,navigate,foldersChanged,editAll=false,folderActions,folderPress,canContextFolder,cutEntry}:{editAll?:boolean;folderActions?:(folder:Folder)=>ReactNode;folderPress?:(folder:Folder)=>ComponentProps<"button">;canContextFolder?:(folder:Folder)=>boolean;cutEntry?:(entry:Entry)=>void;userId:string;role:string;back:()=>void;addFile:()=>void;openFile:(id:string,edit?:boolean)=>void;refreshKey:number;folderId:string;folders:Folder[];navigate:(id:string)=>void;foldersChanged:()=>void}) {
   const manager = editAll || ["deputy","staff","company_commander"].includes(role);
   const canWrite = manager || role === "contributor";
+  const editorContext=editAll||role==="deputy";
   const [entries,setEntries]=useState<Entry[]>([]),[selected,setSelected]=useState<Entry|null>(null);
   const [sheet,setSheet]=useState<Sheet>({columns:initialColumns,rows:[]});
   const [title,setTitle]=useState(initialTitle);
+  const [flexible,setFlexible]=useState<FlexibleTracker|null>(null);
+  const [flexibleInstance,setFlexibleInstance]=useState(0);
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[dirty,setDirty]=useState(false);
   const [error,setError]=useState(""),[notice,setNotice]=useState(""),[creating,setCreating]=useState(false);
   const requestId=useRef("");
@@ -66,7 +71,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
 
   const [actionItems,setActionItems]=useState<Entry[]|null>(null);
   const [trashItems,setTrashItems]=useState<Entry[]|null>(null);
-  const dragDrop=useTrackerDrag((ids,target)=>{void manage(entries.filter(e=>ids.includes(e.id)),'move',target);},ids=>setActionItems(entries.filter(e=>ids.includes(e.id))));
+  const dragDrop=useTrackerDrag((ids,target)=>{void manage(entries.filter(e=>ids.includes(e.id)),'move',target);},ids=>{if(editorContext&&!busy){const allowed=entries.filter(e=>ids.includes(e.id)&&mayManage(e));if(allowed.length)setActionItems(allowed);}});
   function mayManage(entry:Entry){return manager||entry.creatorId===userId;}
   async function manage(items:Entry[],action:'move'|'trash'|'restore',target?:string){
     if(busy||!canWrite||!items.length)return;
@@ -157,21 +162,59 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     if(!editable||busy||sheet.columns.length>=MAX_TRACKING_COLUMNS)return;
     setColumnError("");setAddingColumn(true);
   }
-  async function open(entry:Entry) {
+  async function open(entry:Entry,editFile=false) {
     setBusy(true);setError("");
     try {const r=await apiFetch(`/api/documents/${entry.id}`,{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.error);
       let parsed;try{parsed=JSON.parse(d.entry.body);}catch{parsed=null;}
-      if(parsed?.kind!=="tracking-table-v1"){openFile(entry.id);return;}
+      if(parsed?.kind!=="tracking-table-v1"&&parsed?.kind!==FLEXIBLE_TRACKER_KIND){openFile(entry.id,editFile);return;}
+      if(parsed.kind===FLEXIBLE_TRACKER_KIND){
+        const grid=parseFlexibleTracker(parsed);
+        if(!grid)throw new Error("לא ניתן לפתוח את מבנה המעקב. המעקב השמור לא שונה");
+        if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
+        savedTracker.current=null;shifts.current=[];setUndoShift(null);setSaveError("");
+        setFlexible(grid);setFlexibleInstance(n=>n+1);setActive(true);setSelected(d.entry);setTitle(d.entry.title);setDirty(false);setNotice("");
+        return;
+      }
       if(!Array.isArray(parsed.columns)||!Array.isArray(parsed.rows))throw new Error("הפריט אינו טבלת מעקב תקינה");
       if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
+      setFlexible(null);
       const opened=openTrackingSheet(parsed);
       savedTracker.current={sheet:opened,title:d.entry.title};
       shifts.current=[];setUndoShift(null);
       setActive(true);setSelected(d.entry);setTitle(d.entry.title);setSheet(opened);setDirty(false);setNotice("");setSaveError("");
     }catch(e){setError(e instanceof Error?e.message:"לא ניתן לפתוח");}finally{setBusy(false);}
   }
-  function fresh(name:string,columns:Column[]){savedTracker.current=null;shifts.current=[];setUndoShift(null);setSaveError("");setActive(true);requestId.current=crypto.randomUUID();setSelected(null);setTitle(name);setSheet({columns,rows:Array.from({length:INITIAL_TRACKING_ROWS},()=>({}))});setDirty(true);setCreating(false);setNotice("");}
+  function fresh(name:string,columns:Column[]|null){
+    savedTracker.current=null;shifts.current=[];setUndoShift(null);setSaveError("");setActive(true);
+    requestId.current=crypto.randomUUID();setSelected(null);setTitle(name);
+    setFlexible(columns?null:emptyFlexibleTracker());setFlexibleInstance(n=>n+1);
+    if(columns)setSheet({columns,rows:Array.from({length:INITIAL_TRACKING_ROWS},()=>({}))});
+    setDirty(true);setCreating(false);setNotice("");
+  }
+  async function saveFlexible(grid:FlexibleTracker){
+    if(saveInProgress.current)return;
+    saveInProgress.current=true;setBusy(true);setSaveError("");setError("");setNotice("");
+    try{
+      requestId.current ||= crypto.randomUUID();
+      const body=JSON.stringify(grid);
+      if(body.length>100000)throw Error("הטבלה גדולה מדי. יש לפצל למעקבים נוספים");
+      const response=await apiFetch(selected?"/api/documents/"+selected.id:"/api/documents",{
+        method:selected?"PATCH":"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({title,body,folderId,...(selected?{version:selected.version}:{clientRequestId:requestId.current})}),
+      });
+      const data=await response.json();
+      if(response.status===409&&selected)throw Error("הטבלה השמורה השתנתה. השינויים שלך נשארו פתוחים ולא דרסו את השמירה האחרת.");
+      if(!response.ok)throw Error(data.error||"השמירה נכשלה");
+      if(!mounted.current)return;
+      setSelected({id:data.entry.id,title,creatorId:selected?.creatorId||userId,version:(selected?.version??0)+1});
+      setDirty(false);setNotice("המעקב נשמר");
+      window.dispatchEvent(new Event('samgad:saved'));
+      await load().catch(()=>setError("המעקב נשמר, אך לא ניתן לעדכן את רשימת המעקבים"));
+    }catch(error){if(mounted.current)setSaveError(error instanceof Error?error.message:"השמירה נכשלה");}
+    finally{saveInProgress.current=false;if(mounted.current)setBusy(false);}
+  }
   async function save(){
+    if(flexible)return saveFlexible(flexible);
     if(saveInProgress.current)return;
     saveInProgress.current=true;setBusy(true);setSaveError("");setError("");setNotice("");
     const base=savedTracker.current;
@@ -238,13 +281,40 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   return <div className="tracking-workspace">
     <div className="document-toolbar"><button className="button secondary" onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירת השינויים?"))back();}}>חזרה לספרייה</button><h2>{currentFolder?.name||"מעקבים"}</h2>{canWrite&&<button className="button secondary" disabled={busy} onClick={()=>void loadTrash().catch(e=>setError(e.message))}>נמחקו לאחרונה</button>}{folderId!=="trackers"&&<button className="button secondary" disabled={busy} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(currentFolder?.parent||"trackers");}}>חזרה לתיקייה הקודמת</button>}{manager&&<button className="button secondary" disabled={busy} onClick={()=>{folderRequest.current=crypto.randomUUID();setCreatingFolder(true);}}>＋ תיקייה חדשה</button>}{canWrite&&<><button className="button secondary" disabled={busy} onClick={addFile}>הוספת קובץ סרוק / אקסל</button><button className="button primary" disabled={busy} onClick={()=>setCreating(true)}>＋ מעקב חדש</button></>}</div>
     {error&&<p className="error-banner" role="alert">{error}</p>}{notice&&notice!=="המעקב נשמר"&&<p role="status">{notice}</p>}
-    {canWrite&&<p className="muted">לחיצה ארוכה על מעקב וגרירה לתיקייה תעביר אותו לתוכה. לחיצה ארוכה ושחרור יפתחו תפריט פעולות.</p>}
+    {canWrite&&<p className="muted">לחיצה ארוכה על מעקב וגרירה לתיקייה תעביר אותו לתוכה. {editorContext?" לחיצה ארוכה ושחרור פותחים פעולות.":""}</p>}
     {dragDrop.drag&&<><div className="tracker-drop-tray" aria-label="תיקיות להעברה"><strong role="status">גרור לתיקייה ושחרר כדי להעביר</strong><div>{destinations.filter(f=>f.id!==folderId).map(f=><div key={f.id} data-tracker-drop={f.id} className={`tracker-drop-target ${dragDrop.drag?.target===f.id?'is-over':''}`}>📁 {destinationPath(f.id)}</div>)}</div></div><div className="tracker-drag-ghost" style={{left:Math.min(dragDrop.drag.x+12,window.innerWidth-200),top:Math.min(dragDrop.drag.y+16,window.innerHeight-70)}}>{dragDrop.drag.ids.length>1?`${dragDrop.drag.ids.length} מעקבים`:dragDrop.drag.title}</div></>}
     {canWrite&&entries.length>0&&<div className="document-toolbar"><button className="button secondary" disabled={busy} onClick={()=>setMarked(marked.length===entries.filter(mayManage).length?[]:entries.filter(mayManage).map(e=>e.id))}>{marked.length===entries.filter(mayManage).length?'ביטול בחירה':'בחירת הכול'}</button><span>{marked.length} נבחרו</span><button className="button primary" disabled={busy||!marked.length} onClick={()=>organize(entries.filter(e=>marked.includes(e.id)))}>העברה לתיקייה</button><button className="button secondary tracker-delete" disabled={busy||!marked.length} onClick={()=>void manage(entries.filter(e=>marked.includes(e.id)),'trash')}>מחיקה</button></div>}
-    <div className="document-folder-grid">{subfolders.map(f=><div className="document-folder-shell" key={f.id}>{folderActions?.(f)}<button className={`document-folder-card ${dragDrop.drag?.target===f.id?"tracker-folder-over":""}`} data-tracker-drop={f.id} key={f.id} disabled={busy} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(f.id);}}><strong>📁 {f.name}</strong><span>פתיחת תיקייה</span></button></div>)}{entries.map(e=><div key={e.id} className="tracking-entry-card">{canWrite&&mayManage(e)&&<label><input type="checkbox" disabled={busy} checked={marked.includes(e.id)} onChange={event=>setMarked(ids=>event.target.checked?[...ids,e.id]:ids.filter(id=>id!==e.id))}/> בחירת {e.title}</label>}<button disabled={busy} key={e.id} className={`document-folder-card tracker-draggable ${dragDrop.drag?.ids.includes(e.id)?'is-dragging':''}`} onPointerDown={event=>{if(canWrite&&mayManage(e)&&!busy)dragDrop.startMouse(event,dragIds(e),e.title);}} onTouchStart={event=>{if(canWrite&&mayManage(e)&&!busy)dragDrop.startTouch(event,dragIds(e),e.title);}} onContextMenu={event=>{if(canWrite){event.preventDefault();}}} onDragStart={event=>event.preventDefault()} onClick={()=>{if(!dragDrop.consumeClick())void open(e);}}><strong>{e.title}</strong><span>{e.attachments?.length?`${e.attachments.length} קבצים · פתיחה והורדה`:"פתיחת טבלה"}</span>{e.attachments?.map(file=><small key={file.id}>{file.filename}</small>)}</button>{canWrite&&<><button className="button secondary" disabled={busy||!mayManage(e)} onClick={()=>setActionItems([e])} aria-label={`פעולות עבור ${e.title}`}>••• פעולות</button><button className="button secondary" disabled={busy} onClick={()=>askCopy(e)}>שכפול / שבוע נוסף</button></>}</div>)}
+    <div className="document-folder-grid">{subfolders.map(f=><div className="document-folder-shell" key={f.id}>
+      {folderActions?.(f)}<button className={"document-folder-card"+(dragDrop.drag?.target===f.id?" tracker-folder-over":"")+(canContextFolder?.(f)?" document-context-target":"")}
+        data-tracker-drop={f.id} disabled={busy}
+        {...(!busy?folderPress?.(f):{})} onClick={()=>{if(!dirty||window.confirm("לצאת ללא שמירה?"))navigate(f.id);}}>
+        <strong>📁 {f.name}</strong><span>פתיחת תיקייה</span>
+      </button></div>)}
+    {entries.map(e=>{
+      const allowed=canWrite&&mayManage(e);
+      return <div key={e.id} className="tracking-entry-card">
+        {allowed&&<label><input type="checkbox" disabled={busy} checked={marked.includes(e.id)} onChange={event=>setMarked(ids=>event.target.checked?[...ids,e.id]:ids.filter(id=>id!==e.id))}/> בחירת {e.title}</label>}
+        <button disabled={busy} className={"document-folder-card tracker-draggable"+(dragDrop.drag?.ids.includes(e.id)?" is-dragging":"")}
+          onPointerDown={event=>{if(allowed&&!busy)dragDrop.startMouse(event,dragIds(e),e.title,e.id);}}
+          onTouchStart={event=>{if(allowed&&!busy)dragDrop.startTouch(event,dragIds(e),e.title,e.id);}}
+          onContextMenu={event=>{if(allowed)event.preventDefault();}}
+          onDragStart={event=>event.preventDefault()}
+          onClick={()=>{if(!dragDrop.consumeClick())void open(e);}}>
+          <strong>{e.title}</strong><span>{e.attachments?.length?e.attachments.length+" קבצים · פתיחה והורדה":"פתיחת טבלה"}</span>
+          {e.attachments?.map(file=><small key={file.id}>{file.filename}</small>)}
+        </button>
+        {allowed&&<button type="button" className={"document-icon-action"+(editorContext?" tracker-context-action":"")} disabled={busy}
+          aria-haspopup="dialog" aria-label={"פעולות עבור "+e.title} onClick={()=>setActionItems([e])}>
+          <MoreHorizontal size={22}/>{!editorContext&&"פעולות"}
+        </button>}
+        {canWrite&&!editorContext&&<button className="button secondary" disabled={busy} onClick={()=>askCopy(e)}>שכפול / שבוע נוסף</button>}
+      </div>;
+    })}
     {folderId==="trackers"&&!loading&&!entries.some(e=>e.title===initialTitle)&&<button className="document-folder-card" disabled={!canWrite||busy} onClick={()=>{if(!dirty||window.confirm("להחליף את הטבלה שלא נשמרה?"))fresh(initialTitle,initialColumns);}}><strong>{initialTitle}</strong><span>טבלה מוכנה למילוי — שמירה תוסיף אותה למעקבים</span></button>}</div>
     {loading?<p role="status">טוען מעקבים…</p>:active?<section className="panel tracking-editor" aria-busy={busy}>
       <label>שם הטבלה<input value={title} maxLength={160} disabled={!editable||busy||Boolean(selected&&!manager&&selected.creatorId!==userId)} onChange={e=>{setTitle(e.target.value);setDirty(true);setUndoShift(null);}} /></label>
+      {flexible?<>{dirty&&<p role="status">שינויים לא נשמרו</p>}
+        <FlexibleTrackerEditor key={flexibleInstance} grid={flexible} editable={editable} busy={busy} onChange={next=>{setFlexible(next);setDirty(true);setNotice("");}}/></>:<>
       <div className="tracking-structure-toolbar">
         <p role="status">{sheet.rows.length} שורות · {sheet.columns.length} עמודות{dirty?" · שינויים לא נשמרו":""}</p>
         {editable&&<div className="tracking-structure-actions">
@@ -265,11 +335,12 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       })}</tr>)}</tbody></table></div>
       {editable&&<div className="tracking-structure-footer"><button type="button" className="button secondary" disabled={busy||sheet.rows.length>=MAX_TRACKING_ROWS} onClick={addRow}><Plus aria-hidden="true" size={17}/> הוספת שורה בסוף הטבלה</button></div>}
       {editable&&(sheet.rows.length>=MAX_TRACKING_ROWS||sheet.columns.length>=MAX_TRACKING_COLUMNS)&&<p className="muted">עד {MAX_TRACKING_ROWS} שורות ו־{MAX_TRACKING_COLUMNS} עמודות במעקב. אפשר לפתוח מעקב נוסף.</p>}
+      </>}
       <div className="document-toolbar">{selected&&editable&&<button className="button secondary" disabled={busy} onClick={()=>askCopy(selected)}>שכפול לשבוע נוסף</button>}{editable&&<button className="button primary" disabled={busy||!dirty||title.trim().length<2} onClick={()=>void save()}>{busy?"שומר…":"שמירת המעקב"}</button>}</div>
       {undoShift&&<button type="button" className="button secondary" disabled={busy} onClick={undoColumnShift}>ביטול המחיקה והקידום</button>}
       {saveError&&<p className="error-banner" role="alert">{saveError}</p>}
       {notice==="המעקב נשמר"&&<p role="status">{notice}</p>}
-      <small>למחיקת שם ולהשארת משבצת ריקה, מחקו את הטקסט. לקידום הטור, לחצו לחיצה ארוכה על השם או על ⋯. השינויים נשמרים רק בלחיצה על שמירה.</small>
+      <small>{flexible?"השינויים נשמרים רק בלחיצה על שמירת המעקב.":"למחיקת שם ולהשארת משבצת ריקה, מחקו את הטקסט. לקידום הטור, לחצו לחיצה ארוכה על השם או על ⋯. השינויים נשמרים רק בלחיצה על שמירה."}</small>
     </section>:<p>בחר טבלה או קובץ, או הוסף מעקב חדש כדי להתחיל.</p>}
     {cellAction&&editable&&<Modal title="פעולות על שם במעקב" close={()=>setCellAction(null)}>
       <p>{cellAction.column.name}, שורה {cellAction.index+1}. השם והסימון יימחקו. רק הטור הזה יתקדם שורה אחת ומספר השורות לא ישתנה.</p>
@@ -290,7 +361,14 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     }}><label>שם העמודה<input name="columnName" required maxLength={MAX_TRACKING_COLUMN_NAME} autoComplete="off"/></label>
       {columnError&&<p role="alert">{columnError}</p>}<button className="button primary" disabled={busy}>הוספת עמודה</button>
     </form></Modal>}
-    {actionItems&&<Modal title={actionItems.length===1?actionItems[0].title:`${actionItems.length} מעקבים נבחרו`} close={()=>{if(!busy)setActionItems(null);}}><div className="tracker-action-menu">{actionItems.length===1&&cutEntry&&<button className="button secondary" disabled={busy} onClick={()=>{cutEntry(actionItems[0]);setActionItems(null);setNotice('בחר תיקיית יעד ולחץ על ״הדבקה כאן״.');}}>גזירה</button>}<button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);organize(actionItems);}}>העברה לתיקייה</button>{actionItems.length===1&&<button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);askCopy(actionItems[0]);}}>שכפול לשבוע נוסף</button>}<button className="button secondary tracker-delete" disabled={busy} onClick={()=>void manage(actionItems,'trash')}>מחיקה</button><button className="button secondary" disabled={busy} onClick={()=>setActionItems(null)}>ביטול</button></div></Modal>}
+    {actionItems&&<Modal actionSheet={editorContext} title={actionItems.length===1?"פעולות: "+actionItems[0].title:actionItems.length+" מעקבים נבחרו"} close={()=>{if(!busy)setActionItems(null);}}>
+      <div className={editorContext?"document-action-menu":"tracker-action-menu"}>
+      {editorContext&&actionItems.length===1&&<button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);void open(actionItems[0],true);}}><Pencil size={18}/>עריכה / שינוי שם</button>}
+      <button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);organize(actionItems);}}><FolderInput size={18}/>העברה לתיקייה</button>
+      {actionItems.length===1&&cutEntry&&<button className="button secondary" disabled={busy} onClick={()=>{cutEntry(actionItems[0]);setActionItems(null);setNotice('בחר תיקיית יעד ולחץ על ״הדבקה כאן״.');}}><Scissors size={18}/>גזירה</button>}
+      {actionItems.length===1&&<button className="button secondary" disabled={busy} onClick={()=>{setActionItems(null);askCopy(actionItems[0]);}}><Copy size={18}/>שכפול לשבוע נוסף</button>}
+      <button className="button secondary document-danger tracker-delete" disabled={busy} onClick={()=>void manage(actionItems,'trash')}><Trash2 size={18}/>מחיקה</button>
+      <button className="button secondary" disabled={busy} onClick={()=>setActionItems(null)}>ביטול</button></div></Modal>}
     {organizing&&<Modal title="העברת מעקבים לתיקייה" close={()=>{if(!busy)setOrganizing(null);}}><form onSubmit={e=>{e.preventDefault();const target=String(new FormData(e.currentTarget).get('folderId'));void manage(organizing,'move',target);}}><p>{organizing.length} מעקבים יועברו עם כל השמות, הקבצים והסימונים.</p><label>תיקיית יעד<select name="folderId" required disabled={busy} defaultValue=""><option value="" disabled>בחירת תיקייה</option>{destinations.filter(f=>f.id!==folderId).map(f=><option key={f.id} value={f.id}>{destinationPath(f.id)}</option>)}</select></label>{error&&<p role="alert">{error}</p>}<button className="button primary" disabled={busy}>{busy?'מעביר…':'העברה לכאן'}</button></form></Modal>}
     {trashItems!==null&&<Modal title="נמחקו לאחרונה" close={()=>{if(!busy)setTrashItems(null);}}><p>המעקבים נשמרים כאן עד לשחזור. המחיקה אינה מוחקת את הקבצים לצמיתות.</p>{error&&<p role="alert">{error}</p>}{trashItems.length===0?<p>אין מעקבים שנמחקו.</p>:trashItems.map(e=><div key={e.id} className="document-toolbar"><strong>{e.title}</strong><button className="button secondary" disabled={busy} onClick={()=>void manage([e],'restore')}>שחזור</button></div>)}</Modal>}
     {creatingFolder&&<Modal title="תיקייה חדשה במעקבים" close={()=>{if(!busy)setCreatingFolder(false);}}><form onSubmit={async e=>{
@@ -303,6 +381,6 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       try{const r=await apiFetch(`/api/documents/${copy.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:form.get('title'),folderId:form.get('folderId'),resetStatuses:form.get('resetStatuses')==='on',clientRequestId:copyRequest.current})});const d=await r.json();if(!r.ok)throw Error(d.error);setCopy(null);setNotice('העותק נשמר — המקור נשאר ללא שינוי');await load();window.dispatchEvent(new Event('samgad:saved'));}
       catch(e){setError(e instanceof Error?e.message:'לא ניתן לשכפל');}finally{setBusy(false);}
     }}><label>שם המעקב החדש<input name="title" required minLength={2} maxLength={160} defaultValue={`${copy.title.slice(0,140)} — שבוע נוסף`} disabled={busy}/></label><label>תיקיית היעד<select name="folderId" defaultValue={folderId} disabled={busy}>{destinations.map(f=><option key={f.id} value={f.id}>{destinationPath(f.id)}</option>)}</select></label><label><input type="checkbox" name="resetStatuses" defaultChecked disabled={busy}/> איפוס סימוני ✓ / ✗ בטבלה החדשה</label><p>כל השמות והתוכן יועתקו. בקובץ סרוק או באקסל מצורף יועתק הקובץ כפי שהוא.</p>{error&&<p role="alert">{error}</p>}<button className="button primary" disabled={busy}>{busy?'מעתיק…':'יצירת עותק'}</button></form></Modal>}
-    {creating&&<Modal title="מעקב חדש" close={()=>setCreating(false)}><form onSubmit={e=>{e.preventDefault();if(dirty&&!window.confirm("לעבור למעקב חדש ללא שמירת השינויים?"))return;const f=new FormData(e.currentTarget);fresh(String(f.get("title")),initialColumns);}}><label>שם הטבלה<input name="title" required minLength={2} maxLength={160}/></label><p>נקודת פתיחה: 50 שורות עם שם וסימון ✓ או ✗. אפשר להוסיף שורות ועמודות. עמודות פתיחה: א׳, ב׳, ג׳, ד׳, ה׳, צמ״ה ופלס״ם.</p><button className="button primary">יצירת טבלה</button></form></Modal>}
+    {creating&&<Modal title="מעקב חדש" close={()=>setCreating(false)}><form onSubmit={e=>{e.preventDefault();if(dirty&&!window.confirm("לעבור למעקב חדש ללא שמירת השינויים?"))return;const f=new FormData(e.currentTarget);fresh(String(f.get("title")),f.get("layout")==="company"?initialColumns:null);}}><label>שם הטבלה<input name="title" required minLength={2} maxLength={160}/></label><label>סוג טבלה<select name="layout" defaultValue="flexible"><option value="flexible">טבלה גמישה</option><option value="company">מעקב פלוגות עם סימון ✓ / ✗</option></select></label><p>בטבלה גמישה אפשר לערוך תאים, לסדר שורות ועמודות ולמזג תאים. במעקב פלוגות נשמר המבנה הקיים עם 50 שורות לפתיחה.</p><button className="button primary">יצירת טבלה</button></form></Modal>}
   </div>;
 }
