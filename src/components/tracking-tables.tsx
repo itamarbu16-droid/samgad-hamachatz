@@ -24,6 +24,15 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   const [title,setTitle]=useState(initialTitle);
   const [flexible,setFlexible]=useState<FlexibleTracker|null>(null);
   const [flexibleInstance,setFlexibleInstance]=useState(0);
+  const editorHeading=useRef<HTMLHeadingElement>(null);
+  const [editorVisits,setEditorVisits]=useState(0);
+  useEffect(()=>{
+    // Opening the editor must move focus from the card but not open a phone keyboard.
+    const heading=editorHeading.current;
+    if(!editorVisits||!heading)return;
+    heading.focus({preventScroll:true});
+    heading.scrollIntoView({block:"start",inline:"nearest"});
+  },[editorVisits]);
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[dirty,setDirty]=useState(false);
   const [error,setError]=useState(""),[notice,setNotice]=useState(""),[creating,setCreating]=useState(false);
   const requestId=useRef("");
@@ -172,7 +181,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
         if(!grid)throw new Error("לא ניתן לפתוח את מבנה המעקב. המעקב השמור לא שונה");
         if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
         savedTracker.current=null;shifts.current=[];setUndoShift(null);setSaveError("");
-        setFlexible(grid);setFlexibleInstance(n=>n+1);setActive(true);setSelected(d.entry);setTitle(d.entry.title);setDirty(false);setNotice("");
+        setFlexible(grid);setFlexibleInstance(n=>n+1);setActive(true);setSelected(d.entry);setTitle(d.entry.title);setDirty(false);setNotice("");setEditorVisits(n=>n+1);
         return;
       }
       if(!Array.isArray(parsed.columns)||!Array.isArray(parsed.rows))throw new Error("הפריט אינו טבלת מעקב תקינה");
@@ -181,7 +190,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       const opened=openTrackingSheet(parsed);
       savedTracker.current={sheet:opened,title:d.entry.title};
       shifts.current=[];setUndoShift(null);
-      setActive(true);setSelected(d.entry);setTitle(d.entry.title);setSheet(opened);setDirty(false);setNotice("");setSaveError("");
+      setActive(true);setSelected(d.entry);setTitle(d.entry.title);setSheet(opened);setDirty(false);setNotice("");setSaveError("");setEditorVisits(n=>n+1);
     }catch(e){setError(e instanceof Error?e.message:"לא ניתן לפתוח");}finally{setBusy(false);}
   }
   function fresh(name:string,columns:Column[]|null){
@@ -189,7 +198,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     requestId.current=crypto.randomUUID();setSelected(null);setTitle(name);
     setFlexible(columns?null:emptyFlexibleTracker());setFlexibleInstance(n=>n+1);
     if(columns)setSheet({columns,rows:Array.from({length:INITIAL_TRACKING_ROWS},()=>({}))});
-    setDirty(true);setCreating(false);setNotice("");
+    setDirty(true);setCreating(false);setNotice("");setEditorVisits(n=>n+1);
   }
   async function saveFlexible(grid:FlexibleTracker){
     if(saveInProgress.current)return;
@@ -312,6 +321,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     })}
     {folderId==="trackers"&&!loading&&!entries.some(e=>e.title===initialTitle)&&<button className="document-folder-card" disabled={!canWrite||busy} onClick={()=>{if(!dirty||window.confirm("להחליף את הטבלה שלא נשמרה?"))fresh(initialTitle,initialColumns);}}><strong>{initialTitle}</strong><span>טבלה מוכנה למילוי — שמירה תוסיף אותה למעקבים</span></button>}</div>
     {loading?<p role="status">טוען מעקבים…</p>:active?<section className="panel tracking-editor" aria-busy={busy}>
+      <h2 ref={editorHeading} tabIndex={-1} style={{scrollMarginBlockStart:76}}>{editable?"עריכת מעקב":"תצוגת מעקב"}</h2>
       <label>שם הטבלה<input value={title} maxLength={160} disabled={!editable||busy||Boolean(selected&&!manager&&selected.creatorId!==userId)} onChange={e=>{setTitle(e.target.value);setDirty(true);setUndoShift(null);}} /></label>
       {flexible?<>{dirty&&<p role="status">שינויים לא נשמרו</p>}
         <FlexibleTrackerEditor key={flexibleInstance} grid={flexible} editable={editable} busy={busy} onChange={next=>{setFlexible(next);setDirty(true);setNotice("");}}/></>:<>

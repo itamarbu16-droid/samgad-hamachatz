@@ -4,7 +4,7 @@ import { signInThroughForm } from "./login";
 async function signIn(page: Page) {
   await signInThroughForm(page);
   await expect(
-    page.getByRole("heading", { name: "הכול ברור. מכאן מתקדמים." }),
+    page.getByRole("heading", { name: "סמג״ד המחץ", exact: true }),
   ).toBeVisible();
   const response = await page.request.get("/api/workspace");
   expect(response.ok()).toBeTruthy();
@@ -63,7 +63,7 @@ test("submit and resolve a decision through the actual UI", async ({
   const workspace = await signIn(page);
   const title = `בקשת החלטה לבדיקה ${Date.now()}`;
   await page.goto("/?view=decisions");
-  await page.getByRole("button", { name: "בקשה להחלטה", exact: true }).click();
+  await page.getByRole("button", { name: "בקשה חדשה", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "בקשה להחלטה" });
   await dialog.getByLabel("נושא ההחלטה").fill(title);
   await dialog
@@ -115,7 +115,7 @@ test("dashboard is RTL and fits the viewport", async ({ page }, testInfo) => {
     path: `test-results/dashboard-${testInfo.project.name}.png`,
     fullPage: true,
   });
-  await page.getByRole("button", { name: "יצירת משימה", exact: true }).click();
+  await page.getByRole("button", { name: "הוספה מהירה", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(
     await page.evaluate(

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './workspace-refresh.css';
 import OfflineStatus from '@/components/offline-status';
 import BattalionOpening from '@/components/battalion-opening';
 export const metadata: Metadata = {

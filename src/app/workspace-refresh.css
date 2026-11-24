@@ -1,0 +1,135 @@
+/* Quiet charcoal surfaces, an orange action accent, and readable mobile hierarchy. */
+.command-home .main-content {
+  padding-top: clamp(12px, 3vw, 32px);
+  max-width: 990px;
+}
+
+.workspace-masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-block-end: 14px;
+  padding: 18px;
+  border: 1px solid #38332f;
+  border-radius: 21px;
+  background: radial-gradient(ellipse at 100% 0%, #d9691c25, transparent 64%), #181719;
+}
+.workspace-masthead-title, .workspace-masthead-tools, .workspace-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.workspace-masthead-title > div { min-width: 0; overflow-wrap: anywhere; }
+.workspace-masthead-title h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(20px, 4.9vw, 31px);
+  font-weight: 700;
+  letter-spacing: -.025em;
+  line-height: 1.15;
+}
+.workspace-masthead-title time, .workspace-home-account, .workspace-demo { color: var(--muted); font-size: .8125rem; line-height: 1.4; }
+.workspace-masthead-emblem {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 49px;
+  height: 49px;
+  border-radius: 13px;
+  border: 1px solid #ff963f55;
+  background: #171215 url('/brand/605-icon-192.png') center / cover no-repeat;
+}
+.workspace-topbar-brand .workspace-masthead-emblem { width: 31px; height: 31px; border-radius: 9px; }
+.workspace-topbar-brand strong { color: var(--text); font-weight: 600; }
+.workspace-masthead-tools { gap: 6px; }
+.workspace-masthead-tools .icon-button { color: #f5ece4; background: #242224; border-color: #443b33; }
+.workspace-masthead-tools .icon-button:hover { background: #35291e; border-color: #a16033; }
+.workspace-bell { position: relative; }
+.workspace-bell i { position: absolute; inset-block-start: 7px; inset-inline-end: 8px; width: 7px; height: 7px; border-radius: 50%; background: #ff963f; }
+.workspace-home-add { justify-self: start; min-width: min(100%, 145px); }
+.workspace-page-heading { margin-block: 2px 18px; align-items: center; }
+.workspace-page-heading h1 { margin: 0; line-height: 1.25; font-weight: 700; min-width: 0; }
+.workspace-page-heading > .button { flex: 0 0 auto; }
+
+.workspace-overview .command-snapshot { margin: 0 0 13px; }
+.workspace-overview .command-snapshot h2, .workspace-overview .command-panel h2 { font-weight: 650; }
+.workspace-overview .snapshot-note { margin-block-end: 9px; }
+.workspace-overview .command-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.workspace-overview .command-stats button { justify-content: center; min-height: 64px; padding: 8px 3px; }
+.workspace-overview .command-stats button:hover { border-color: #835435; background: #222021; }
+.workspace-overview .command-stats span { line-height: 1.25; }
+.workspace-overview .command-shortcuts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 121px), 1fr));
+  gap: 7px;
+  margin: 0 0 13px;
+}
+.workspace-overview .command-tile {
+  min-height: 62px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 13px;
+}
+.workspace-overview .command-tile > svg { flex: 0 0 auto; margin: 0; width: 22px; height: 22px; }
+.workspace-overview .command-tile > strong { display: block; font-size: .9375rem; line-height: 1.18; font-weight: 600; }
+.workspace-overview .command-panel-heading { margin-block-end: 2px; }
+.workspace-overview .command-panel-heading > button, .workspace-overview .command-access > a { min-height: 44px; display: inline-flex; align-items: center; }
+.workspace-overview .command-task { border-radius: 0; }
+.workspace-overview .command-task:hover { color: #ffbb87; }
+.workspace-overview .command-access { margin: 12px 0 0; }
+
+.workspace-more { gap: 13px; }
+.workspace-more-group {
+  display: grid;
+  gap: 1px;
+  background: #242427;
+  border: 1px solid #3b3a3e;
+  border-radius: 14px;
+  padding: 4px;
+}
+.workspace-more .nav-item { min-height: 48px; width: 100%; border-radius: 10px; text-align: start; }
+.workspace-more .nav-item svg { width: 21px; flex: 0 0 auto; color: #ffad68; }
+.workspace-more .workspace-more-search { background: #2d251f; border: 1px solid #514133; color: #ffcca4; }
+.workspace-more .push-settings { margin: 0; padding: 8px 12px; }
+.task-list-hint { margin: 2px 0 8px; }
+
+@media (max-width: 760px) {
+  .workspace-topbar-brand { gap: 7px; }
+  .battalion-app .workspace-desktop-refresh { display: none; }
+  .battalion-app .topbar-actions { gap: 5px; }
+  .battalion-app .topbar-actions .demo-label { display: none; } /* home and footer still identify fixtures */
+  .workspace-masthead { padding: 13px 10px; gap: 10px 7px; }
+  .workspace-masthead-title { gap: 7px; }
+  .workspace-masthead-emblem { width: 38px; height: 38px; border-radius: 10px; }
+  .workspace-masthead-title time, .workspace-home-account, .workspace-demo { font-size: .75rem; }
+  .workspace-overview .command-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .workspace-overview .command-tile { min-height: 59px; gap: 5px; }
+  .workspace-overview .command-tile > svg { width: 20px; height: 20px; }
+  .workspace-overview .command-tile > strong { font-size: .8125rem; }
+  .workspace-overview .command-stats { gap: 5px; }
+  .workspace-overview .command-stats span { font-size: .75rem; }
+
+  .battalion-app .mobile-nav {
+    justify-content: space-evenly;
+    border-color: #3c3430;
+    background: #191719f2;
+    padding-inline: max(env(safe-area-inset-left), env(safe-area-inset-right), 6px);
+  }
+  .battalion-app .mobile-nav button {
+    min-height: 54px;
+    gap: 4px;
+    border-radius: 13px;
+    padding-inline: 2px;
+  }
+  .battalion-app .mobile-nav button.active { background: #33251f; color: #ffbd87; }
+  .battalion-app .mobile-nav button.active svg { background: transparent; }
+  .battalion-app .mobile-nav button span { font-size: clamp(.625rem, 3vw, .75rem); line-height: 1.25; }
+  .battalion-app .mobile-nav button:focus-visible { outline-offset: -3px; }
+}
+
+@media (max-width: 350px) {
+  .workspace-overview .command-tile { flex-direction: column; }
+  .workspace-topbar-brand strong { font-size: .8125rem; }
+}

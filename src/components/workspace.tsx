@@ -16,7 +16,8 @@ import {TaskFilters} from "./task-filters";
 import {Schedule} from "./schedule";
 import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from "@/lib/task-display";
 import {DeadlineRequests} from "./deadline-requests";
-import {PushSettings,PushAutoRestore} from "./push-settings";
+import {PushAutoRestore} from "./push-settings";
+import {WorkspaceHomeHeader,WorkspaceMobileNav,WorkspaceMore} from "./workspace-navigation";
 import PersonalRhythm from "./personal-rhythm";
 import ResponsibilitySummary from "./responsibility-summary";
 import TaskTools from "./task-tools";
@@ -34,7 +35,6 @@ import {
   LogOut,
   Check,
   AlertCircle,
-  ChevronLeft,
   RefreshCw,
   UserRound,
   CalendarDays,
@@ -43,8 +43,6 @@ import {
   Send,
   ShieldCheck,
   LoaderCircle,
-  Menu,
-  House,
 } from "lucide-react";
 type Person = { id: string; organizationId?:string; workspaceOwnerId?:string; name: string; role: string; permissions?: {editAll:boolean;manageAccess:boolean;guest:boolean} };
 type Task = {
@@ -394,7 +392,15 @@ function WorkspaceContent() {
     )
       setModal("");
   }
-  const title = view==="access"?"הרשאות":nav.find((n) => n[0] === view)?.[1] || "ראשי";
+  const title = view==="access"?"ניהול גישה":nav.find((n) => n[0] === view)?.[1] || "ראשי";
+  const localCreate = view === "decisions" ? canWrite : manager && !["dashboard","personal","tasks","library","records"].includes(view);
+  const openSearch = () => window.dispatchEvent(new Event("samgad:search"));
+  const openCapture = () => window.dispatchEvent(new Event("samgad:capture"));
+  function navigatePrimary(next: string) {
+    go(next);
+    setModal("");
+    requestAnimationFrame(() => document.getElementById("main-content")?.focus({preventScroll:true}));
+  }
   return (
     <div className={`app-shell battalion-app ${view === "dashboard" ? "command-home" : ""}`} >
       <a className="skip-link" href="#main-content">דילוג לתוכן</a>
@@ -439,7 +445,7 @@ function WorkspaceContent() {
               )}
             </button>
           ))}
-          {data.user.permissions?.manageAccess && <button className={view==="access"?"nav-item active":"nav-item"} onClick={()=>go("access")}><ShieldCheck size={19}/>ניהול גישה</button>}
+          {data.user.permissions?.manageAccess && <button className={view==="access"?"nav-item active":"nav-item"} aria-current={view==="access"?"page":undefined} onClick={()=>go("access")}><ShieldCheck size={19}/>ניהול גישה</button>}
         </nav>
         <div className="sidebar-bottom">
           <div className="safe-note">
@@ -479,12 +485,12 @@ function WorkspaceContent() {
       </aside>
       <div className="main-shell">
         <header className="topbar">
-          <div className="breadcrumb">
-            מרחב העבודה <ChevronLeft size={13} />
-            <strong>{title}</strong>
+          <div className="breadcrumb workspace-topbar-brand">
+            <span className="workspace-masthead-emblem" aria-hidden="true" />
+            <strong>{ownerInterface ? "סמג״ד המחץ" : "סגני המחץ"}</strong>
           </div>
           <div className="topbar-actions">
-            <button className="icon-button" aria-label="חיפוש בכל האפליקציה" onClick={() => window.dispatchEvent(new Event("samgad:search"))}><Search size={20}/></button>
+            <button className="icon-button" aria-label="חיפוש בכל האפליקציה" onClick={openSearch}><Search size={20}/></button>
             {data.user.permissions?.manageAccess && <button className="icon-button" aria-label="ניהול הרשאות" title="ניהול גישה לפי מייל" onClick={()=>go("access")}><ShieldCheck size={18}/></button>}
             {guest && <button className="button secondary" onClick={()=>location.href="/login"}>כניסה</button>}
             {data.demo && (
@@ -494,7 +500,7 @@ function WorkspaceContent() {
               </span>
             )}
             <button
-              className="icon-button"
+              className="icon-button workspace-desktop-refresh"
               aria-label="רענון מידע"
               onClick={() => void load()}
             >
@@ -504,53 +510,20 @@ function WorkspaceContent() {
           </div>
         </header>
         <main id="main-content" className="main-content" tabIndex={-1}>
+          {view === "dashboard" && <WorkspaceHomeHeader owner={ownerInterface} today={data.today} userName={guest?undefined:data.user.name} demo={data.demo}
+            canCapture={!guest&&["deputy","staff"].includes(data.user.role)} hasUpdates={Boolean(data.activity.length)}
+            onActivity={()=>go("activity")} onSearch={openSearch} onCapture={openCapture}/>}
           <DocumentUploadStatus/>
           <DeadlineRequests manager={ownerInterface}/>
-          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} showCapture={!["personal", "tasks", "library", "records"].includes(view)} onSaved={load} />
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">
-                {new Date().toLocaleDateString("he-IL", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  timeZone: "Asia/Jerusalem",
-                })}
-              </span>
-              <h1>
-                {view === "dashboard" ? "הכול ברור. מכאן מתקדמים." : title}
-              </h1>
-              <p>
-                {view === "dashboard"
-                  ? "המשימות, ההחלטות והאנשים שדורשים את תשומת הלב שלך."
-                  : view === "personal"
-                    ? "המשימות האישיות והשעל״ח שלך, במקום אחד."
-                    : view === "tasks"
-                      ? "אחריות ברורה. התקדמות מתועדת. שום דבר לא נופל בין הכיסאות."
-                      : view === "decisions"
-                        ? "הבקשות שמחכות לכיוון שלך, וההחלטות שכבר התקבלו."
-                        : view === "library"
-                          ? "פקודות, בד״חים, פורמטים ונהלים מסודרים בתיקיות."
-                          : view === "records"
-                            ? "סיכומי ישיבות וביקורות, בטקסט ובקבצים."
-                            : view === "domains"
-                              ? "מבט ממוקד על העבודה בכל תחום אחריות."
-                              : "כל שינוי משמעותי, מתועד במקום אחד."}
-              </p>
-            </div>
-            {!["personal", "tasks", "library", "records"].includes(view) &&
-              (manager || (view === "decisions" && canWrite)) && (
-                <button
-                  className="button primary"
-                  onClick={() =>
-                    view === "decisions" ? setModal("decision") : window.dispatchEvent(new Event("samgad:capture"))
-                  }
-                >
-                  <Plus size={18} />
-                  {view === "decisions" ? "בקשה להחלטה" : "יצירת משימה"}
-                </button>
-              )}
-          </div>
+          <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} showCapture={false} onSaved={load} />
+          {view !== "dashboard" && <div className="page-heading workspace-page-heading">
+            <h1>{title}</h1>
+            {localCreate && <button type="button" className="button primary" aria-haspopup="dialog"
+              onClick={view === "decisions" ? ()=>setModal("decision") : openCapture}>
+              <Plus size={18} aria-hidden="true" />
+              {view === "decisions" ? "בקשה חדשה" : "הוספת משימה"}
+            </button>}
+          </div>}
           {error && (
             <div className="error-banner" role="alert">
               <AlertCircle size={18} />
@@ -664,7 +637,7 @@ function WorkspaceContent() {
                 </label>
                 <label>מיון<select aria-label="מיון רשימת המשימות" value={sort} onChange={e=>{const p=new URLSearchParams(location.search);p.set("sort",e.target.value);history.replaceState({},"",location.pathname+"?"+p);window.dispatchEvent(new PopStateEvent("popstate"));}}>{Object.entries(taskSorts).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
               </TaskFilters>
-              <p className="task-swipe-help task-list-hint">החליקו משימה לפעולות מהירות · או לחצו על ⋯</p>
+              <details className="task-help task-list-hint"><summary>פעולות במשימה</summary><p>לחצו על ⋯ ליד משימה או החליקו הצידה.</p></details>
               {taskSelection.length>0 && canWrite && <div className="bulk-toolbar"><strong>{taskSelection.length} נבחרו</strong><button className="button primary" disabled={taskActions.busy} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && !["completed","cancelled"].includes(t.status) && (manager || t.ownerId===data.user.id) && (t.status!=="pending_review" || manager)).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:manager?"completed":"pending_review"}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>ביצוע / אישור</button>{manager && <><select aria-label="אחראי למשימות הנבחרות" value={batchOwner} onChange={e=>setBatchOwner(e.target.value)}><option value="">בחירת אחראי</option>{data.users.filter(u=>!["viewer","admin"].includes(u.role)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><button className="button secondary" disabled={taskActions.busy || !batchOwner} onClick={async()=>{const ops=filtered.filter(t=>taskSelection.includes(t.id) && manager).map(t=>({url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,ownerId:batchOwner}}));if(ops.length && await taskActions.run(ops))setTaskSelection([]);}}>שינוי אחראי</button></>}<button className="button secondary" onClick={()=>setTaskSelection([])}>ניקוי בחירה</button></div>}
               {filtered.length ? (
                 filtered.map(taskRow)
@@ -770,10 +743,12 @@ function WorkspaceContent() {
           </footer>
         </main>
       </div>
-      <nav className="mobile-nav" aria-label="ניווט ראשי">
-        {[["records","סיכומי ישיבות",NotebookPen],["tasks","משימות",CheckCheck],["dashboard","ראשי",House],["library","ספרייה",LibraryBig],["more","עוד",Menu]].map(([id,label,Icon])=>{const NavIcon=Icon as typeof Menu;return <button key={String(id)} className={(view===id||(id==="more"&&!["records","tasks","dashboard","library"].includes(view)))?"active":""} aria-current={(view===id||(id==="more"&&!["records","tasks","dashboard","library"].includes(view)))?"page":undefined} onClick={()=>id==="more"?setModal("navigation"):go(String(id))}><NavIcon size={24}/><span>{String(label)}</span></button>})}
-      </nav>
-      {modal === "navigation" && <Modal title="עוד במערכת" close={()=>setModal("")}><div className="more-navigation"><button className="nav-item" onClick={()=>{setModal("");window.dispatchEvent(new Event("samgad:search"));}}><Search size={22}/>חיפוש בכל האפליקציה</button><PushSettings/>{availableNav.map(([id,label,Icon])=><button className={view===id?"nav-item active":"nav-item"} aria-current={view===id?"page":undefined} key={id} onClick={()=>{go(id);setModal("");}}><Icon size={22}/>{label}</button>)}{data.user.permissions?.manageAccess&&<button className="nav-item" onClick={()=>{go("access");setModal("");}}><ShieldCheck size={22}/>ניהול גישה</button>}<button className="nav-item" onClick={()=>{setModal("");location.href="/login";}}><UserRound size={22}/>מסך כניסה</button></div></Modal>}
+      <WorkspaceMobileNav view={view} moreOpen={modal==="navigation"} onGo={navigatePrimary} onMore={()=>setModal("navigation")}/>
+      {modal === "navigation" && <WorkspaceMore items={availableNav} view={view} canManageAccess={Boolean(data.user.permissions?.manageAccess)}
+        onGo={navigatePrimary} onClose={()=>setModal("")}
+        onSearch={()=>{setModal("");openSearch();}}
+        onRefresh={()=>{setModal("");void load();}}
+        onLogin={()=>{setModal("");location.href="/login";}}/>}
       <TaskActionNotice/>
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}

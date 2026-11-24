@@ -31,6 +31,7 @@ import {
 } from "@/lib/document-folders";
 import {documentUploadError,prepareDocumentFiles,validateDocumentFiles,type DocumentUploadCache} from "@/lib/document-uploads";
 import { Modal, Empty } from "./workspace-primitives";
+import styles from "./document-library.module.css";
 
 type Attachment = { id: string; filename: string; byteSize: number; contentType?: string };
 const previewTypes = new Set(["application/pdf", "image/png", "image/jpeg"]);
@@ -99,6 +100,13 @@ export default function DocumentLibrary({
   const rootName = section === "library" ? "ספרייה" : "סיכומי ישיבות וביקורות";
   const catalog = folders.filter((item) => item.section === section);
   const current = catalog.find((item) => item.id === folder);
+  const trail:DocumentFolder[]=[];
+  const seen=new Set<string>();
+  let ancestor=current;
+  while(ancestor&&!seen.has(ancestor.id)){
+    seen.add(ancestor.id);trail.unshift(ancestor);
+    ancestor=catalog.find(item=>item.id===ancestor?.parent);
+  }
   const visibleFolders = catalog.filter((item) => item.parent === folder);
   const included = new Set<string>(catalog.map((item) => item.id));
   const visiblePending=pendingDocuments.filter(job=>included.has(job.draft.folderId)
@@ -240,7 +248,8 @@ export default function DocumentLibrary({
       {organizer.toolbar}
       {organizer.feedback}
       {organizer.dialogs}
-      {tracking ? <>
+      {tracking ? <div className={styles.tracking}>
+        <p className={styles.trackingPath}>{[rootName,...trail.map(item=>item.name)].join(" / ")}</p>
         {pendingCards.length>0&&<div className="document-entry-list">{pendingCards}</div>}
         <TrackingTables key={folder} userId={userId} role={role} editAll={editAll}
         folderActions={organizer.folderAction} folderPress={organizer.folderPress} canContextFolder={organizer.canContextFolder} cutEntry={entry=>organizer.cutEntry({...entry,folderId:folder!})} refreshKey={trackingVersion}
@@ -248,40 +257,21 @@ export default function DocumentLibrary({
         foldersChanged={()=>void load()}
         back={() => {openFolder(null);void load();}}
         addFile={()=>{setCreating(true);setSelected(null);setFiles([]);setError('');uploadCache.current.clear();}}
-        openFile={(id,edit)=>void openEntry({id},edit)} /></> : <>
+        openFile={(id,edit)=>void openEntry({id},edit)} /></div> : <>
       {creatingFolder && <Modal title="הוספת תיקייה" close={()=>setCreatingFolder(false)}><form onSubmit={async event=>{
         event.preventDefault();const form=new FormData(event.currentTarget);setBusy(true);setError('');
         try{const response=await apiFetch('/api/documents/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.get('name'),parent:form.get('parent')||null,section,clientRequestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw Error(result.error||'לא ניתן ליצור תיקייה');await load();setCreatingFolder(false);openFolder(result.folder.id);setNotice('התיקייה נוספה');window.dispatchEvent(new Event('samgad:saved'));}catch(error){setError(error instanceof Error?error.message:'לא ניתן ליצור תיקייה');}finally{setBusy(false);}
       }}><label>שם התיקייה<input name="name" required maxLength={120}/></label><label>בתוך תיקייה<select name="parent" defaultValue={folder||''}><option value="">{rootName} — תיקייה ראשית</option>{catalog.filter(item=>item.id!=='trackers').map(item=><option key={item.id} value={item.id}>{folderPath(item.id,folders)}</option>)}</select></label><button className="button primary" disabled={busy}>{busy?'שומר…':'יצירת תיקייה'}</button>{error&&<p role="alert">{error}</p>}</form></Modal>}
 
-      <div className="document-breadcrumbs">
-        <button onClick={() => openFolder(null)}>{rootName}</button>
-        {current?.parent && (
-          <>
-            <ChevronLeft size={15} />
-            <button onClick={() => openFolder(current.parent)}>
-              {catalog.find((item) => item.id === current.parent)?.name}
-            </button>
-          </>
-        )}
-        {current && (
-          <>
-            <ChevronLeft size={15} />
-            <strong>{current.name}</strong>
-          </>
-        )}
-      </div>
-      <div className="document-toolbar">
-        <label className="search-field">
-          <Search size={17} />
-          <input
-            aria-label={`חיפוש ב${rootName}`}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="חיפוש במסמכים ובקבצים"
-          />
-        </label>
-        {manager && <button className="button secondary" onClick={()=>setCreatingFolder(true)}><Folder size={17}/>הוספת תיקייה</button>}
+      <nav className={`document-breadcrumbs ${styles.breadcrumbs}`} aria-label="מיקום בספריית המסמכים">
+        {current?<button onClick={() => openFolder(null)}>{rootName}</button>:<strong aria-current="page">{rootName}</strong>}
+        {trail.map(item=><span key={item.id} className={styles.crumb}>
+          <ChevronLeft size={15} aria-hidden="true"/>
+          {item.id===current?.id?<strong aria-current="page">{item.name}</strong>:<button onClick={()=>openFolder(item.id)}>{item.name}</button>}
+        </span>)}
+      </nav>
+      <div className={`document-toolbar ${styles.toolbar}`}>
+        {(manager||canWrite)&&<div className={styles.actions}>
         {canWrite && (
           <button
             className="button primary"
@@ -295,6 +285,17 @@ export default function DocumentLibrary({
             {section === "records" ? "הוספת סיכום" : "הוספת מסמך / קובץ"}
           </button>
         )}
+        {manager && <button className="button secondary" onClick={()=>setCreatingFolder(true)}><Folder size={17}/>הוספת תיקייה</button>}
+        </div>}
+        <label className="search-field">
+          <Search size={17} />
+          <input
+            aria-label={`חיפוש ב${rootName}`}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="חיפוש במסמכים ובקבצים"
+          />
+        </label>
       </div>
       {error && (
         <p className="error-banner" role="alert">
@@ -382,7 +383,7 @@ export default function DocumentLibrary({
           <Empty>
             {query
               ? "לא נמצאו מסמכים התואמים לחיפוש."
-              : "התיקייה ריקה. אפשר להוסיף קובץ או סיכום בטקסט."}
+              : canWrite ? `התיקייה ריקה. להוספה, לחצו על ״${section==="records"?"הוספת סיכום":"הוספת מסמך / קובץ"}״.` : "התיקייה ריקה."}
           </Empty>
         )}
       {loading && <p role="status">טוענים את המסמכים…</p>}
@@ -480,7 +481,7 @@ export default function DocumentLibrary({
                   }}
                 />
                 <small>
-                  PDF, מסמכי Office, טקסט ותמונות. עד 25 מ״ב לקובץ, עד 5 קבצים ועד 100 מ״ב בכל שמירה.
+                  {!selected?.attachments.length && "בלי קובץ? אפשר להוסיף טקסט במקום. "}עד 5 קבצים, עד 25 מ״ב לקובץ ועד 100 מ״ב בסך הכול.
                 </small>
               </label>
               {files.map((file) => (
