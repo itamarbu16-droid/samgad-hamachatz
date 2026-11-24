@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/offline";
 import {useTrackerDrag} from "./use-tracker-drag";
 import { Modal } from "./workspace-primitives";
 import { Plus, MoreHorizontal, Pencil, FolderInput, Scissors, Copy, Trash2 } from "lucide-react";
+import TrackerAssistant from "./tracker-assistant";
 import FlexibleTrackerEditor from "./flexible-tracker";
 import { emptyFlexibleTracker, FLEXIBLE_TRACKER_KIND, parseFlexibleTracker, type FlexibleTracker } from "@/lib/flexible-tracker";
 import {
@@ -35,6 +36,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
   },[editorVisits]);
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[dirty,setDirty]=useState(false);
   const [error,setError]=useState(""),[notice,setNotice]=useState(""),[creating,setCreating]=useState(false);
+  const [assisting,setAssisting]=useState(false),[assistantDraft,setAssistantDraft]=useState(false);
   const requestId=useRef("");
   const savedTracker=useRef<{sheet:Sheet;title:string}|null>(null);
   const [saveError,setSaveError]=useState("");
@@ -181,24 +183,24 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
         if(!grid)throw new Error("לא ניתן לפתוח את מבנה המעקב. המעקב השמור לא שונה");
         if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
         savedTracker.current=null;shifts.current=[];setUndoShift(null);setSaveError("");
-        setFlexible(grid);setFlexibleInstance(n=>n+1);setActive(true);setSelected(d.entry);setTitle(d.entry.title);setDirty(false);setNotice("");setEditorVisits(n=>n+1);
+        setAssistantDraft(false);setFlexible(grid);setFlexibleInstance(n=>n+1);setActive(true);setSelected(d.entry);setTitle(d.entry.title);setDirty(false);setNotice("");setEditorVisits(n=>n+1);
         return;
       }
       if(!Array.isArray(parsed.columns)||!Array.isArray(parsed.rows))throw new Error("הפריט אינו טבלת מעקב תקינה");
       if(dirty&&!window.confirm("יש שינויים שלא נשמרו. לצאת בלעדיהם?"))return;
-      setFlexible(null);
+      setAssistantDraft(false);setFlexible(null);
       const opened=openTrackingSheet(parsed);
       savedTracker.current={sheet:opened,title:d.entry.title};
       shifts.current=[];setUndoShift(null);
       setActive(true);setSelected(d.entry);setTitle(d.entry.title);setSheet(opened);setDirty(false);setNotice("");setSaveError("");setEditorVisits(n=>n+1);
     }catch(e){setError(e instanceof Error?e.message:"לא ניתן לפתוח");}finally{setBusy(false);}
   }
-  function fresh(name:string,columns:Column[]|null){
+  function fresh(name:string,columns:Column[]|null,fromAssistant?:FlexibleTracker){
     savedTracker.current=null;shifts.current=[];setUndoShift(null);setSaveError("");setActive(true);
     requestId.current=crypto.randomUUID();setSelected(null);setTitle(name);
-    setFlexible(columns?null:emptyFlexibleTracker());setFlexibleInstance(n=>n+1);
+    setAssistantDraft(Boolean(fromAssistant));setFlexible(columns?null:fromAssistant??emptyFlexibleTracker());setFlexibleInstance(n=>n+1);
     if(columns)setSheet({columns,rows:Array.from({length:INITIAL_TRACKING_ROWS},()=>({}))});
-    setDirty(true);setCreating(false);setNotice("");setEditorVisits(n=>n+1);
+    setDirty(true);setCreating(false);setAssisting(false);setNotice("");setEditorVisits(n=>n+1);
   }
   async function saveFlexible(grid:FlexibleTracker){
     if(saveInProgress.current)return;
@@ -216,7 +218,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       if(!response.ok)throw Error(data.error||"השמירה נכשלה");
       if(!mounted.current)return;
       setSelected({id:data.entry.id,title,creatorId:selected?.creatorId||userId,version:(selected?.version??0)+1});
-      setDirty(false);setNotice("המעקב נשמר");
+      setAssistantDraft(false);setDirty(false);setNotice("המעקב נשמר");
       window.dispatchEvent(new Event('samgad:saved'));
       await load().catch(()=>setError("המעקב נשמר, אך לא ניתן לעדכן את רשימת המעקבים"));
     }catch(error){if(mounted.current)setSaveError(error instanceof Error?error.message:"השמירה נכשלה");}
@@ -323,6 +325,7 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
     {loading?<p role="status">טוען מעקבים…</p>:active?<section className="panel tracking-editor" aria-busy={busy}>
       <h2 ref={editorHeading} tabIndex={-1} style={{scrollMarginBlockStart:76}}>{editable?"עריכת מעקב":"תצוגת מעקב"}</h2>
       <label>שם הטבלה<input value={title} maxLength={160} disabled={!editable||busy||Boolean(selected&&!manager&&selected.creatorId!==userId)} onChange={e=>{setTitle(e.target.value);setDirty(true);setUndoShift(null);}} /></label>
+      {assistantDraft&&<p role="status">תצוגה מקדימה. אפשר לערוך לפני היצירה בתיקייה {currentFolder?.name||"מעקבים"}.</p>}
       {flexible?<>{dirty&&<p role="status">שינויים לא נשמרו</p>}
         <FlexibleTrackerEditor key={flexibleInstance} grid={flexible} editable={editable} busy={busy} onChange={next=>{setFlexible(next);setDirty(true);setNotice("");}}/></>:<>
       <div className="tracking-structure-toolbar">
@@ -346,11 +349,11 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       {editable&&<div className="tracking-structure-footer"><button type="button" className="button secondary" disabled={busy||sheet.rows.length>=MAX_TRACKING_ROWS} onClick={addRow}><Plus aria-hidden="true" size={17}/> הוספת שורה בסוף הטבלה</button></div>}
       {editable&&(sheet.rows.length>=MAX_TRACKING_ROWS||sheet.columns.length>=MAX_TRACKING_COLUMNS)&&<p className="muted">עד {MAX_TRACKING_ROWS} שורות ו־{MAX_TRACKING_COLUMNS} עמודות במעקב. אפשר לפתוח מעקב נוסף.</p>}
       </>}
-      <div className="document-toolbar">{selected&&editable&&<button className="button secondary" disabled={busy} onClick={()=>askCopy(selected)}>שכפול לשבוע נוסף</button>}{editable&&<button className="button primary" disabled={busy||!dirty||title.trim().length<2} onClick={()=>void save()}>{busy?"שומר…":"שמירת המעקב"}</button>}</div>
+      <div className="document-toolbar">{selected&&editable&&<button className="button secondary" disabled={busy} onClick={()=>askCopy(selected)}>שכפול לשבוע נוסף</button>}{editable&&<button className="button primary" disabled={busy||!dirty||title.trim().length<2} onClick={()=>void save()}>{busy?"שומר…":assistantDraft?"יצירת המעקב":"שמירת המעקב"}</button>}</div>
       {undoShift&&<button type="button" className="button secondary" disabled={busy} onClick={undoColumnShift}>ביטול המחיקה והקידום</button>}
       {saveError&&<p className="error-banner" role="alert">{saveError}</p>}
       {notice==="המעקב נשמר"&&<p role="status">{notice}</p>}
-      <small>{flexible?"השינויים נשמרים רק בלחיצה על שמירת המעקב.":"למחיקת שם ולהשארת משבצת ריקה, מחקו את הטקסט. לקידום הטור, לחצו לחיצה ארוכה על השם או על ⋯. השינויים נשמרים רק בלחיצה על שמירה."}</small>
+      <small>{flexible?(assistantDraft?"המעקב יופיע בתיקייה אחרי לחיצה על יצירת המעקב.":"השינויים נשמרים רק בלחיצה על שמירת המעקב."):"למחיקת שם ולהשארת משבצת ריקה, מחקו את הטקסט. לקידום הטור, לחצו לחיצה ארוכה על השם או על ⋯. השינויים נשמרים רק בלחיצה על שמירה."}</small>
     </section>:<p>בחר טבלה או קובץ, או הוסף מעקב חדש כדי להתחיל.</p>}
     {cellAction&&editable&&<Modal title="פעולות על שם במעקב" close={()=>setCellAction(null)}>
       <p>{cellAction.column.name}, שורה {cellAction.index+1}. השם והסימון יימחקו. רק הטור הזה יתקדם שורה אחת ומספר השורות לא ישתנה.</p>
@@ -391,6 +394,10 @@ export default function TrackingTables({userId,role,back,addFile,openFile,refres
       try{const r=await apiFetch(`/api/documents/${copy.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:form.get('title'),folderId:form.get('folderId'),resetStatuses:form.get('resetStatuses')==='on',clientRequestId:copyRequest.current})});const d=await r.json();if(!r.ok)throw Error(d.error);setCopy(null);setNotice('העותק נשמר — המקור נשאר ללא שינוי');await load();window.dispatchEvent(new Event('samgad:saved'));}
       catch(e){setError(e instanceof Error?e.message:'לא ניתן לשכפל');}finally{setBusy(false);}
     }}><label>שם המעקב החדש<input name="title" required minLength={2} maxLength={160} defaultValue={`${copy.title.slice(0,140)} — שבוע נוסף`} disabled={busy}/></label><label>תיקיית היעד<select name="folderId" defaultValue={folderId} disabled={busy}>{destinations.map(f=><option key={f.id} value={f.id}>{destinationPath(f.id)}</option>)}</select></label><label><input type="checkbox" name="resetStatuses" defaultChecked disabled={busy}/> איפוס סימוני ✓ / ✗ בטבלה החדשה</label><p>כל השמות והתוכן יועתקו. בקובץ סרוק או באקסל מצורף יועתק הקובץ כפי שהוא.</p>{error&&<p role="alert">{error}</p>}<button className="button primary" disabled={busy}>{busy?'מעתיק…':'יצירת עותק'}</button></form></Modal>}
-    {creating&&<Modal title="מעקב חדש" close={()=>setCreating(false)}><form onSubmit={e=>{e.preventDefault();if(dirty&&!window.confirm("לעבור למעקב חדש ללא שמירת השינויים?"))return;const f=new FormData(e.currentTarget);fresh(String(f.get("title")),f.get("layout")==="company"?initialColumns:null);}}><label>שם הטבלה<input name="title" required minLength={2} maxLength={160}/></label><label>סוג טבלה<select name="layout" defaultValue="flexible"><option value="flexible">טבלה גמישה</option><option value="company">מעקב פלוגות עם סימון ✓ / ✗</option></select></label><p>בטבלה גמישה אפשר לערוך תאים, לסדר שורות ועמודות ולמזג תאים. במעקב פלוגות נשמר המבנה הקיים עם 50 שורות לפתיחה.</p><button className="button primary">יצירת טבלה</button></form></Modal>}
+    {creating&&<Modal title="מעקב חדש" close={()=>setCreating(false)}><form onSubmit={e=>{e.preventDefault();if(dirty&&!window.confirm("לעבור למעקב חדש ללא שמירת השינויים?"))return;const f=new FormData(e.currentTarget);fresh(String(f.get("title")),f.get("layout")==="company"?initialColumns:null);}}><label>שם הטבלה<input name="title" required minLength={2} maxLength={160}/></label><label>סוג טבלה<select name="layout" defaultValue="flexible"><option value="flexible">טבלה גמישה</option><option value="company">מעקב פלוגות עם סימון ✓ / ✗</option></select></label><p>בטבלה גמישה אפשר לערוך תאים, לסדר שורות ועמודות ולמזג תאים. במעקב פלוגות נשמר המבנה הקיים עם 50 שורות לפתיחה.</p><button className="button primary">יצירת טבלה</button> <button type="button" className="button secondary" onClick={()=>{setCreating(false);setAssisting(true);}}>תארו טבלה לעוזר</button></form></Modal>}
+    {assisting&&canWrite&&<TrackerAssistant folder={currentFolder?.name||"מעקבים"} close={()=>setAssisting(false)} onPreview={({title,grid})=>{
+      if(busy||!canWrite||(dirty&&!window.confirm("לעבור לתצוגה המקדימה בלי לשמור את השינויים הקודמים?")))return;
+      fresh(title,null,grid);
+    }}/>}
   </div>;
 }
