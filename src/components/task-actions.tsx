@@ -7,11 +7,11 @@ import {Modal} from './workspace-primitives';
 import {addDays} from '@/lib/rhythm';
 import {localDate} from '@/server/policy';
 import {CalendarTaskDialog} from './task-calendar';
-import type {ManualReminderResult} from '@/lib/manual-task-reminder';
+import {manualPhoneActionHeader,type ManualReminderResult} from '@/lib/manual-task-reminder';
 export type TaskActionRef={kind:'task'|'rhythm';id:string;occurrenceId?:string};
 export type TaskActionProps={task:TaskActionRef;title:string;version:number;occurrenceVersion?:number;dueDate:string|null;pinned:boolean;canEdit:boolean;canDelete:boolean;canExtendDirectly?:boolean;canMoveToPersonal?:boolean;canRemind?:boolean;recurring?:boolean;onSaved:()=>Promise<void>};
 const rowKey=(task:TaskActionRef)=>`${task.kind}:${task.id}:${task.occurrenceId||''}`;
-async function send(url:string,body:object){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.error||'הפעולה לא נשמרה');return j;}
+async function send(url:string,body:object,extraHeaders?:Record<string,string>){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...extraHeaders},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.error||'הפעולה לא נשמרה');return j;}
 type SwipeAction = 'pin'|'delete'|'extend'|'calendar';
 type SwipeRowProps = Pick<TaskActionProps,'task'|'title'|'pinned'|'canEdit'|'canDelete'|'canExtendDirectly'> & {className?:string;children:ReactNode;id?:string};
 export function SwipeTaskRow({task,title,pinned,canEdit,canDelete,canExtendDirectly=false,className='',children,id}:SwipeRowProps){
@@ -130,7 +130,7 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
   if(busy||!props.canRemind)return;
   setBusy(true);setError('');
   try{
-   const result=await send('/api/push/task-reminder',{...task,version,...(task.kind==='rhythm'?{occurrenceVersion}:{})}) as ManualReminderResult;
+   const result=await send('/api/push/task-reminder',{...task,version,...(task.kind==='rhythm'?{occurrenceVersion}:{})},{[manualPhoneActionHeader]:'1'}) as ManualReminderResult;
    setReminderResult(result);
   }catch(error){setError(error instanceof Error?error.message:'לא ניתן ליצור תזכורת כרגע');}
   finally{setBusy(false);}
@@ -173,8 +173,11 @@ export function TaskActions(props:TaskActionProps & {children?:ReactNode}){
    {reminderResult?<div role="status">
     {reminderResult.created>0?<p>תזכורת זמינה באפליקציה ל־{reminderResult.created} אחראים.</p>:!reminderResult.throttled&&<p>אין אחראים שעדיין ממתינים לתזכורת.</p>}
     {reminderResult.throttled>0&&<p>ל־{reminderResult.throttled} כבר נוצרה תזכורת לאחרונה.</p>}
-    <p>לא נשלחה התראה לטלפון.</p>
-   </div>:<><p>התזכורת תופיע באפליקציה רק לאחראים שטרם דיווחו על ביצוע.</p>
+    {reminderResult.accepted>0&&<p>ספק ההתראות קיבל את הבקשה עבור {reminderResult.accepted} אחראים. קבלה בטלפון לא אומתה.</p>}
+    {reminderResult.notEnrolled>0&&<p>ל־{reminderResult.notEnrolled} אין מכשיר רשום לתזכורות ידניות. התזכורת נשארה באפליקציה.</p>}
+    {reminderResult.unconfirmed>0&&<p>לא התקבל אישור מהספק עבור {reminderResult.unconfirmed} אחראים.</p>}
+    {!reminderResult.accepted&&!reminderResult.unconfirmed&&<p>לא נשלחה התראה לטלפון.</p>}
+   </div>:<><p>התזכורת מיועדת לאחראים שטרם דיווחו על ביצוע. התראת טלפון תתבקש רק למי שהפעיל תזכורות ידניות.</p>
     {error&&<p role="alert">{error}</p>}
     <div className="dialog-actions"><button type="button" className="button secondary" disabled={busy} onClick={()=>setDialog('')}>ביטול</button>
     <button type="button" className="button primary" disabled={busy||!props.canRemind} onClick={()=>void remind()}>{busy?'יוצר תזכורת…':'שליחת תזכורת'}</button></div></>}

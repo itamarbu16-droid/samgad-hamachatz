@@ -3,6 +3,7 @@ import React,{act,createElement as h} from 'react';
 import {createRoot,type Root} from 'react-dom/client';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {TaskActions,type TaskActionProps} from '../src/components/task-actions';
+import {manualPhoneActionHeader,wantsManualPhoneDelivery} from '../src/lib/manual-task-reminder';
 
 Object.assign(globalThis,{React,IS_REACT_ACT_ENVIRONMENT:true});
 const props:TaskActionProps={task:{kind:'task',id:'synthetic'},title:'משימת בדיקה',version:3,dueDate:null,
@@ -33,6 +34,7 @@ it.each([
  const [route,request]=fetcher.mock.calls[0];
  expect(route).toBe('/api/push/task-reminder');
  expect(request?.method).toBe('POST');
+ expect(wantsManualPhoneDelivery(new Headers(request?.headers))).toBe(true);
  expect(JSON.parse(String(request?.body))).toEqual(expected);
  const status=dialog().querySelector('[role=status]')?.textContent;
  expect(status).toContain('תזכורת זמינה באפליקציה ל־6');
@@ -47,4 +49,26 @@ it('does not offer a reminder when task actions allow edits but not reminders',a
  expect(find('שליחת תזכורת')).toBeUndefined();
  expect(find('מחיקת משימה')).toBeTruthy();
  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('separates provider acceptance and in-app fallback from phone receipt',async()=>{
+ const fetcher=vi.spyOn(globalThis,'fetch').mockResolvedValue(Response.json({created:3,throttled:0,accepted:1,notEnrolled:1,unconfirmed:1}));
+ await show({canRemind:true});
+ await click(find('שליחת תזכורת')!);
+ expect(fetcher).not.toHaveBeenCalled();
+ await click(find('שליחת תזכורת')!);
+ const status=dialog().querySelector('[role=status]')?.textContent;
+ expect(status).toContain('תזכורת זמינה באפליקציה ל־3');
+ expect(status).toContain('ספק ההתראות קיבל את הבקשה עבור 1');
+ expect(status).toContain('קבלה בטלפון לא אומתה');
+ expect(status).toContain('אין מכשיר רשום');
+ expect(status).toContain('לא התקבל אישור מהספק');
+ expect(status).not.toContain('לא נשלחה התראה לטלפון.');
+});
+
+it('keeps old cached clients on in-app only and fails closed for unknown action versions',()=>{
+ expect(wantsManualPhoneDelivery(new Headers({'Content-Type':'application/json'}))).toBe(false);
+ expect(wantsManualPhoneDelivery(new Headers({[manualPhoneActionHeader]:'0'}))).toBe(false);
+ expect(wantsManualPhoneDelivery(new Headers({[manualPhoneActionHeader]:'2'}))).toBe(false);
+ expect(wantsManualPhoneDelivery(new Headers({[manualPhoneActionHeader]:'1'}))).toBe(true);
 });

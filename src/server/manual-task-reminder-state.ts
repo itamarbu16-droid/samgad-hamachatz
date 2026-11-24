@@ -55,6 +55,16 @@ export async function currentRecipientTarget(db:ReminderDb,org:string,recipient:
  }
 }
 
+export async function readManualClaim(db:ReminderDb,p:Pick<Principal,'organizationId'|'userId'>,id:string,now:Date){
+ const prefix=manualRecipientPrefix(p.organizationId,p.userId);
+ if(!isClaim(id,prefix))return null;
+ const [row]=await db.select({id:ledger.id}).from(ledger).where(and(eq(ledger.id,id),
+  gte(ledger.createdAt,new Date(now.getTime()-MANUAL_VISIBLE_MS)),
+  sql`NOT EXISTS (SELECT 1 FROM overdue_digest_runs manual_ack WHERE manual_ack.id = ${ledger.id} || ':ack')`)).limit(1);
+ if(!row)return null;
+ try{return manualReminderInput.parse(unseal(id.slice(prefix.length)));}catch{return null;}
+}
+
 export async function pendingManualReminder(p:Pick<Principal,'organizationId'|'userId'>,now=new Date()){
  const db=await getDb(),prefix=manualRecipientPrefix(p.organizationId,p.userId),expires=new Date(now.getTime()-MANUAL_VISIBLE_MS);
  const rows=await db.select({id:ledger.id}).from(ledger).where(and(like(ledger.id,prefix+'%'),gte(ledger.createdAt,expires),

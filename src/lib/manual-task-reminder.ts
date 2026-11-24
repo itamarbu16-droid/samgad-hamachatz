@@ -8,4 +8,9 @@ export function outstandingRhythmIds({assigneeIds,completionMode}: {assigneeIds:
  return [...new Set(assigneeIds.filter(id=>id&&!completions[id]&&!reports[id]))];
 }
 
-export type ManualReminderResult={created:number;throttled:number};
+export type ManualReminderResult={created:number;throttled:number;accepted:number;notEnrolled:number;unconfirmed:number};
+
+/** Old cached pages explicitly promised in-app-only. Only the new action opts
+ * into the device transport and exposes its separate result to the sender. */
+export const manualPhoneActionHeader='X-Samgad-Manual-Phone-Delivery';
+export const wantsManualPhoneDelivery=(headers:Headers)=>headers.get(manualPhoneActionHeader)==='1';

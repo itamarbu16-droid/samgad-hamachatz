@@ -20,6 +20,7 @@ import { matchesTaskFilter,taskTone,compareTasks,taskSorts,type TaskSort } from 
 import {DeadlineRequests} from "./deadline-requests";
 import {PushAutoRestore} from "./push-settings";
 import {WorkspaceHomeHeader,WorkspaceMobileNav,WorkspaceMore} from "./workspace-navigation";
+import {ManualDevicePrompt} from "./manual-device-prompt";
 import PersonalRhythm from "./personal-rhythm";
 import ResponsibilitySummary from "./responsibility-summary";
 import TaskTools from "./task-tools";
@@ -330,6 +331,7 @@ function WorkspaceContent() {
   );
   const canWrite = manager || data.user.role === "contributor";
   const guest=Boolean(data.user.permissions?.guest);
+  const manualDeviceAccount=!guest&&!["viewer","admin"].includes(data.user.role)?JSON.stringify([data.user.organizationId||"",data.user.id]):undefined;
   const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
   const manualReminderActorId=!guest&&(data.user.permissions?.editAll||data.user.role==="deputy")?data.user.id:undefined;
   const dueReminderAccount=JSON.stringify([data.user.organizationId??null,data.user.id]);
@@ -518,6 +520,7 @@ function WorkspaceContent() {
             canCapture={!guest&&["deputy","staff"].includes(data.user.role)} hasUpdates={Boolean(data.activity.length)}
             onActivity={()=>go("activity")} onSearch={openSearch} onCapture={openCapture}/>}
           {!guest&&!["viewer","admin"].includes(data.user.role)&&<ManualReminderNotice key={`${data.user.organizationId||""}:${data.user.id}`}/>}
+          {manualDeviceAccount&&<ManualDevicePrompt key={manualDeviceAccount} account={manualDeviceAccount}/>}
           <DocumentUploadStatus/>
           <DeadlineRequests manager={ownerInterface}/>
           <TaskTools key={data.user.id} userId={data.user.workspaceOwnerId || data.user.id} role={data.user.role} personalAllowed={Boolean(data.user.permissions?.manageAccess)} tasks={data.tasks} dashboard={false} showCapture={false} onSaved={load} />
@@ -751,7 +754,7 @@ function WorkspaceContent() {
         </main>
       </div>
       <WorkspaceMobileNav view={view} moreOpen={modal==="navigation"} onGo={navigatePrimary} onMore={()=>setModal("navigation")}/>
-      {modal === "navigation" && <WorkspaceMore items={availableNav} view={view} canManageAccess={Boolean(data.user.permissions?.manageAccess)}
+      {modal === "navigation" && <WorkspaceMore items={availableNav} view={view} manualDeviceAccount={manualDeviceAccount} canManageAccess={Boolean(data.user.permissions?.manageAccess)}
         onGo={navigatePrimary} onClose={()=>setModal("")}
         onSearch={()=>{setModal("");openSearch();}}
         onRefresh={()=>{setModal("");void load();}}
