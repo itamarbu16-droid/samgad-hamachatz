@@ -44,9 +44,9 @@ export function WorkspaceMobileNav({ view, moreOpen, onGo, onMore }: {
   </nav>;
 }
 
-export function WorkspaceMore({ items, view, canManageAccess, onGo, onClose, onSearch, onRefresh, onLogin, manualDeviceAccount }: {
+export function WorkspaceMore({ items, view, canManageAccess, onGo, onClose, onSearch, onRefresh, guest, signingOut, onAccount, manualDeviceAccount }: {
   items: readonly NavigationItem[]; view: string; canManageAccess:boolean; onGo:(view:string)=>void;
-  onClose:()=>void; onSearch:()=>void; onRefresh:()=>void; onLogin:()=>void; manualDeviceAccount?:string;
+  onClose:()=>void; onSearch:()=>void; onRefresh:()=>void; guest:boolean; signingOut:boolean; onAccount:()=>void; manualDeviceAccount?:string;
 }) {
   return <Modal title="עוד" close={onClose} actionSheet>
     <div className="more-navigation workspace-more">
@@ -59,7 +59,7 @@ export function WorkspaceMore({ items, view, canManageAccess, onGo, onClose, onS
         <PushSettings/>
         {manualDeviceAccount&&<ManualDevicePrompt key={manualDeviceAccount} account={manualDeviceAccount} preferences/>}
         <button type="button" className="nav-item" onClick={onRefresh}><RefreshCw size={20} aria-hidden="true"/>רענון מידע</button>
-        <button type="button" className="nav-item" onClick={onLogin}><UserRound size={20} aria-hidden="true"/>מסך כניסה</button>
+        <button type="button" className="nav-item" disabled={signingOut} onClick={onAccount}><UserRound size={20} aria-hidden="true"/>{guest?"כניסה לחשבון":signingOut?"מתנתקים…":"התנתקות"}</button>
       </section>
     </div>
   </Modal>;

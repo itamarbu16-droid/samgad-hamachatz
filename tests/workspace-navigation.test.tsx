@@ -43,7 +43,7 @@ it("declares the current primary page while exposing More as a dialog trigger",a
 
 it("keeps overflow entries, excludes duplicate primary tabs and never creates access for readers",async()=>{
  const onGo=vi.fn();
- const node=(may:boolean)=><WorkspaceMore items={may?[["tasks","משימות",CheckCheck],["calendar","לו״ז",CalendarDays],["personal","אישי",UserRound]]:[["tasks","משימות",CheckCheck],["calendar","לו״ז",CalendarDays]]} view="calendar" canManageAccess={may} onGo={onGo} onClose={noop} onSearch={noop} onRefresh={noop} onLogin={noop}/>;
+ const node=(may:boolean)=><WorkspaceMore items={may?[["tasks","משימות",CheckCheck],["calendar","לו״ז",CalendarDays],["personal","אישי",UserRound]]:[["tasks","משימות",CheckCheck],["calendar","לו״ז",CalendarDays]]} view="calendar" canManageAccess={may} onGo={onGo} onClose={noop} onSearch={noop} onRefresh={noop} onAccount={noop} guest={false} signingOut={false}/>;
  await act(async()=>root.render(node(false)));
  const sheet=document.querySelector("[role=dialog]")!;
  expect(button("לו״ז",sheet)?.getAttribute("aria-current")).toBe("page");

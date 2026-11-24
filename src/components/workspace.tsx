@@ -177,6 +177,10 @@ function WorkspaceContent() {
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState(""),
     [refreshed, setRefreshed] = useState("");
+  const [signingOut,setSigningOut]=useState(false),[signOutError,setSignOutError]=useState("");
+  const signOutInFlight=useRef(false);
+  const signOutAlert=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(signOutError)signOutAlert.current?.focus();},[signOutError]);
   const [hiddenDueReminders,setHiddenDueReminders]=useState<Set<string>>(()=>new Set());
   const [sort,setSort]=useState<TaskSort>("deadline_asc");
   const [taskSelection,setTaskSelection]=useState<string[]>([]),[batchOwner,setBatchOwner]=useState("");
@@ -402,6 +406,35 @@ function WorkspaceContent() {
   const localCreate = view === "decisions" ? canWrite : manager && !["dashboard","personal","tasks","library","records"].includes(view);
   const openSearch = () => window.dispatchEvent(new Event("samgad:search"));
   const openCapture = () => window.dispatchEvent(new Event("samgad:capture"));
+  async function openAccount(){
+    if(signOutInFlight.current)return;
+    setModal("");
+    setSignOutError("");
+    if(guest){location.assign("/login");return;}
+    signOutInFlight.current=true;
+    setSigningOut(true);
+    try{
+      if((await offlineStatus()).length){
+        setSignOutError("יש שינויים שממתינים לסנכרון. יש לסנכרן לפני יציאה");
+        return;
+      }
+      const result=await fetch("/api/auth/sign-out",{
+        method:"POST",headers:{"Content-Type":"application/json"},body:"{}",
+      });
+      if(!result.ok)throw Error("Sign out failed");
+      // Only clear uploads after the server actually ended the session.
+      documentUploads.clear();
+      // If something arrived in the offline queue meanwhile, leave it intact.
+      // The server session still ended, so continue to the prior login route.
+      await clearOffline().catch(()=>{});
+      location.assign("/login");
+    }catch{
+      setSignOutError("ההתנתקות לא הצליחה. בדקו את החיבור ונסו שוב");
+    }finally{
+      signOutInFlight.current=false;
+      setSigningOut(false);
+    }
+  }
   function navigatePrimary(next: string) {
     go(next);
     setModal("");
@@ -469,20 +502,10 @@ function WorkspaceContent() {
             </span>
             <button
               className="icon-button"
-              aria-label={guest?"כניסה לחשבון":"יציאה מהמערכת"}
-              onClick={async () => {
-                if(guest){location.href="/login";return;}
-                if ((await offlineStatus()).length) { setError("יש שינויים שממתינים לסנכרון. יש לסנכרן לפני יציאה"); return; }
-                documentUploads.clear();
-                const result = await fetch("/api/auth/sign-out", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: "{}",
-                });
-                if (!result.ok) { setError("היציאה לא הצליחה. יש לנסות כשיש אינטרנט"); return; }
-                await clearOffline();
-                location.href = "/login";
-              }}
+              type="button"
+              aria-label={guest?"כניסה לחשבון":"התנתקות"}
+              disabled={signingOut}
+              onClick={()=>void openAccount()}
             >
               <LogOut size={17} />
             </button>
@@ -544,6 +567,10 @@ function WorkspaceContent() {
               </button>
             </div>
           )}
+          {signOutError&&<div className="error-banner" role="alert" tabIndex={-1} ref={signOutAlert}>
+            <AlertCircle size={18} aria-hidden="true"/>{signOutError}
+            <button type="button" onClick={()=>{setSignOutError("");document.getElementById("main-content")?.focus({preventScroll:true});}} aria-label="סגירת שגיאת התנתקות"><X size={16} aria-hidden="true"/></button>
+          </div>}
           {view==='dashboard'&&!guest&&!['admin','viewer'].includes(data.user.role)&&!hiddenDueReminders.has(dueReminderAccount)&&<OpenDueReminder
             key={dueReminderAccount} onDismiss={()=>setHiddenDueReminders(previous=>new Set([...previous,dueReminderAccount]))}
             userId={data.user.id} today={data.today} tasks={data.tasks} rhythm={data.rhythmDueReminder||[]}/>}
@@ -758,7 +785,7 @@ function WorkspaceContent() {
         onGo={navigatePrimary} onClose={()=>setModal("")}
         onSearch={()=>{setModal("");openSearch();}}
         onRefresh={()=>{setModal("");void load();}}
-        onLogin={()=>{setModal("");location.href="/login";}}/>}
+        guest={guest} signingOut={signingOut} onAccount={()=>void openAccount()}/>}
       <TaskActionNotice/>
       {taskActions.error && <div className="quick-notice" role="alert">{taskActions.error}<button onClick={()=>void load()}>רענון</button></div>}
       {taskActions.notice && <div className="quick-notice" role="status">{taskActions.notice}{taskActions.undo.length>0 && <button disabled={taskActions.busy} onClick={()=>void taskActions.cancel()}>ביטול פעולה</button>}</div>}
