@@ -2434,3 +2434,16 @@ input[type=checkbox], input[type=radio] { accent-color: var(--teal); }
 .tracking-structure-toolbar + .tracking-scroll { margin-block-start:8px; }
 .tracking-structure-footer { margin-block:-6px 12px; }
 .tracking-scroll :is(input,th):focus-visible { outline:2px solid #ed9b40; outline-offset:-2px; }
+
+.tracking-cell-editor { display:flex; align-items:center; min-block-size:44px; }
+.tracker-name-action {
+  flex:0 0 44px;
+  min-block-size:44px;
+  border:0;
+  border-inline-start:1px solid #64748b;
+  background:transparent;
+  color:#111827;
+  font-size:20px;
+  cursor:pointer;
+}
+.tracker-name-action:focus-visible { outline:2px solid #854d0e; outline-offset:-2px; }

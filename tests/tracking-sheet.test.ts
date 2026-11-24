@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {addTrackingRow,appendTrackingColumn,initialTrackingColumns,MAX_TRACKING_ROWS,openTrackingSheet,type TrackingSheet} from '../src/lib/tracking-sheet';
+import {addTrackingRow,appendTrackingColumn,initialTrackingColumns,MAX_TRACKING_ROWS,openTrackingSheet,shiftTrackingColumn,type TrackingSheet} from '../src/lib/tracking-sheet';
 
 it('adds more than fifty rows and roundtrips custom columns and existing marked names',()=>{
  const first=openTrackingSheet({columns:initialTrackingColumns,rows:[{'company-a':'שם א','company-a:status':'v'}]});
@@ -27,4 +27,24 @@ it('preserves larger legacy grids and hidden historical cell content without cro
  expect(openTrackingSheet(current).previousLayout).toBe(recovered.previousLayout);
  expect(()=>appendTrackingColumn(recovered,'א׳','custom-existing')).toThrow('כבר קיימת');
  expect(()=>appendTrackingColumn(recovered,'   ','custom-blank')).toThrow('שם עמודה');
+});
+
+it('shifts a user-defined column one slot at a time, including gaps, and leaves other data intact',()=>{
+  const custom='custom-label';
+  const sheet:TrackingSheet={
+    columns:[...initialTrackingColumns,{id:custom,name:'Synthetic custom',type:'text'}],
+    rows:[
+      {[custom]:'First',[custom+':status']:'v','company-a':'Other 1'},
+      {'company-a':'Other 2'},
+      {[custom]:'Third',[custom+':status']:'x','company-a':'Other 3'},
+    ],
+  };
+  const shifted=shiftTrackingColumn(sheet,{columnId:custom,from:0});
+  expect(shifted.rows).toEqual([
+    {'company-a':'Other 1'},
+    {[custom]:'Third',[custom+':status']:'x','company-a':'Other 2'},
+    {'company-a':'Other 3'},
+  ]);
+  expect(sheet.rows[0][custom]).toBe('First');
+  expect(shiftTrackingColumn(sheet,{columnId:custom,from:3})).toBe(sheet);
 });

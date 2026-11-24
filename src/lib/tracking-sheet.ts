@@ -49,3 +49,71 @@ export function appendTrackingColumn(sheet:TrackingSheet,rawName:string,id:strin
  if(!customId(id)||sheet.columns.some(c=>c.id===id))throw Error('לא ניתן להוסיף עמודה כרגע, נסה שוב');
  return {...sheet,columns:[...sheet.columns,{id,name,type:'text'}]};
 }
+
+export type TrackingShift = { columnId:string; from:number };
+
+// Move the whole cell (name and its mark), not the whole row. Blank slots
+// in the source count too, and the last slot is always emptied.
+export function shiftTrackingColumn(sheet:TrackingSheet,{columnId,from}:TrackingShift):TrackingSheet{
+  if(!Number.isInteger(from)||from<0||from>=sheet.rows.length||!sheet.columns.some(column=>column.id===columnId))return sheet;
+  const keys=[columnId,columnId+':status'];
+  const rows=sheet.rows.map((row,index)=>{
+    if(index<from)return row;
+    const next=sheet.rows[index+1];
+    const shifted={...row};
+    for(const key of keys){
+      if(next&&Object.hasOwn(next,key))shifted[key]=next[key];
+      else delete shifted[key];
+    }
+    return shifted;
+  });
+  return {...sheet,rows};
+}
+
+const trackingCellMatches=(a:unknown,b:unknown)=>(a??'')===(b??'')||JSON.stringify(a)===JSON.stringify(b);
+
+// The editor exposes append-only structure and uses stable column IDs. On a
+// stale document version, merge cells only when their coordinates still mean
+// the same thing. Never infer which of two competing edits should win.
+export function mergeTrackingEdits(base:TrackingSheet,local:TrackingSheet,remote:TrackingSheet,shifts:readonly TrackingShift[]=[]):
+  {sheet:TrackingSheet;changed:boolean}|{conflict:'structure'|'cell'|'shift';row?:number}{
+  const layoutMatches=(a:TrackingColumn[],b:TrackingColumn[])=>a.every((column,i)=>
+    column.id===b[i]?.id&&column.name===b[i]?.name&&column.type===b[i]?.type);
+  const appendOnly=(sheet:TrackingSheet)=>sheet.rows.length>=base.rows.length&&layoutMatches(base.columns,sheet.columns);
+  const structureChanged=(sheet:TrackingSheet)=>sheet.rows.length!==base.rows.length||sheet.columns.length!==base.columns.length;
+  if(!appendOnly(local)||!appendOnly(remote)||(structureChanged(local)&&structureChanged(remote)))return {conflict:'structure'};
+
+  // A shift reads all slots below it, even when repeated names/marks make
+  // an intermediate slot look unchanged in the final diff. Treat a remote
+  // change anywhere in that column's affected range as overlapping.
+  if(shifts.length&&structureChanged(remote))return {conflict:'structure'};
+  const shiftedFrom=new Map<string,number>();
+  for(const {columnId,from} of shifts)shiftedFrom.set(columnId,Math.min(shiftedFrom.get(columnId)??from,from));
+  for(const [columnId,from] of shiftedFrom){
+    const keys=[columnId,columnId+':status'];
+    for(let i=from;i<base.rows.length;i++){
+      if(keys.some(key=>!trackingCellMatches(base.rows[i]?.[key],remote.rows[i]?.[key])))return {conflict:'shift',row:i+1};
+    }
+  }
+  const rows=remote.rows.slice();
+  let changed=structureChanged(local);
+  for(let i=0;i<local.rows.length;i++){
+    const baseline=base.rows[i]||{};
+    const mine=local.rows[i];
+    const theirs=remote.rows[i]||{};
+    if(!mine||typeof mine!=='object'||Array.isArray(mine)||typeof theirs!=='object'||Array.isArray(theirs))return {conflict:'structure'};
+    if(mine===baseline)continue;
+    let row=theirs;
+    for(const key of new Set([...Object.keys(baseline),...Object.keys(mine)])){
+      const before=Object.hasOwn(baseline,key)?baseline[key]:undefined;
+      const after=Object.hasOwn(mine,key)?mine[key]:undefined;
+      const current=Object.hasOwn(theirs,key)?theirs[key]:undefined;
+      if(trackingCellMatches(before,after)||trackingCellMatches(current,after))continue;
+      if(!trackingCellMatches(current,before))return {conflict:'cell',row:i+1};
+      row={...row,[key]:after??''};
+      changed=true;
+    }
+    rows[i]=row;
+  }
+  return {sheet:{...remote,columns:structureChanged(local)?local.columns:remote.columns,rows},changed};
+}

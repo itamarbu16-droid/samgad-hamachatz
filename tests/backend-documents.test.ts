@@ -17,6 +17,7 @@ import { getRhythm, createRhythmItem } from "../src/server/rhythm";
 import { unitRoles, isPersonalItem } from "../src/lib/unit-roles";
 import { documentFolders, descendants } from "../src/lib/document-folders";
 import * as s from "../src/server/schema";
+import { mergeTrackingEdits, openTrackingSheet } from "../src/lib/tracking-sheet";
 import { localDate, type Principal } from "../src/server/policy";
 let deputy: Principal, contributor: Principal, viewer: Principal;
 const input = (extra: object = {}) => ({
@@ -392,4 +393,26 @@ describe('generic customizable tracker persistence',()=>{
   await expect(updateDocument(deputy,source.id,{folderId:'trackers',title:'Synthetic oversized',body:'x'.repeat(100001),version:1})).rejects.toBeDefined();
   expect((await getDocument(deputy,source.id)).body).toBe(body);
  });
+});
+
+it("retries a stale tracker draft against the latest version without losing clears or another editor's cell",async()=>{
+  const folder=await createDocumentFolder(deputy,{name:"Synthetic concurrent tracker",parent:"trackers",section:"library",clientRequestId:randomUUID()});
+  const original={kind:"tracking-table-v1",columns:[],rows:[{"company-a":"Old"},{"company-a":"To replace"},{"company-a":"Original"}]};
+  const fields={folderId:folder.id,title:"Synthetic shared tracker"};
+  const {id}=await createDocument(deputy,input({...fields,body:JSON.stringify(original)}));
+  const baseline=openTrackingSheet(original);
+  const draft={...baseline,rows:baseline.rows.map((row,i)=>i===0?{...row,"company-a":""}:i===1?{...row,"company-a":"Replacement"}:row)};
+  const external={...original,rows:[...original.rows.slice(0,2),{"company-a":"Other editor"}]};
+  await updateDocument(deputy,id,{...fields,version:1,body:JSON.stringify(external)});
+  await expect(updateDocument(contributor,id,{...fields,version:1,body:JSON.stringify({...draft,kind:original.kind})})).rejects.toMatchObject({status:409});
+  const current=await getDocument(contributor,id);
+  const combined=mergeTrackingEdits(baseline,draft,openTrackingSheet(JSON.parse(current.body)));
+  expect(combined).toHaveProperty("changed",true);
+  if("conflict" in combined)throw Error("Unexpected structural or cell conflict");
+  const body=JSON.stringify({...combined.sheet,kind:original.kind});
+  await expect(updateDocument(viewer,id,{...fields,version:current.version,body})).rejects.toMatchObject({status:403});
+  await updateDocument(contributor,id,{...fields,version:current.version,body});
+  const saved=await getDocument(deputy,id);
+  expect(saved.version).toBe(3);
+  expect(JSON.parse(saved.body).rows.slice(0,3)).toEqual([{"company-a":""},{"company-a":"Replacement"},{"company-a":"Other editor"}]);
 });
