@@ -1,0 +1,49 @@
+.swipe-motion-shell {
+ position: relative;
+ display: grid;
+ grid-template-rows: 1fr;
+ touch-action: pan-y pinch-zoom;
+ isolation: isolate;
+}
+.swipe-motion-clip { position:relative; min-height:0; overflow:hidden; }
+.swipe-motion-front {
+ position:relative;
+ transform: translateX(var(--swipe-motion-x,0px));
+ transition: transform 180ms cubic-bezier(.24,.75,.28,1);
+}
+.swipe-motion-front[data-motion="drag"] { transition:none; user-select:none; -webkit-user-select:none; }
+.swipe-motion-front[data-motion="exit"] { pointer-events:none; }
+.swipe-motion-collapse {
+ grid-template-rows: 0fr;
+ transition:grid-template-rows 150ms ease 150ms;
+}
+.swipe-motion-rail {
+ position:absolute;
+ inset:0;
+ display:flex;
+ align-items:center;
+ justify-content:flex-start;
+ direction:ltr;
+ padding-inline-start:12px;
+ color:var(--text);
+ pointer-events:none;
+}
+.home-preview-row:not(:last-child) .home-preview-front { border-bottom:1px solid var(--border); }
+.home-preview-front { display:flex; align-items:center; }
+.home-preview-front[data-motion="drag"],.home-preview-front[data-motion="exit"] { background:var(--surface); }
+.home-preview-front > .command-task { flex:1; min-width:0; border-bottom:0; }
+.home-preview-front > .home-preview-next { flex:none; width:44px; height:44px; color: var(--muted); }
+.home-preview-enter { animation:home-preview-enter 190ms cubic-bezier(.24,.75,.28,1) both; }
+@keyframes home-preview-enter {
+ from { opacity:0; transform:translateX(-22px); }
+ to { opacity:1; transform:translateX(0); }
+}
+.attention-swipe-shell .swipe-motion-rail { color:var(--amber); }
+.activity-motion-shell { border-radius:12px; }
+.activity-motion-shell .swipe-motion-front { background:var(--surface); }
+.activity-motion-shell .swipe-motion-front[data-motion="exit"] { transition-duration:150ms; }
+@media (prefers-reduced-motion: reduce) {
+ .swipe-motion-front,.swipe-motion-collapse { transition:none; }
+ .home-preview-enter { animation:none; }
+}
+.activity-motion-shell .swipe-motion-rail { color:#fff; background:#a52332; padding-inline-start:18px; }

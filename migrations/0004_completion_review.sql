@@ -1,0 +1,4 @@
+BEGIN;
+ALTER TABLE rhythm_items ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'task';
+ALTER TABLE rhythm_occurrences ADD COLUMN IF NOT EXISTS reports jsonb NOT NULL DEFAULT '{}';
+COMMIT;
