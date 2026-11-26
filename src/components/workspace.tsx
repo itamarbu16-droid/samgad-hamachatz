@@ -232,7 +232,11 @@ function WorkspaceContent() {
       if (!r.ok) { if(r.status===403){documentUploads.clear();setData(null);} throw Error(j.error || "לא ניתן לטעון את המידע"); }
       const base = (j.user.permissions?.manageAccess || j.user.permissions?.editAll) ? '/' : '/deputies';
       const params = new URLSearchParams(location.search);
-      if (!j.user.permissions?.manageAccess && ['personal', 'rhythm', 'access'].includes(params.get('view') || '')) {
+      const requestedView = params.get('view');
+      const canManageAccess = Boolean(j.user.permissions?.manageAccess);
+      const canOpenPersonal = !j.user.permissions?.guest && (canManageAccess || Boolean(j.user.permissions?.editAll));
+      if ((requestedView === 'personal' && !canOpenPersonal) ||
+          ((requestedView === 'rhythm' || requestedView === 'access') && !canManageAccess)) {
         params.delete('view');
         setView('dashboard');
       }
@@ -339,7 +343,9 @@ function WorkspaceContent() {
   const ownerInterface=Boolean(data.user.permissions?.manageAccess || data.user.permissions?.editAll);
   const manualReminderActorId=!guest&&(data.user.permissions?.editAll||data.user.role==="deputy")?data.user.id:undefined;
   const dueReminderAccount=JSON.stringify([data.user.organizationId??null,data.user.id]);
-  const availableNav=nav.filter(([id])=>id!=="personal" || Boolean(data.user.permissions?.manageAccess));
+  const canOpenPersonal=!guest&&ownerInterface;
+  const delegatedPersonal=view==="personal"&&canOpenPersonal&&!data.user.permissions?.manageAccess;
+  const availableNav=nav.filter(([id])=>id!=="personal" || canOpenPersonal);
   const task = data.tasks.find((t) => t.id === selected);
   const scopedTasks=data.tasks.filter(t=>view==="personal"?isPersonalTask(t,data.user.workspaceOwnerId || data.user.id):!ownerInterface||!isPersonalTask(t,data.user.workspaceOwnerId || data.user.id));
   const late = scopedTasks.filter(overdue);
@@ -365,7 +371,7 @@ function WorkspaceContent() {
       </button>
       <span className="task-row-end"><Badge value={t.status}/><span className={overdue(t)?"date late":"date"}>תג״ב: {date(t.dueDate)}</span></span>
       {canAct && t.status !== "cancelled" && <button className="button secondary" disabled={taskActions.busy || (t.status === "pending_review" && !manager)} onClick={() => void taskActions.run([{url:`/api/tasks/${t.id}`,method:"PATCH",body:{version:t.version,status:t.status === "completed" ? "in_progress" : t.ownerId !== t.creatorId && !manager ? "pending_review" : "completed"}}])}>{t.status === "completed" ? "לא בוצע" : t.status === "pending_review" ? manager ? "אשר" : "ממתין לאישור" : "בוצע"}</button>}
-      <TaskActions canRemind={Boolean(manualReminderActorId&&t.ownerId!==manualReminderActorId&&canRemindLegacy(t.status,t.dueDate,data!.today))} canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
+      <TaskActions canRemind={Boolean(!delegatedPersonal&&manualReminderActorId&&t.ownerId!==manualReminderActorId&&canRemindLegacy(t.status,t.dueDate,data!.today))} canMoveToPersonal={ownerInterface&&!isPersonalTask(t,data!.user.workspaceOwnerId || data!.user.id)} canExtendDirectly={ownerInterface} task={{kind:"task",id:t.id}} title={t.title} version={t.version} dueDate={t.dueDate} pinned={Boolean(data!.pinnedTaskKeys?.includes("task:"+t.id))} canEdit={canAct} canDelete={canWrite&&(manager||t.creatorId===data!.user.id)} onSaved={load}/>
     </SwipeTaskRow>;
   }
   function activityList(items: Data["activity"], readOnly = false) {
@@ -574,14 +580,16 @@ function WorkspaceContent() {
           {view==='dashboard'&&!guest&&!['admin','viewer'].includes(data.user.role)&&!hiddenDueReminders.has(dueReminderAccount)&&<OpenDueReminder
             key={dueReminderAccount} onDismiss={()=>setHiddenDueReminders(previous=>new Set([...previous,dueReminderAccount]))}
             userId={data.user.id} today={data.today} tasks={data.tasks} rhythm={data.rhythmDueReminder||[]}/>}
-          {view === "personal" && data.user.permissions?.manageAccess && (
+          {view === "personal" && canOpenPersonal && (
             <PersonalRhythm
-              key={data.user.id}
+              key={`personal:${data.user.id}:${delegatedPersonal}`}
               userId={data.user.workspaceOwnerId || data.user.id}
               role={data.user.role}
               legacyTasks={data.tasks.filter(t=>isPersonalTask(t,data.user.workspaceOwnerId || data.user.id))}
-              manualReminderActorId={manualReminderActorId}
+              manualReminderActorId={delegatedPersonal?undefined:manualReminderActorId}
               scope="personal"
+              delegatedTasksOnly={delegatedPersonal}
+              manageRhythm={!delegatedPersonal}
             />
           )}
           {view === "dashboard" && ownerInterface && <CommandDashboard key={"command:"+dueReminderAccount} pinnedTaskKeys={data.pinnedTaskKeys} user={data.user} tasks={data.tasks} users={data.users} today={data.today} activity={data.activity} onActivityChanged={load} go={go}/> }
@@ -616,7 +624,7 @@ function WorkspaceContent() {
               role={data.user.role}
             />
           )}
-          {(view === "tasks" || view==="personal" && filtered.length>0) && (
+          {(view === "tasks" || view==="personal" && canOpenPersonal && filtered.length>0) && (
             <section className="panel tasks-panel">
               <div className="task-tabs">
                 {[
@@ -1031,7 +1039,7 @@ function WorkspaceContent() {
                           ))}
                         </select>
                       </label>
-                      {manager && <label>
+                      {manager && !delegatedPersonal && <label>
                         אחראי לביצוע
                         <select name="ownerId" defaultValue={task.ownerId}>
                           {data.users.map((u) => (

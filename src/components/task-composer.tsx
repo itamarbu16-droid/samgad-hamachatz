@@ -60,6 +60,7 @@ export function TaskComposer({
   convert = false,
   recurring = false,
   busy,
+  lockRecipients = false,
   onSave
 }: {
   data: RhythmData;
@@ -70,6 +71,7 @@ export function TaskComposer({
   convert?: boolean;
   recurring?: boolean;
   busy: boolean;
+  lockRecipients?: boolean;
   onSave: (body: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [recipients, setRecipients] = useState<string[]>(item?.assigneeIds || [userId]);
@@ -106,7 +108,7 @@ export function TaskComposer({
   return <form onSubmit={submit} className="quick-task-form">
     <label>{isPoint ? "נקודה לעיסוק" : "שם המשימה"}<input name="title" required minLength={2} maxLength={160} defaultValue={item?.title} autoFocus placeholder="מה צריך לעשות?" /></label>
     {!isPoint && <>
-      {manager && <fieldset className="role-chips"><legend>אחראי — ללא בחירה המשימה נשארת אצלך</legend>
+      {manager && !lockRecipients && <fieldset className="role-chips"><legend>אחראי — ללא בחירה המשימה נשארת אצלך</legend>
         {data.people.map(person => <button key={person.id} type="button" className={recipients.includes(person.id) ? "button primary" : "button secondary"} aria-pressed={recipients.includes(person.id)} onClick={() => toggle(person.id)}>{person.id === userId ? "אני" : person.name}</button>)}
         {data.groups.filter(g => g.emails.length > 1).map(group => <button key={group.id} type="button" className="button secondary" onClick={() => setRecipients([...new Set(data.people.filter(p => group.emails.includes(p.email)).map(p => p.id))])}>{group.name}</button>)}
       </fieldset>}
